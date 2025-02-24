@@ -1,11 +1,5 @@
-import {
-  Options,
-  PipeableStream,
+export {
+  type Options,
+  type PipeableStream,
   renderToPipeableStream,
 } from 'react-server-dom-webpack/server.node';
-
-export {
-  Options,
-  PipeableStream,
-  renderToPipeableStream,
-}

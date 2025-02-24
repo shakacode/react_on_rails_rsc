@@ -3,9 +3,18 @@
   "version": "19.0.0",
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
-    "./client": "./dist/client.js",
-    "./server.node": "./dist/server.node.js",
-    "./WebpackPlugin": "./dist/WebpackPlugin.js",
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./server.node": {
+      "types": "./dist/server.node.d.ts",
+      "default": "./dist/server.node.js"
+    },
+    "./WebpackPlugin": {
+      "types": "./dist/WebpackPlugin.d.ts",
+      "default": "./dist/WebpackPlugin.js"
+    },
     "./WebpackLoader": "./dist/WebpackLoader.js"
   },
   "publishConfig": {

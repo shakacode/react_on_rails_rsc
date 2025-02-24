@@ -26,10 +26,10 @@
     "README.md"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc",
-    "build-if-needed": "[ -f dist/client.js ] || (npm run build >/dev/null 2>&1 || true) && [ -f dist/client.js ] || { echo 'Build failed'; }",
-    "prepack": "npm run build-if-needed",
-    "prepare": "npm run build-if-needed"
+    "build": "rm -rf dist tsconfig.tsbuildinfo && yarn run tsc",
+    "build-if-needed": "[ -f dist/client.js ] || (yarn run build >/dev/null 2>&1 || true) && [ -f dist/client.js ] || { echo 'Build failed'; }",
+    "prepack": "yarn run build-if-needed",
+    "prepare": "yarn run build-if-needed"
   },
   "dependencies": {
     "react-server-dom-webpack": "^19.0.0"

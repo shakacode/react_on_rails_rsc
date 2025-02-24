@@ -1,1 +1,6 @@
-export * from 'react-server-dom-webpack/client';
+import { createFromFetch, createFromReadableStream } from 'react-server-dom-webpack/client';
+
+export {
+  createFromFetch,
+  createFromReadableStream,
+}

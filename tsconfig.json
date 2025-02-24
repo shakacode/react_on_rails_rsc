@@ -1,6 +1,7 @@
 {
   "extends": "@tsconfig/node14/tsconfig.json",
   "compilerOptions": {
+    "moduleResolution": "node16",
     // This copies JS files to the output directory. Make false once all code is converted.
     "allowJs": true,
     "declaration": true,
@@ -10,7 +11,8 @@
     "outDir": "./dist",
     "resolveJsonModule": true,
     "rootDir": "./src",
-    "sourceMap": true
+    "sourceMap": true,
+    "typeRoots": ["./types", "./node_modules/@types"]
   },
-  "include": ["src/**/*.ts", "src/**/*.js"]
+  "include": ["src/**/*.ts", "src/**/*.js", "types/**/*.d.ts"]
 }

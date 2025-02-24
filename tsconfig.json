@@ -6,7 +6,7 @@
     "lib": ["dom", "es2020"],
     "module": "es2020",
     "moduleResolution": "bundler",
-    "target": "es2020",
+    "target": "ES5",
     "declaration": true,
     "declarationMap": true,
     "incremental": true,

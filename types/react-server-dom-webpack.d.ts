@@ -47,8 +47,10 @@ declare module 'react-server-dom-webpack/client' {
 declare module 'react-server-dom-webpack/plugin' {
   import { Compiler } from "webpack";
 
-  export default class ReactFlightWebpackPlugin {
+  class ReactFlightWebpackPlugin {
     constructor(options: unknown);
     apply(compiler: Compiler): void;
   }
+
+  export = ReactFlightWebpackPlugin;
 }

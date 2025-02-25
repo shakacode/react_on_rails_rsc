@@ -1,5 +1,5 @@
 import { Compiler } from "webpack";
-import RSCWebpackPluginLib from "react-server-dom-webpack/plugin";
+import RSCWebpackPluginLib = require("react-server-dom-webpack/plugin");
 
 type ClientReferenceSearchPath = {
   directory: string,

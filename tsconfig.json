@@ -3,10 +3,8 @@
   "compilerOptions": {
     // This copies JS files to the output directory. Make false once all code is converted.
     "allowJs": true,
-    "lib": ["dom", "es2015"],
     "module": "node16",
     "moduleResolution": "node16",
-    "target": "es5",
     "declaration": true,
     "declarationMap": true,
     "incremental": true,

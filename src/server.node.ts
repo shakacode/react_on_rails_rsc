@@ -1,3 +1,4 @@
+// @ts-expect-error Untyped module
 import { renderToPipeableStream as originalRenderToPipeableStream } from 'react-server-dom-webpack/server.node';
 
 export interface Options {
@@ -12,13 +13,12 @@ export interface PipeableStream {
   pipe<Writable extends NodeJS.WritableStream>(destination: Writable): Writable;
 }
 
-// Note: ReactClientValue is likely what React uses internally for RSC
-// We're using 'unknown' here as it's the most accurate type we can use
-// without accessing React's internal types
-export function renderToPipeableStream(
+export const renderToPipeableStream: (
+  // Note: ReactClientValue is likely what React uses internally for RSC
+  // We're using 'unknown' here as it's the most accurate type we can use
+  // without accessing React's internal types
   model: unknown,
   webpackMap: { [key: string]: unknown },
-  options?: Options
-): PipeableStream {
-  return originalRenderToPipeableStream(model, webpackMap, options);
-}
+  options?: Options,
+) => PipeableStream =
+  originalRenderToPipeableStream;

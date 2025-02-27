@@ -430,7 +430,7 @@ randombytes@^2.1.0:
   dependencies:
     safe-buffer "^5.1.0"
 
-"react-server-dom-webpack@file:./react-server-dom-webpack":
+react-server-dom-webpack@./react-server-dom-webpack/:
   version "19.0.0"
   dependencies:
     acorn-loose "^8.3.0"

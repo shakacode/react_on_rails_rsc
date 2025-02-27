@@ -36,7 +36,7 @@
     "prepare": "yarn run build-if-needed"
   },
   "dependencies": {
-    "react-server-dom-webpack": "file:./react-server-dom-webpack"
+    "react-server-dom-webpack": "workspace:./react-server-dom-webpack"
   },
   "devDependencies": {
     "@tsconfig/node14": "^14.1.2",

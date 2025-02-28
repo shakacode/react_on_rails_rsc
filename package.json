@@ -1,6 +1,6 @@
 {
   "name": "@shakacode-tools/react-on-rails-rsc",
-  "version": "19.0.0-rc.1",
+  "version": "19.0.0-rc.2",
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
     "./client": {

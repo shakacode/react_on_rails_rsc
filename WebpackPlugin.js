@@ -2,9 +2,7 @@ const RSCWebpackPluginLib = require("./plugin.js");
 
 class RSCWebpackPlugin {
   constructor(options) {
-    if (!options.isServer) {
-      this.plugin = new RSCWebpackPluginLib(options);
-    }
+    this.plugin = new RSCWebpackPluginLib(options);
   }
 
   apply(compiler) {

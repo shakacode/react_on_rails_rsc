@@ -1,6 +1,3 @@
-// @ts-expect-error Untyped module
-import { renderToPipeableStream as originalRenderToPipeableStream } from 'react-server-dom-webpack/server.node';
-
 export interface Options {
   environmentName?: string;
   onError?: (error: unknown) => void;
@@ -20,5 +17,4 @@ export const renderToPipeableStream: (
   model: unknown,
   webpackMap: { [key: string]: unknown },
   options?: Options,
-) => PipeableStream =
-  originalRenderToPipeableStream;
+) => PipeableStream;

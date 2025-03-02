@@ -1,5 +1,4 @@
 import { Compiler } from "webpack";
-import RSCWebpackPluginLib = require("react-server-dom-webpack/plugin");
 
 type ClientReferenceSearchPath = {
   directory: string,
@@ -18,16 +17,7 @@ export type Options = {
   serverConsumerManifestFilename?: string,
 };
 
-export class RSCWebpackPlugin {
-  private plugin?: RSCWebpackPluginLib;
-
-  constructor(options: Options) {
-    if (!options.isServer) {
-      this.plugin = new RSCWebpackPluginLib(options);
-    }
-  }
-
-  apply(compiler: Compiler) {
-    this.plugin?.apply(compiler);
-  }
+export declare class RSCWebpackPlugin {
+  constructor(options: Options);
+  apply(compiler: Compiler): void;
 }

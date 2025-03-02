@@ -14,14 +14,3 @@ declare module 'react-server-dom-webpack/node-loader' {
     defaultLoad: () => Promise<LoadOptions>
   ): Promise<LoadResult>;
 }
-
-declare module 'react-server-dom-webpack/plugin' {
-  import { Compiler } from "webpack";
-
-  class ReactFlightWebpackPlugin {
-    constructor(options: unknown);
-    apply(compiler: Compiler): void;
-  }
-
-  export = ReactFlightWebpackPlugin;
-}

@@ -1,62 +1,80 @@
 {
   "name": "@shakacode-tools/react-on-rails-rsc",
-  "version": "19.0.0-rc.1",
-  "description": "React Server Components support for react_on_rails Ruby gem",
+  "description": "React Server Components bindings for DOM using Webpack. This is intended to be integrated into meta-frameworks. It is not intended to be imported directly.",
+  "version": "19.0.0-rc.2",
+  "keywords": [
+    "react"
+  ],
+  "homepage": "https://react.dev/",
+  "bugs": "https://github.com/facebook/react/issues",
+  "license": "MIT",
+  "files": [
+    "LICENSE",
+    "README.md",
+    "index.js",
+    "plugin.js",
+    "client.d.ts",
+    "client.js",
+    "client.browser.js",
+    "client.edge.js",
+    "client.node.d.ts",
+    "client.node.js",
+    "client.node.unbundled.js",
+    "server.js",
+    "server.browser.js",
+    "server.edge.js",
+    "server.node.d.ts",
+    "server.node.js",
+    "server.node.unbundled.js",
+    "static.js",
+    "static.browser.js",
+    "static.edge.js",
+    "static.node.js",
+    "static.node.unbundled.js",
+    "node-register.js",
+    "WebpackLoader.d.ts",
+    "WebpackLoader.js",
+    "WebpackPlugin.d.ts",
+    "WebpackPlugin.js",
+    "cjs/",
+    "esm/"
+  ],
   "exports": {
     "./client": {
-      "types": "./dist/client.d.ts",
-      "default": "./dist/client.js"
-    },
-    "./client.node": {
-      "types": "./dist/client.node.d.ts",
-      "default": "./dist/client.node.js"
+      "types": "./client.d.ts",
+      "default": "./client.js"
     },
     "./server.node": {
-      "types": "./dist/server.node.d.ts",
-      "default": "./dist/server.node.js"
+      "types": "./server.node.d.ts",
+      "default": "./server.node.js"
     },
     "./WebpackPlugin": {
-      "types": "./dist/WebpackPlugin.d.ts",
-      "default": "./dist/WebpackPlugin.js"
+      "types": "./WebpackPlugin.d.ts",
+      "default": "./WebpackPlugin.js"
     },
-    "./WebpackLoader": "./dist/WebpackLoader.js"
+    "./WebpackLoader": {
+      "types": "./WebpackLoader.d.ts",
+      "default": "./WebpackLoader.js"
+    },
+    "./package.json": "./package.json"
   },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "scripts": {
-    "build": "rm -rf dist tsconfig.tsbuildinfo && yarn run tsc",
-    "build-if-needed": "[ -f dist/client.js ] || (yarn run build >/dev/null 2>&1 || true) && [ -f dist/client.js ] || { echo 'Build failed'; }",
-    "prepack": "yarn run build-if-needed",
-    "prepare": "yarn run build-if-needed"
-  },
-  "dependencies": {
-    "react-server-dom-webpack": "./react-server-dom-webpack/"
-  },
-  "devDependencies": {
-    "@tsconfig/node14": "^14.1.2",
-    "@types/react": "19.0.0",
-    "typescript": "^5.4.3",
-    "webpack": "^5.98.0"
-  },
-  "peerDependencies": {
-    "react": "19.0.0",
-    "react-dom": "19.0.0"
-  },
+  "main": "index.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shakacode-tools/react-on-rails-rsc.git"
+    "url": "https://github.com/facebook/react.git",
+    "directory": "packages/react-server-dom-webpack"
   },
-  "keywords": [
-    "server components",
-    "rsc",
-    "ruby on rails",
-    "react-on-rails"
-  ],
-  "author": "ShakaCode",
-  "license": "MIT"
+  "engines": {
+    "node": ">=0.10.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "webpack": "^5.59.0"
+  },
+  "dependencies": {
+    "acorn-loose": "^8.3.0",
+    "neo-async": "^2.6.1",
+    "webpack-sources": "^3.2.0"
+  }
 }

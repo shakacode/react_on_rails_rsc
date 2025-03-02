@@ -44,6 +44,10 @@
       "types": "./client.d.ts",
       "default": "./client.js"
     },
+    "./client.node": {
+      "types": "./client.node.d.ts",
+      "default": "./client.node.js"
+    },
     "./server.node": {
       "types": "./server.node.d.ts",
       "default": "./server.node.js"

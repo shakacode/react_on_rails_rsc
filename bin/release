@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# Usage: ./bin/release [options]
+# 
+# This script runs release-it with provided options to automate the release process.
+# Common options:
+#   major       - Bump major version (1.0.0)
+#   minor       - Bump minor version (0.1.0) 
+#   patch       - Bump patch version (0.0.1)
+#   --dry-run   - Don't make actual changes
+#
+# Examples:
+#   ./bin/release major     # Release major version
+#   ./bin/release 19.0.0    # Release version 19.0.0
+#   ./bin/release --dry-run # Test release process
+
+npx release-it "$@" --ci

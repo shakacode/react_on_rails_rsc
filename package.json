@@ -26,6 +26,7 @@
   ],
   "scripts": {
     "build": "rm -rf dist tsconfig.tsbuildinfo && yarn run tsc",
+    "prepublishOnly": "yarn run build",
     "build-if-needed": "[ -f dist/client.js ] || (yarn run build >/dev/null 2>&1 || true) && [ -f dist/client.js ] || { echo 'Build failed'; }",
     "prepack": "yarn run build-if-needed",
     "prepare": "yarn run build-if-needed"

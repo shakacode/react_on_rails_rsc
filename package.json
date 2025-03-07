@@ -1,5 +1,5 @@
 {
-  "name": "@shakacode-tools/react-on-rails-rsc",
+  "name": "react-on-rails-rsc",
   "version": "19.0.0",
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
@@ -16,9 +16,6 @@
       "default": "./dist/WebpackPlugin.js"
     },
     "./WebpackLoader": "./dist/WebpackLoader.js"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
   },
   "files": [
     "dist",

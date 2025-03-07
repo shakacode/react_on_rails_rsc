@@ -42,7 +42,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shakacode-tools/react-on-rails-rsc.git"
+    "url": "git+https://github.com/shakacode/react_on_rails_rsc.git"
   },
   "keywords": [
     "server components",

@@ -60,7 +60,20 @@
       "types": "./WebpackLoader.d.ts",
       "default": "./WebpackLoader.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./server": {
+      "react-server": {
+        "workerd": "./server.edge.js",
+        "deno": "./server.browser.js",
+        "node": {
+          "webpack": "./server.node.js",
+          "default": "./server.node.unbundled.js"
+        },
+        "edge-light": "./server.edge.js",
+        "browser": "./server.browser.js"
+      },
+      "default": "./server.js"
+    }
   },
   "main": "index.js",
   "repository": {

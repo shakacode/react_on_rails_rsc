@@ -206,7 +206,7 @@ class ReactFlightWebpackPlugin {
           if (!1 === clientFileNameFound)
             compilation.warnings.push(
               new webpack.WebpackError(
-                "Client runtime at react-server-dom-webpack/client was not found. React Server Components module map file " +
+                "Client runtime at react-on-rails-rsc/client was not found. React Server Components module map file " +
                   _this.clientManifestFilename +
                   " was not created."
               )

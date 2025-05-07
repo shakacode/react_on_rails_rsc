@@ -23,6 +23,19 @@
       "types": "./dist/WebpackLoader.d.ts",
       "default": "./dist/WebpackLoader.js"
     },
+    "./server": {
+      "react-server": {
+        "workerd": "./dist/react-server-dom-webpack/server.edge.js",
+        "deno": "./dist/react-server-dom-webpack/server.browser.js",
+        "node": {
+          "webpack": "./dist/react-server-dom-webpack/server.node.js",
+          "default": "./dist/react-server-dom-webpack/server.node.unbundled.js"
+        },
+        "edge-light": "./dist/react-server-dom-webpack/server.edge.js",
+        "browser": "./dist/react-server-dom-webpack/server.browser.js"
+      },
+      "default": "./dist/react-server-dom-webpack/server.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -27,15 +27,13 @@ export type Options = {
 };
 
 export class RSCWebpackPlugin {
-  private plugin?: ReactFlightWebpackPlugin;
+  private plugin: ReactFlightWebpackPlugin;
 
   constructor(options: Options) {
-    if (!options.isServer) {
-      this.plugin = new (RSCWebpackPluginLib as ReactFlightWebpackPluginConstructor)(options);
-    }
+    this.plugin = new (RSCWebpackPluginLib as ReactFlightWebpackPluginConstructor)(options);
   }
 
   apply(compiler: Compiler) {
-    this.plugin?.apply(compiler);
+    this.plugin.apply(compiler);
   }
 }

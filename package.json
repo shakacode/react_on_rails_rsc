@@ -36,6 +36,7 @@
       },
       "default": "./dist/react-server-dom-webpack/server.js"
     },
+    ".": "./dist/index.js",
     "./package.json": "./package.json"
   },
   "files": [

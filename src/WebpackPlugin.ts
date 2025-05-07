@@ -1,5 +1,13 @@
 import { Compiler } from "webpack";
-import RSCWebpackPluginLib = require("react-server-dom-webpack/plugin");
+import RSCWebpackPluginLib = require("./react-server-dom-webpack/plugin");
+
+type ReactFlightWebpackPlugin = {
+  apply(compiler: Compiler): void;
+};
+
+type ReactFlightWebpackPluginConstructor = {
+  new (options: unknown): ReactFlightWebpackPlugin;
+};
 
 type ClientReferenceSearchPath = {
   directory: string,
@@ -19,11 +27,11 @@ export type Options = {
 };
 
 export class RSCWebpackPlugin {
-  private plugin?: RSCWebpackPluginLib;
+  private plugin?: ReactFlightWebpackPlugin;
 
   constructor(options: Options) {
     if (!options.isServer) {
-      this.plugin = new RSCWebpackPluginLib(options);
+      this.plugin = new (RSCWebpackPluginLib as ReactFlightWebpackPluginConstructor)(options);
     }
   }
 

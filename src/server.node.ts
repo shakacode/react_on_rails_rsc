@@ -1,5 +1,4 @@
-// @ts-expect-error Untyped module
-import { renderToPipeableStream as originalRenderToPipeableStream } from 'react-server-dom-webpack/server.node';
+import { renderToPipeableStream as originalRenderToPipeableStream } from './react-server-dom-webpack/server.node';
 
 export interface Options {
   environmentName?: string;

@@ -1,4 +1,5 @@
-import { renderToPipeableStream as originalRenderToPipeableStream } from './react-server-dom-webpack/server.node';
+import { BundleManifest } from './types';
+import { renderToPipeableStream } from './react-server-dom-webpack/server.node';
 
 export interface Options {
   environmentName?: string;
@@ -12,12 +13,15 @@ export interface PipeableStream {
   pipe<Writable extends NodeJS.WritableStream>(destination: Writable): Writable;
 }
 
-export const renderToPipeableStream: (
-  // Note: ReactClientValue is likely what React uses internally for RSC
-  // We're using 'unknown' here as it's the most accurate type we can use
-  // without accessing React's internal types
-  model: unknown,
-  webpackMap: { [key: string]: unknown },
-  options?: Options,
-) => PipeableStream =
-  originalRenderToPipeableStream;
+export const buildServerRenderer = (clientManifest: BundleManifest) => {
+  const { filePathToModuleMetadata } = clientManifest;
+  return {
+    renderToPipeableStream: (
+      // Note: ReactClientValue is likely what React uses internally for RSC
+      // We're using 'unknown' here as it's the most accurate type we can use
+      // without accessing React's internal types
+      model: unknown,
+      options?: Options,
+    ) => renderToPipeableStream(model, filePathToModuleMetadata, options) as PipeableStream,
+  };
+};

@@ -42,8 +42,14 @@
     "webpack": "^5.98.0"
   },
   "peerDependencies": {
-    "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "webpack": "^5.59.0"
+  },
+  "dependencies": {
+    "acorn-loose": "^8.3.0",
+    "neo-async": "^2.6.1",
+    "webpack-sources": "^3.2.0"
   },
   "repository": {
     "type": "git",

@@ -23,5 +23,6 @@ export const buildServerRenderer = (clientManifest: BundleManifest) => {
       model: unknown,
       options?: Options,
     ) => renderToPipeableStream(model, filePathToModuleMetadata, options) as PipeableStream,
+    reactClientManifest: filePathToModuleMetadata,
   };
 };

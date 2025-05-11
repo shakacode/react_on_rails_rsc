@@ -38,5 +38,6 @@ export const buildClientRenderer = (clientManifest: BundleManifest, serverManife
     createFromNodeStream: <T>(
       stream: NodeJS.ReadableStream,
     ) => createFromNodeStream(stream, ssrManifest) as Promise<T>,
+    ssrManifest,
   }
 };

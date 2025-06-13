@@ -14,4 +14,4 @@
 #   ./bin/release 19.0.0    # Release version 19.0.0
 #   ./bin/release --dry-run # Test release process
 
-npx release-it "$@" --ci
+npx release-it "$@"

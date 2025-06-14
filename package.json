@@ -4,18 +4,8 @@
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
     "./client": {
-      "node": {
-        "types": "./dist/client.node.d.ts",
-        "default": "./dist/client.node.js"
-      },
-      "browser": {
-        "types": "./dist/client.browser.d.ts",
-        "default": "./dist/client.browser.js"
-      },
-      "default": {
-        "types": "./dist/client.browser.d.ts",
-        "default": "./dist/client.browser.js"
-      }
+      "types": "./dist/client.browser.d.ts",
+      "default": "./dist/client.browser.js"
     },
     "./client.browser": {
       "types": "./dist/client.browser.d.ts",

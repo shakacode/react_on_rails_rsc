@@ -1,5 +1,5 @@
 import { BundleManifest } from './types';
-import { renderToPipeableStream } from './react-server-dom-webpack/server.node';
+import { renderToPipeableStream as renderToPipeableStreamReact } from './react-server-dom-webpack/server.node';
 
 export interface Options {
   environmentName?: string;
@@ -22,7 +22,12 @@ export const buildServerRenderer = (clientManifest: BundleManifest) => {
       // without accessing React's internal types
       model: unknown,
       options?: Options,
-    ) => renderToPipeableStream(model, filePathToModuleMetadata, options) as PipeableStream,
+    ) => renderToPipeableStreamReact(model, filePathToModuleMetadata, options) as PipeableStream,
     reactClientManifest: filePathToModuleMetadata,
   };
 };
+
+export const renderToPipeableStream = (model: unknown, clientManifest: BundleManifest, options?: Options) => {
+  const { filePathToModuleMetadata } = clientManifest;
+  return renderToPipeableStreamReact(model, filePathToModuleMetadata, options) as PipeableStream;
+}

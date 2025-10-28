@@ -61,6 +61,7 @@
     "README.md"
   ],
   "scripts": {
+    "test": "jest",
     "build": "rm -rf dist tsconfig.tsbuildinfo && yarn run tsc",
     "prepublishOnly": "yarn run build",
     "build-if-needed": "[ -f dist/client.js ] || (yarn run build >/dev/null 2>&1 || true) && [ -f dist/client.js ] || { echo 'Build failed'; }",
@@ -69,6 +70,13 @@
   },
   "devDependencies": {
     "@tsconfig/node14": "^14.1.2",
+    "@types/jest": "^30.0.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "jest": "^30.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "ts-jest": "^29.4.5",
     "typescript": "^5.4.3",
     "webpack": "^5.98.0"
   },

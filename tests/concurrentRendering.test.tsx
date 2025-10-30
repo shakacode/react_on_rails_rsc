@@ -169,8 +169,7 @@ test('no console leakage between components', async() => {
   const readable2 = new PassThrough();
   stream2.pipe(readable2);
 
-  const content1 = await text(readable1);
-  const content2 = await text(readable2);
+  const [content1, content2] = await Promise.all([text(readable1), text(readable2)]);
 
   expect(content1).toContain("First Unique Name");
   expect(content2).toContain("Second Unique Name");
@@ -180,4 +179,29 @@ test('no console leakage between components', async() => {
   expect(content2).not.toContain("First Unique Name");
 
   expect(content1.replace(new RegExp("First Unique Name", 'g'), "Second Unique Name")).toEqual(content2);
+});
+
+test("doesn't catch logs from outside the component", async() => {
+  const element1 = <PromiseContainerWithLogs name="First Unique Name" />;
+  const stream1 = renderToPipeableStream(element1);
+  const readable1 = new PassThrough();
+  stream1.pipe(readable1);
+
+  const outsideComponentPromise = new Promise<void>((resolve) => {
+    let i = 0;
+    const intervalId = setInterval(() => {
+      console.log(`Interval ${i} at [Outside The Component]`);
+      i += 1;
+      if (i === 50) {
+        clearInterval(intervalId);
+        resolve();
+      }
+    }, 1);
+  });
+
+  const [content1] = await Promise.all([text(readable1), outsideComponentPromise]);
+
+  expect(content1).toContain("First Unique Name");
+  expect(content1.match(/First Unique Name/g)).toHaveLength(57)
+  expect(content1).not.toContain("Outside The Component");
 });

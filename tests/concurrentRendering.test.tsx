@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { PassThrough, Readable } from 'node:stream';
+import { finished } from 'node:stream/promises';
 import { text } from 'node:stream/consumers';
 import { Suspense, PropsWithChildren } from 'react';
 import { buildServerRenderer } from '../src/server.node';
@@ -204,4 +205,29 @@ test("doesn't catch logs from outside the component", async() => {
   expect(content1).toContain("First Unique Name");
   expect(content1.match(/First Unique Name/g)).toHaveLength(57)
   expect(content1).not.toContain("Outside The Component");
+});
+
+// That's a bug at React and will be reported to React
+test("[bug] catches logs outside the component during reading the stream", async() => {
+  const element1 = <PromiseContainerWithLogs name="First Unique Name" />;
+  const stream1 = renderToPipeableStream(element1);
+  const readable1 = new PassThrough();
+  stream1.pipe(readable1);
+
+  let content1 = "";
+  let i = 0;
+  readable1.on('data', (chunk) => {
+    i += 1;
+    // To avoid infinite loop
+    if (i < 5) {
+      console.log("Outside The Component");
+    }
+    content1 += chunk.toString();
+  });
+  await finished(readable1);
+
+  expect(content1).toContain("First Unique Name");
+  expect(content1.match(/First Unique Name/g)).toHaveLength(57)
+  // Here's the bug
+  expect(content1).toContain("Outside The Component");
 });

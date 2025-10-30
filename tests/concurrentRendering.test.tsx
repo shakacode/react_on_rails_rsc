@@ -231,3 +231,39 @@ test("[bug] catches logs outside the component during reading the stream", async
   // Here's the bug
   expect(content1).toContain("Outside The Component");
 });
+
+const ContainerWithError = () => {
+  const rejectedPromise = Promise.reject("Fake Error");
+  const resolvedPromise = new Promise<string>(resolve => {
+    setTimeout(() => resolve(""), 100);
+  })
+  return (
+    <div>
+      <h1>Header</h1>
+      <Suspense fallback={<p>Loading Promise</p>}>
+        <PromiseWrapperWithLogs name='' promise={rejectedPromise} />
+      </Suspense>
+      <Suspense fallback={<p>Loading Promise2</p>}>
+        <PromiseWrapperWithLogs name='' promise={resolvedPromise} />
+      </Suspense>
+    </div>
+  )
+}
+
+test("onError callback doesn't have the logs leakage bug", async () => {
+  const element1 = <ContainerWithError />;
+  const stream1 = renderToPipeableStream(element1, {
+    onError: (err) => {
+      console.error("Inside onError callback", err);
+    }
+  });
+  const readable1 = new PassThrough();
+  stream1.pipe(readable1);
+
+  let content = "";
+  readable1.on('data', (chunk: Buffer) => {
+    content += chunk.toString();
+  });
+  await finished(readable1);
+  expect(content).not.toContain("Inside onError callback");
+})

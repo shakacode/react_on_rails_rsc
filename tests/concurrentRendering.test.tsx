@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { PassThrough, Readable } from 'node:stream';
+import { text } from 'node:stream/consumers';
 import { Suspense, PropsWithChildren } from 'react';
 import { buildServerRenderer } from '../src/server.node';
 
@@ -123,4 +124,60 @@ test('Renders concurrent rsc streams as single rsc stream', async () => {
   enqueue("Random Value3");
   await expectNextChunk(chunks[3]!);
   await expectEndOfStream();
+});
+
+const PromiseWrapperWithLogs = async ({ promise, name }: { promise: Promise<string>, name: string }) => {
+  console.log(`[${name}] Before Awaiting`)
+  const value = await promise;
+  console.log(`[${name}] After Awaiting`)
+
+  return <p>Component [{name}] Resolved with value: [{value}]</p>;
+};
+
+const PromiseContainerWithLogs = ({ name }: { name: string }) => {
+  const promise = new Promise<string>((resolve) => {
+    let i = 0;
+    const intervalId = setInterval(() => {
+      console.log(`Interval ${i} at [${name}]`);
+      i += 1;
+      if (i === 50) {
+        clearInterval(intervalId);
+        resolve(`Value of name ${name}`);
+      }
+    }, 1);
+  });
+
+  return (
+    <div>
+      <h1>Initial Header</h1>
+      <Suspense fallback={<p>Loading [{name}]</p>}>
+        <PromiseWrapperWithLogs promise={promise} name={name} />
+      </Suspense>
+    </div>
+  );
+};
+
+test('no console leakage between components', async() => {
+  const element1 = <PromiseContainerWithLogs name="First Unique Name" />;
+  const element2 = <PromiseContainerWithLogs name="Second Unique Name" />;
+
+  const stream1 = renderToPipeableStream(element1);
+  const stream2 = renderToPipeableStream(element2);
+
+  const readable1 = new PassThrough();
+  stream1.pipe(readable1);
+  const readable2 = new PassThrough();
+  stream2.pipe(readable2);
+
+  const content1 = await text(readable1);
+  const content2 = await text(readable2);
+
+  expect(content1).toContain("First Unique Name");
+  expect(content2).toContain("Second Unique Name");
+  expect(content1.match(/First Unique Name/g)).toHaveLength(57)
+  expect(content2.match(/Second Unique Name/g)).toHaveLength(57)
+  expect(content1).not.toContain("Second Unique Name");
+  expect(content2).not.toContain("First Unique Name");
+
+  expect(content1.replace(new RegExp("First Unique Name", 'g'), "Second Unique Name")).toEqual(content2);
 });

@@ -8,7 +8,9 @@ module.exports = {
   transform: {
     ...tsJestTransformCfg,
   },
+  // Override: Package-specific test directory
+  testMatch: ['<rootDir>/tests/**/?(*.)+(spec|test).[jt]s?(x)'],
   testEnvironmentOptions: {
-    customExportConditions: ['react-server'],
+    customExportConditions: process.env.NODE_CONDITIONS?.split(',') ?? [],
   },
 };

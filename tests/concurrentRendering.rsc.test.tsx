@@ -7,36 +7,7 @@ import { buildServerRenderer } from '../src/server.node';
 
 import AsyncQueue from './AsyncQueue';
 import StreamReader from './StreamReader';
-
-const AsyncQueueItem = async ({ asyncQueue, children  }: PropsWithChildren<{asyncQueue: AsyncQueue<string>}>) => {
-  const value = await asyncQueue.dequeue();
-
-  return (
-    <>
-      <p>Data: {value}</p>
-      {children}
-    </>
-  )
-}
-
-const AsyncQueueContainer = ({ asyncQueue }: { asyncQueue: AsyncQueue<string> }) => {
-  return (
-    <div>
-      <h1>Async Queue</h1>
-      <Suspense fallback={<p>Loading Item1</p>}>
-        <AsyncQueueItem asyncQueue={asyncQueue}>
-          <Suspense fallback={<p>Loading Item2</p>}>
-            <AsyncQueueItem asyncQueue={asyncQueue}>
-              <Suspense fallback={<p>Loading Item3</p>}>
-                <AsyncQueueItem asyncQueue={asyncQueue} />
-              </Suspense>
-            </AsyncQueueItem>
-          </Suspense>
-        </AsyncQueueItem>
-      </Suspense>
-    </div>
-  )
-}
+import AsyncQueueContainer from './AsyncQueueContainer';
 
 const { renderToPipeableStream } = buildServerRenderer({
   filePathToModuleMetadata: {},

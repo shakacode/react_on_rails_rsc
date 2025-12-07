@@ -269,7 +269,7 @@ function transformServerModule(source, program, url, sourceMap, loader) {
     }
 
     newSrc += '\n\n;';
-    newSrc += 'import {registerServerReference} from "react-server-dom-webpack/server";\n';
+    newSrc += 'import {registerServerReference} from "react-on-rails-rsc/server";\n';
 
     if (mappings) {
       mappings += ';;';
@@ -440,7 +440,7 @@ async function transformClientModule(program, url, sourceMap, loader) {
     return '';
   }
 
-  let newSrc = 'import {registerClientReference} from "react-server-dom-webpack/server";\n';
+  let newSrc = 'import {registerClientReference} from "react-on-rails-rsc/server";\n';
 
   for (let i = 0; i < names.length; i++) {
     const name = names[i];

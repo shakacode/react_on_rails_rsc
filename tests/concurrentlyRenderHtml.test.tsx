@@ -112,7 +112,7 @@ test('renders HTML', async () => {
   await expect(reader.nextChunk()).rejects.toThrow(/Queue Ended/);
   expect(chunks).toHaveLength(5);
 
-  const { enqueueNextChunk, expectNextChunk, expectEndOfStream } = createParallelRenders(10);
+  const { enqueueNextChunk, expectNextChunk, expectEndOfStream } = createParallelRenders(50);
   
   await expectNextChunk(chunks[0]!);
   enqueueNextChunk();

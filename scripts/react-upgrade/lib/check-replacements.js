@@ -57,7 +57,7 @@ async function replaceInFile(filePath, lineNumber, oldText, newText) {
 }
 
 export async function checkReplacements(destRoot, options = {}) {
-  const { dryRun = false } = options;
+  const { dryRun = false, force = false } = options;
 
   logger.step('Checking for remaining mentions to replace...');
 
@@ -69,6 +69,32 @@ export async function checkReplacements(destRoot, options = {}) {
   }
 
   logger.info(`Found ${matches.length} mention(s) of '${config.searchPattern}'`);
+
+  // In dry-run mode, just list the files without prompting
+  if (dryRun) {
+    logger.info('[DRY-RUN] Would prompt for replacements in:');
+    const uniqueFiles = [...new Set(matches.map((m) => m.file.replace(destRoot + '/', '')))];
+    uniqueFiles.forEach((file) => logger.info(`  - ${file}`));
+    logger.step(`[DRY-RUN] ${matches.length} potential replacement(s) found`);
+    return { replaced: 0, skipped: 0 };
+  }
+
+  // In force mode, replace all without prompting
+  if (force) {
+    logger.info('[FORCE] Replacing all mentions without prompting');
+    for (const match of matches) {
+      const relativePath = match.file.replace(destRoot + '/', '');
+      await replaceInFile(
+        match.file,
+        match.lineNumber,
+        config.searchPattern,
+        'react-on-rails-rsc'
+      );
+      logger.info(`Replaced in ${relativePath}:${match.lineNumber}`);
+    }
+    logger.step(`Replacement complete: ${matches.length} replaced, 0 skipped`);
+    return { replaced: matches.length, skipped: 0 };
+  }
 
   let replaced = 0;
   let skipped = 0;
@@ -100,17 +126,13 @@ export async function checkReplacements(destRoot, options = {}) {
     }
 
     if (choice === 'y') {
-      if (dryRun) {
-        logger.info(`[DRY-RUN] Would replace in ${relativePath}:${match.lineNumber}`);
-      } else {
-        await replaceInFile(
-          match.file,
-          match.lineNumber,
-          config.searchPattern,
-          'react-on-rails-rsc'
-        );
-        logger.info(`Replaced in ${relativePath}:${match.lineNumber}`);
-      }
+      await replaceInFile(
+        match.file,
+        match.lineNumber,
+        config.searchPattern,
+        'react-on-rails-rsc'
+      );
+      logger.info(`Replaced in ${relativePath}:${match.lineNumber}`);
       replaced++;
     } else {
       skipped++;

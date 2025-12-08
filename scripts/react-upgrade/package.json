@@ -1,0 +1,14 @@
+{
+  "name": "react-upgrade",
+  "version": "1.0.0",
+  "description": "Scripts to upgrade react-server-dom-webpack from React fork",
+  "type": "module",
+  "main": "upgrade.js",
+  "scripts": {
+    "upgrade": "node upgrade.js"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "minimist": "^1.2.8"
+  }
+}

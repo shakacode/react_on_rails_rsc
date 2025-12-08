@@ -7,6 +7,9 @@ export const config = {
   // Commit prefix regex for trusted patches
   patchPrefixRegex: /^\[RSC-PATCH/,
 
+  // Commit prefix for replacement commits (in react-on-rails-rsc repo)
+  replacementCommitPrefix: '[RSC-REPLACE]',
+
   // Expected scope for patch commits (for validation warnings)
   patchScope: 'packages/react-server-dom-webpack/',
 

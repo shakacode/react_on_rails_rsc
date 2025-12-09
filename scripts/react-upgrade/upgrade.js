@@ -16,7 +16,7 @@ import { syncPackageJson } from './lib/sync-package-json.js';
 import { cherryPickReplacements } from './lib/cherry-pick-replacements.js';
 import { checkReplacements } from './lib/check-replacements.js';
 import { loadState, saveState, clearState, hasState } from './lib/state-manager.js';
-import { getCurrentBranch, branchExists, checkoutBranch, deleteBranch, stageFiles, commit } from './lib/git-utils.js';
+import { getCurrentBranch, getCommitHash, branchExists, checkoutBranch, deleteBranch, stageFiles, commit } from './lib/git-utils.js';
 import { config } from './lib/config.js';
 import { logger } from './lib/logger.js';
 
@@ -186,10 +186,32 @@ async function setupTargetBranch(targetVersion, reactForkPath, args, options) {
   const tagRef = `v${targetVersion}`;
   const currentBranch = await getCurrentBranch(reactForkPath);
 
-  // Already on target branch
+  // Already on target branch - check if it matches the tag
   if (currentBranch === targetBranch) {
-    logger.info(`Already on target branch: ${targetBranch}`);
-    return;
+    const branchCommit = await getCommitHash('HEAD', reactForkPath);
+    const tagCommit = await getCommitHash(tagRef, reactForkPath);
+
+    if (branchCommit === tagCommit) {
+      logger.info(`Already on target branch: ${targetBranch} (at tag ${tagRef})`);
+      return;
+    }
+
+    // Branch has diverged from tag
+    if (args.resetBranch) {
+      if (options.dryRun) {
+        logger.info(`[DRY-RUN] Would reset branch ${targetBranch} to ${tagRef}`);
+        return;
+      }
+      logger.info(`Resetting branch ${targetBranch} to ${tagRef}`);
+      await deleteBranch(targetBranch, reactForkPath, { force: true });
+      await checkoutBranch(targetBranch, reactForkPath, { create: true, startPoint: tagRef });
+      return;
+    }
+
+    // Branch exists with changes but no flag specified
+    logger.error(`Branch ${targetBranch} exists but has diverged from tag ${tagRef}.`);
+    logger.info('Use --continue to build on current branch, or --reset-branch to reset to tag.');
+    process.exit(1);
   }
 
   const targetExists = await branchExists(targetBranch, reactForkPath);

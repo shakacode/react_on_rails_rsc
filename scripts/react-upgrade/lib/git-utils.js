@@ -70,6 +70,11 @@ export async function getCurrentBranch(cwd) {
   return stdout;
 }
 
+export async function getCommitHash(ref, cwd) {
+  const { stdout } = await git(['rev-parse', ref], cwd);
+  return stdout;
+}
+
 export async function checkoutBranch(branchName, cwd, options = {}) {
   const { create = false, startPoint = null } = options;
   let args;
@@ -114,6 +119,7 @@ export const gitUtils = {
   cherryPick,
   amendCommitMessage,
   getCurrentBranch,
+  getCommitHash,
   checkoutBranch,
   branchExists,
   deleteBranch,

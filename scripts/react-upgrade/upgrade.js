@@ -391,6 +391,16 @@ async function runFromPhase(startPhase, args, destRoot, options, savedState = nu
     }
 
     await checkReplacements(destRoot, options);
+
+    // Commit the replacement changes
+    if (!options.dryRun) {
+      logger.step('Committing replacement changes...');
+      await stageFiles([config.destPath], destRoot);
+      await commit(`[RSC-REPLACE] Replace react-server-dom-webpack with react-on-rails-rsc`, destRoot);
+      logger.info('Committed replacement changes');
+    } else {
+      logger.info('[DRY-RUN] Would commit replacement changes');
+    }
   }
 
   // Clear state on successful completion
@@ -404,7 +414,6 @@ async function runFromPhase(startPhase, args, destRoot, options, savedState = nu
   logger.info('Next steps:');
   logger.info('  1. Review the changes');
   logger.info('  2. Run tests to verify the upgrade');
-  logger.info('  3. Commit the changes');
 }
 
 run().catch((error) => {

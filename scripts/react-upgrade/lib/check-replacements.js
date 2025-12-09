@@ -18,6 +18,7 @@ export async function findMatches(destRoot) {
     cwd: searchDir,
     absolute: true,
     onlyFiles: true,
+    ignore: ['**/package.json', '**/README.md', '**/readme.md'],
   });
 
   for (const file of files) {

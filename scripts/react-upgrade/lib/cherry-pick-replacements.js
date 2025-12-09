@@ -102,7 +102,7 @@ export async function cherryPickReplacements(destRoot, options = {}) {
 
     if (result.success) {
       cherryPicked++;
-    } else if (result.conflict) {
+    } else if (result.conflicted) {
       const answer = await promptConflictResolution(commit);
 
       if (answer === 'skip') {
@@ -111,17 +111,17 @@ export async function cherryPickReplacements(destRoot, options = {}) {
         skipped++;
       } else {
         // User resolved conflict, continue the cherry-pick
-        try {
-          await git(['cherry-pick', '--continue'], destRoot);
+        const continueResult = await git(['cherry-pick', '--continue'], destRoot, { allowFailure: true });
+        if (continueResult.exitCode === 0) {
           cherryPicked++;
-        } catch {
+        } else {
           logger.error(`Failed to continue cherry-pick for ${commit.hash}`);
-          await git(['cherry-pick', '--abort'], destRoot);
+          await git(['cherry-pick', '--abort'], destRoot, { allowFailure: true });
           skipped++;
         }
       }
     } else {
-      logger.error(`Failed to cherry-pick ${commit.hash}: ${result.error}`);
+      logger.error(`Failed to cherry-pick ${commit.hash}`);
       skipped++;
     }
   }

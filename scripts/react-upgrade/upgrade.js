@@ -203,6 +203,8 @@ async function setupTargetBranch(targetVersion, reactForkPath, args, options) {
         return;
       }
       logger.info(`Resetting branch ${targetBranch} to ${tagRef}`);
+      // Checkout tag first (detached HEAD) so we can delete the branch
+      await checkoutBranch(tagRef, reactForkPath);
       await deleteBranch(targetBranch, reactForkPath, { force: true });
       await checkoutBranch(targetBranch, reactForkPath, { create: true, startPoint: tagRef });
       return;

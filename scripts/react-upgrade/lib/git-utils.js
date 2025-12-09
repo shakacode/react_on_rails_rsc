@@ -98,6 +98,14 @@ export async function deleteBranch(branchName, cwd, options = {}) {
   await git(args, cwd);
 }
 
+export async function stageFiles(paths, cwd) {
+  await git(['add', ...paths], cwd);
+}
+
+export async function commit(message, cwd) {
+  await git(['commit', '-m', message], cwd);
+}
+
 export const gitUtils = {
   git,
   getBranches,
@@ -109,4 +117,6 @@ export const gitUtils = {
   checkoutBranch,
   branchExists,
   deleteBranch,
+  stageFiles,
+  commit,
 };

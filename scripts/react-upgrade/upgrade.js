@@ -16,7 +16,7 @@ import { syncPackageJson } from './lib/sync-package-json.js';
 import { cherryPickReplacements } from './lib/cherry-pick-replacements.js';
 import { checkReplacements } from './lib/check-replacements.js';
 import { loadState, saveState, clearState, hasState } from './lib/state-manager.js';
-import { getCurrentBranch, branchExists, checkoutBranch, deleteBranch } from './lib/git-utils.js';
+import { getCurrentBranch, branchExists, checkoutBranch, deleteBranch, stageFiles, commit } from './lib/git-utils.js';
 import { config } from './lib/config.js';
 import { logger } from './lib/logger.js';
 
@@ -330,6 +330,16 @@ async function runFromPhase(startPhase, args, destRoot, options, savedState = nu
     if (!syncResult.success) {
       logger.error('Failed to sync package.json. Use --continue to retry.');
       process.exit(1);
+    }
+
+    // Commit the copied artifacts and synced package.json
+    if (!options.dryRun) {
+      logger.step('Committing copied artifacts...');
+      await stageFiles([config.destPath, 'package.json'], destRoot);
+      await commit(`Update react-server-dom-webpack to React ${args.targetVersion}`, destRoot);
+      logger.info('Committed build artifacts');
+    } else {
+      logger.info('[DRY-RUN] Would commit copied artifacts');
     }
   }
 

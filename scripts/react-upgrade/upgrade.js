@@ -4,8 +4,11 @@
 
 import minimist from 'minimist';
 import { access } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseVersion } from './lib/version-utils.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { findSourceBranch } from './lib/find-source-branch.js';
 import { cherryPickPatches } from './lib/cherry-pick-patches.js';
 import { buildAndCopy } from './lib/build-and-copy.js';
@@ -94,7 +97,7 @@ async function validateInputs(targetVersion, reactForkPath, options = {}) {
     errors.push('React fork path is required');
   } else {
     try {
-      await access(resolve(reactForkPath));
+      await access(resolve(__dirname, reactForkPath));
     } catch {
       errors.push(`React fork path does not exist: ${reactForkPath}`);
     }
@@ -107,7 +110,8 @@ async function run() {
   logger.step('React Server DOM Webpack Upgrade Tool');
 
   const args = parseArgs();
-  const destRoot = process.cwd();
+  // destRoot is the project root (2 levels up from scripts/react-upgrade/)
+  const destRoot = resolve(__dirname, '../..');
   const options = {
     dryRun: args.dryRun,
     force: args.force,
@@ -138,7 +142,7 @@ async function run() {
       process.exit(1);
     }
 
-    const resolvedReactPath = resolve(args.reactForkPath);
+    const resolvedReactPath = resolve(__dirname, args.reactForkPath);
     const targetBranch = `${config.branchPrefix}${args.targetVersion}`;
     const targetExists = await branchExists(targetBranch, resolvedReactPath);
 
@@ -217,7 +221,7 @@ async function setupTargetBranch(targetVersion, reactForkPath, args, options) {
 }
 
 async function runFromPhase(startPhase, args, destRoot, options) {
-  const resolvedReactPath = resolve(args.reactForkPath);
+  const resolvedReactPath = resolve(__dirname, args.reactForkPath);
   const parsedVersion = parseVersion(args.targetVersion);
   const phases = ['start', 'cherry-pick', 'build', 'sync', 'replacements', 'check'];
 

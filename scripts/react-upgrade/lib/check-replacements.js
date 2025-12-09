@@ -7,6 +7,9 @@ import fg from 'fast-glob';
 import { config } from './config.js';
 import { logger } from './logger.js';
 
+// Match react-server-dom-webpack as a standalone word (not part of filename like react-server-dom-webpack-client.node.js)
+const STANDALONE_PATTERN = /react-server-dom-webpack(?!-)/g;
+
 export async function findMatches(destRoot) {
   const searchDir = join(destRoot, config.destPath);
   const matches = [];
@@ -22,7 +25,9 @@ export async function findMatches(destRoot) {
     const lines = content.split('\n');
 
     lines.forEach((line, index) => {
-      if (line.includes(config.searchPattern)) {
+      if (STANDALONE_PATTERN.test(line)) {
+        // Reset regex lastIndex for next test
+        STANDALONE_PATTERN.lastIndex = 0;
         matches.push({
           file,
           lineNumber: index + 1,
@@ -49,10 +54,10 @@ async function promptChoice(question) {
   });
 }
 
-async function replaceInFile(filePath, lineNumber, oldText, newText) {
+async function replaceInFile(filePath, lineNumber) {
   const content = await readFile(filePath, 'utf-8');
   const lines = content.split('\n');
-  lines[lineNumber - 1] = lines[lineNumber - 1].replace(oldText, newText);
+  lines[lineNumber - 1] = lines[lineNumber - 1].replace(STANDALONE_PATTERN, 'react-on-rails-rsc');
   await writeFile(filePath, lines.join('\n'), 'utf-8');
 }
 
@@ -84,12 +89,7 @@ export async function checkReplacements(destRoot, options = {}) {
     logger.info('[FORCE] Replacing all mentions without prompting');
     for (const match of matches) {
       const relativePath = match.file.replace(destRoot + '/', '');
-      await replaceInFile(
-        match.file,
-        match.lineNumber,
-        config.searchPattern,
-        'react-on-rails-rsc'
-      );
+      await replaceInFile(match.file, match.lineNumber);
       logger.info(`Replaced in ${relativePath}:${match.lineNumber}`);
     }
     logger.step(`Replacement complete: ${matches.length} replaced, 0 skipped`);
@@ -126,12 +126,7 @@ export async function checkReplacements(destRoot, options = {}) {
     }
 
     if (choice === 'y') {
-      await replaceInFile(
-        match.file,
-        match.lineNumber,
-        config.searchPattern,
-        'react-on-rails-rsc'
-      );
+      await replaceInFile(match.file, match.lineNumber);
       logger.info(`Replaced in ${relativePath}:${match.lineNumber}`);
       replaced++;
     } else {

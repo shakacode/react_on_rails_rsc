@@ -5,50 +5,14 @@ import { git, cherryPick } from './git-utils.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 
-async function findLastNonReplacementCommit(destRoot) {
-  // Find the most recent commit that touched destPath but is NOT a replacement commit
-  // This would typically be the build copy commit from the previous upgrade
-  const { stdout } = await git(
-    [
-      'log',
-      '--oneline',
-      '--invert-grep',
-      '--fixed-strings',
-      `--grep=${config.replacementCommitPrefix}`,
-      '-1',
-      '--',
-      config.destPath,
-    ],
-    destRoot
-  );
-
-  if (!stdout.trim()) {
-    return null;
-  }
-
-  const [hash] = stdout.trim().split(' ');
-  return hash;
-}
-
 export async function getReplacementCommits(destRoot) {
   try {
-    // Find the last non-replacement commit that touched destPath
-    const baseCommit = await findLastNonReplacementCommit(destRoot);
-
-    if (!baseCommit) {
-      logger.debug('No base commit found for destPath');
-      return [];
-    }
-
-    // Find replacement commits after the base commit
+    // Get recent commits that touched destPath
     const { stdout } = await git(
       [
         'log',
         '--oneline',
-        '--reverse',
-        '--fixed-strings',
-        `--grep=${config.replacementCommitPrefix}`,
-        `${baseCommit}..HEAD`,
+        '-50', // Look at last 50 commits
         '--',
         config.destPath,
       ],
@@ -59,16 +23,30 @@ export async function getReplacementCommits(destRoot) {
       return [];
     }
 
-    return stdout
-      .trim()
-      .split('\n')
-      .map((line) => {
-        const [hash, ...subjectParts] = line.split(' ');
-        return {
-          hash,
-          subject: subjectParts.join(' '),
-        };
-      });
+    const lines = stdout.trim().split('\n');
+    const commits = [];
+
+    // Find consecutive replacement commits from the most recent one
+    // Stop when we hit a non-replacement commit
+    let foundFirstReplacement = false;
+
+    for (const line of lines) {
+      const [hash, ...subjectParts] = line.split(' ');
+      const subject = subjectParts.join(' ');
+      const isReplacement = subject.startsWith(config.replacementCommitPrefix);
+
+      if (isReplacement) {
+        foundFirstReplacement = true;
+        commits.push({ hash, subject });
+      } else if (foundFirstReplacement) {
+        // Hit a non-replacement commit after finding replacements, stop
+        break;
+      }
+      // Skip non-replacement commits before finding any replacement
+    }
+
+    // Reverse to get oldest first (for cherry-picking in order)
+    return commits.reverse();
   } catch (error) {
     logger.error(`Failed to get replacement commits: ${error.message}`);
     return [];

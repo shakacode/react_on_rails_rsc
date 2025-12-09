@@ -29,16 +29,13 @@ export async function promptUser(question) {
   });
 }
 
-export async function cherryPickPatches(sourceBranch, reactForkPath, options = {}) {
+export async function cherryPickPatches(sourceBranchInfo, reactForkPath, options = {}) {
   const { dryRun = false, force = false } = options;
 
-  // Extract version from branch name to find the tag
-  const versionStr = sourceBranch.version
-    ? formatVersion(sourceBranch.version)
-    : sourceBranch.branch.slice(config.branchPrefix.length);
-
+  // sourceBranchInfo is { branch, version } from findSourceBranch
+  const versionStr = formatVersion(sourceBranchInfo.version);
   const tagRef = `v${versionStr}`;
-  const branchRef = sourceBranch.branch;
+  const branchRef = sourceBranchInfo.branch;
 
   logger.debug(`Getting commits between ${tagRef} and ${branchRef}`);
 

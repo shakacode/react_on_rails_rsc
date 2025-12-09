@@ -16,7 +16,7 @@ import { syncPackageJson } from './lib/sync-package-json.js';
 import { cherryPickReplacements } from './lib/cherry-pick-replacements.js';
 import { checkReplacements } from './lib/check-replacements.js';
 import { loadState, saveState, clearState, hasState } from './lib/state-manager.js';
-import { getCurrentBranch, getCommitHash, branchExists, checkoutBranch, deleteBranch, stageFiles, commit } from './lib/git-utils.js';
+import { getCurrentBranch, getCommitHash, branchExists, checkoutBranch, deleteBranch, stageFiles, commit, hasStagedChanges } from './lib/git-utils.js';
 import { config } from './lib/config.js';
 import { logger } from './lib/logger.js';
 
@@ -392,14 +392,18 @@ async function runFromPhase(startPhase, args, destRoot, options, savedState = nu
 
     await checkReplacements(destRoot, options);
 
-    // Commit the replacement changes
+    // Commit the replacement changes if there are any
     if (!options.dryRun) {
-      logger.step('Committing replacement changes...');
       await stageFiles([config.destPath], destRoot);
-      await commit(`[RSC-REPLACE] Replace react-server-dom-webpack with react-on-rails-rsc`, destRoot);
-      logger.info('Committed replacement changes');
+      if (await hasStagedChanges(destRoot)) {
+        logger.step('Committing replacement changes...');
+        await commit(`[RSC-REPLACE] Replace react-server-dom-webpack with react-on-rails-rsc`, destRoot);
+        logger.info('Committed replacement changes');
+      } else {
+        logger.info('No replacement changes to commit');
+      }
     } else {
-      logger.info('[DRY-RUN] Would commit replacement changes');
+      logger.info('[DRY-RUN] Would commit replacement changes if any');
     }
   }
 

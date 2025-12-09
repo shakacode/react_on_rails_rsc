@@ -111,6 +111,12 @@ export async function commit(message, cwd) {
   await git(['commit', '-m', message], cwd);
 }
 
+export async function hasStagedChanges(cwd) {
+  const result = await git(['diff', '--cached', '--quiet'], cwd, { allowFailure: true });
+  // Exit code 0 means no changes, 1 means there are changes
+  return result.exitCode !== 0;
+}
+
 export const gitUtils = {
   git,
   getBranches,
@@ -125,4 +131,5 @@ export const gitUtils = {
   deleteBranch,
   stageFiles,
   commit,
+  hasStagedChanges,
 };

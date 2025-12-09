@@ -71,8 +71,30 @@ export async function getCurrentBranch(cwd) {
 }
 
 export async function checkoutBranch(branchName, cwd, options = {}) {
-  const { create = false } = options;
-  const args = create ? ['checkout', '-b', branchName] : ['checkout', branchName];
+  const { create = false, startPoint = null } = options;
+  let args;
+  if (create && startPoint) {
+    args = ['checkout', '-b', branchName, startPoint];
+  } else if (create) {
+    args = ['checkout', '-b', branchName];
+  } else {
+    args = ['checkout', branchName];
+  }
+  await git(args, cwd);
+}
+
+export async function branchExists(branchName, cwd) {
+  const result = await git(
+    ['rev-parse', '--verify', branchName],
+    cwd,
+    { allowFailure: true }
+  );
+  return result.exitCode === 0;
+}
+
+export async function deleteBranch(branchName, cwd, options = {}) {
+  const { force = false } = options;
+  const args = force ? ['branch', '-D', branchName] : ['branch', '-d', branchName];
   await git(args, cwd);
 }
 
@@ -85,4 +107,6 @@ export const gitUtils = {
   amendCommitMessage,
   getCurrentBranch,
   checkoutBranch,
+  branchExists,
+  deleteBranch,
 };

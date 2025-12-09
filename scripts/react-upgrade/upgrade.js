@@ -13,6 +13,8 @@ import { syncPackageJson } from './lib/sync-package-json.js';
 import { cherryPickReplacements } from './lib/cherry-pick-replacements.js';
 import { checkReplacements } from './lib/check-replacements.js';
 import { loadState, saveState, clearState, hasState } from './lib/state-manager.js';
+import { getCurrentBranch, branchExists, checkoutBranch, deleteBranch } from './lib/git-utils.js';
+import { config } from './lib/config.js';
 import { logger } from './lib/logger.js';
 
 function printUsage() {
@@ -26,7 +28,8 @@ Arguments:
 Options:
   --dry-run       Show what would be done without making changes
   --force         Skip confirmations and force operations
-  --continue      Resume from a previous interrupted upgrade
+  --continue      Resume from a previous interrupted upgrade (uses state file or target branch)
+  --reset-branch  Delete existing target branch and start fresh
   --rebuild-only  Skip cherry-picking, only rebuild and copy
   --verbose, -v   Enable verbose output
   --help, -h      Show this help message
@@ -34,7 +37,9 @@ Options:
 Examples:
   node upgrade.js 19.1.0 ../react
   node upgrade.js 19.1.0 ../react --dry-run
-  node upgrade.js --continue
+  node upgrade.js --continue                         # Resume from state file
+  node upgrade.js 19.1.0 ../react --continue         # Resume from target branch
+  node upgrade.js 19.1.0 ../react --reset-branch
   node upgrade.js 19.1.0 ../react --rebuild-only
 `);
 }
@@ -42,7 +47,7 @@ Examples:
 function parseArgs() {
   const argv = minimist(process.argv.slice(2), {
     string: ['_'],
-    boolean: ['help', 'verbose', 'dry-run', 'force', 'continue', 'rebuild-only'],
+    boolean: ['help', 'verbose', 'dry-run', 'force', 'continue', 'reset-branch', 'rebuild-only'],
     alias: { h: 'help', v: 'verbose' },
   });
 
@@ -63,6 +68,7 @@ function parseArgs() {
     dryRun: argv['dry-run'],
     force: argv.force,
     continue: argv.continue,
+    resetBranch: argv['reset-branch'],
     rebuildOnly: argv['rebuild-only'],
   };
 }
@@ -110,21 +116,43 @@ async function run() {
   // Handle --continue flag
   if (args.continue) {
     const stateExists = await hasState(destRoot);
-    if (!stateExists) {
-      logger.error('No saved state found. Cannot continue.');
+
+    if (stateExists) {
+      // Resume from saved state file
+      const state = await loadState(destRoot);
+      logger.info(`Resuming upgrade to React ${state.targetVersion}`);
+      logger.info(`Phase: ${state.phase}`);
+
+      args.targetVersion = state.targetVersion;
+      args.reactForkPath = state.reactForkPath;
+
+      await runFromPhase(state.phase, args, destRoot, options);
+      return;
+    }
+
+    // No state file - check if we can resume from target branch
+    if (!args.targetVersion || !args.reactForkPath) {
+      logger.error('No saved state found. When using --continue without state file,');
+      logger.error('you must provide targetVersion and reactForkPath.');
+      logger.info('Usage: node upgrade.js <version> <reactForkPath> --continue');
+      process.exit(1);
+    }
+
+    const resolvedReactPath = resolve(args.reactForkPath);
+    const targetBranch = `${config.branchPrefix}${args.targetVersion}`;
+    const targetExists = await branchExists(targetBranch, resolvedReactPath);
+
+    if (!targetExists) {
+      logger.error(`No saved state and target branch ${targetBranch} does not exist.`);
       logger.info('Start a new upgrade with: node upgrade.js <version> <reactForkPath>');
       process.exit(1);
     }
 
-    const state = await loadState(destRoot);
-    logger.info(`Resuming upgrade to React ${state.targetVersion}`);
-    logger.info(`Phase: ${state.phase}`);
+    logger.info(`No state file, but found target branch: ${targetBranch}`);
+    logger.info('Resuming from cherry-pick phase...');
 
-    args.targetVersion = state.targetVersion;
-    args.reactForkPath = state.reactForkPath;
-
-    // Resume from saved phase
-    await runFromPhase(state.phase, args, destRoot, options);
+    // Resume from cherry-pick phase (assumes branch already has patches)
+    await runFromPhase('cherry-pick', args, destRoot, options);
     return;
   }
 
@@ -149,6 +177,45 @@ async function run() {
   await runFromPhase('start', args, destRoot, options);
 }
 
+async function setupTargetBranch(targetVersion, reactForkPath, args, options) {
+  const targetBranch = `${config.branchPrefix}${targetVersion}`;
+  const tagRef = `v${targetVersion}`;
+  const currentBranch = await getCurrentBranch(reactForkPath);
+
+  // Already on target branch
+  if (currentBranch === targetBranch) {
+    logger.info(`Already on target branch: ${targetBranch}`);
+    return;
+  }
+
+  const targetExists = await branchExists(targetBranch, reactForkPath);
+
+  if (targetExists) {
+    if (args.resetBranch) {
+      // Delete and recreate from tag
+      if (options.dryRun) {
+        logger.info(`[DRY-RUN] Would delete branch ${targetBranch} and recreate from ${tagRef}`);
+        return;
+      }
+      logger.info(`Deleting existing branch: ${targetBranch}`);
+      await deleteBranch(targetBranch, reactForkPath, { force: true });
+    } else {
+      // Branch exists but no --reset-branch flag
+      logger.error(`Branch ${targetBranch} already exists.`);
+      logger.info('Use --continue to resume on existing branch, or --reset-branch to delete and start fresh.');
+      process.exit(1);
+    }
+  }
+
+  // Create new branch from tag
+  if (options.dryRun) {
+    logger.info(`[DRY-RUN] Would create branch ${targetBranch} from ${tagRef}`);
+    return;
+  }
+  logger.info(`Creating branch ${targetBranch} from ${tagRef}`);
+  await checkoutBranch(targetBranch, reactForkPath, { create: true, startPoint: tagRef });
+}
+
 async function runFromPhase(startPhase, args, destRoot, options) {
   const resolvedReactPath = resolve(args.reactForkPath);
   const parsedVersion = parseVersion(args.targetVersion);
@@ -165,6 +232,11 @@ async function runFromPhase(startPhase, args, destRoot, options) {
   logger.info(`Destination: ${destRoot}`);
   if (options.dryRun) {
     logger.info('[DRY-RUN MODE]');
+  }
+
+  // Setup target branch in React fork (only when starting fresh, not --rebuild-only)
+  if (startPhase === 'start' && !args.rebuildOnly) {
+    await setupTargetBranch(args.targetVersion, resolvedReactPath, args, options);
   }
 
   // Save initial state

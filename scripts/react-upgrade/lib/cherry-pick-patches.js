@@ -30,7 +30,7 @@ export async function promptUser(question) {
 }
 
 export async function cherryPickPatches(sourceBranchInfo, reactForkPath, options = {}) {
-  const { dryRun = false, force = false } = options;
+  const { dryRun = false, force = false, resumeFromCommit = null } = options;
 
   // sourceBranchInfo is { branch, version } from findSourceBranch
   const versionStr = formatVersion(sourceBranchInfo.version);
@@ -39,10 +39,24 @@ export async function cherryPickPatches(sourceBranchInfo, reactForkPath, options
 
   logger.debug(`Getting commits between ${tagRef} and ${branchRef}`);
 
-  const commits = await getCommitsBetween(tagRef, branchRef, reactForkPath);
+  let commits = await getCommitsBetween(tagRef, branchRef, reactForkPath);
 
   if (commits.length === 0) {
     logger.info('No commits to cherry-pick');
+    return { cherryPicked: [], skipped: [], conflicted: null };
+  }
+
+  // If resuming, skip commits up to and including the resume commit
+  if (resumeFromCommit) {
+    const resumeIndex = commits.findIndex((c) => c.hash === resumeFromCommit);
+    if (resumeIndex !== -1) {
+      commits = commits.slice(resumeIndex + 1);
+      logger.info(`Resuming after commit ${resumeFromCommit.slice(0, 7)}`);
+    }
+  }
+
+  if (commits.length === 0) {
+    logger.info('No remaining commits to cherry-pick');
     return { cherryPicked: [], skipped: [], conflicted: null };
   }
 

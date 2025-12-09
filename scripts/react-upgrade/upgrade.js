@@ -130,7 +130,7 @@ async function run() {
       args.targetVersion = state.targetVersion;
       args.reactForkPath = state.reactForkPath;
 
-      await runFromPhase(state.phase, args, destRoot, options);
+      await runFromPhase(state.phase, args, destRoot, options, state);
       return;
     }
 
@@ -220,7 +220,7 @@ async function setupTargetBranch(targetVersion, reactForkPath, args, options) {
   await checkoutBranch(targetBranch, reactForkPath, { create: true, startPoint: tagRef });
 }
 
-async function runFromPhase(startPhase, args, destRoot, options) {
+async function runFromPhase(startPhase, args, destRoot, options, savedState = null) {
   const resolvedReactPath = resolve(__dirname, args.reactForkPath);
   const parsedVersion = parseVersion(args.targetVersion);
   const phases = ['start', 'cherry-pick', 'build', 'sync', 'replacements', 'check'];
@@ -268,9 +268,24 @@ async function runFromPhase(startPhase, args, destRoot, options) {
       logger.warn('No previous patch branch found. Starting fresh.');
     } else {
       logger.info(`Found source branch: ${sourceBranch.branch}`);
-      const cherryPickResult = await cherryPickPatches(sourceBranch, resolvedReactPath, options);
+
+      // Pass resumeFromCommit if we're continuing after a conflict
+      const cherryPickOptions = {
+        ...options,
+        resumeFromCommit: savedState?.conflictedCommit || null,
+      };
+      const cherryPickResult = await cherryPickPatches(sourceBranch, resolvedReactPath, cherryPickOptions);
 
       if (cherryPickResult.conflicted) {
+        // Save the conflicted commit hash so we can resume after it
+        if (!options.dryRun) {
+          await saveState(destRoot, {
+            targetVersion: args.targetVersion,
+            reactForkPath: args.reactForkPath,
+            phase: 'cherry-pick',
+            conflictedCommit: cherryPickResult.conflicted.hash,
+          });
+        }
         logger.error('Cherry-pick stopped due to conflict.');
         logger.info('Resolve the conflict, then run with --continue to resume.');
         process.exit(1);

@@ -192,7 +192,13 @@ async function runFromPhase(startPhase, args, destRoot, options) {
       logger.warn('No previous patch branch found. Starting fresh.');
     } else {
       logger.info(`Found source branch: ${sourceBranch.branch}`);
-      await cherryPickPatches(sourceBranch, resolvedReactPath, options);
+      const cherryPickResult = await cherryPickPatches(sourceBranch, resolvedReactPath, options);
+
+      if (cherryPickResult.conflicted) {
+        logger.error('Cherry-pick stopped due to conflict.');
+        logger.info('Resolve the conflict, then run with --continue to resume.');
+        process.exit(1);
+      }
     }
   }
 

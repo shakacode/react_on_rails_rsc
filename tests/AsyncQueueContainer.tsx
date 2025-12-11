@@ -3,7 +3,7 @@ import { Suspense, PropsWithChildren } from 'react';
 
 import AsyncQueue from './AsyncQueue';
 
-const AsyncQueueItem = async ({ asyncQueue, children  }: PropsWithChildren<{asyncQueue: AsyncQueue<string>}>) => {
+const AsyncQueueItem = async ({ asyncQueue, children  }: PropsWithChildren<{asyncQueue: AsyncQueue}>) => {
   const value = await asyncQueue.dequeue();
 
   return (
@@ -14,7 +14,7 @@ const AsyncQueueItem = async ({ asyncQueue, children  }: PropsWithChildren<{asyn
   )
 }
 
-const AsyncQueueContainer = ({ asyncQueue }: { asyncQueue: AsyncQueue<string> }) => {
+const AsyncQueueContainer = ({ asyncQueue }: { asyncQueue: AsyncQueue }) => {
   return (
     <div>
       <h1>Async Queue</h1>

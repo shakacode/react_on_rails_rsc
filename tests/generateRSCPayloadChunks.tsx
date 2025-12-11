@@ -17,7 +17,7 @@ const { renderToPipeableStream } = buildServerRenderer({
 });
 
 async function generateRSCPayloadChunks() {
-  const asyncQueue = new AsyncQueue<string>();
+  const asyncQueue = new AsyncQueue();
   const stream = renderToPipeableStream(<AsyncQueueContainer asyncQueue={asyncQueue} />);
   const reader = new StreamReader(stream);
 

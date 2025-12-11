@@ -1,20 +1,32 @@
 import * as EventEmitter from 'node:events';
 
-class AsyncQueue<T> {
+const debounce = <T extends unknown[]>(
+  callback: (...args: T) => void,
+  delay: number,
+) => {
+  let timeoutTimer: ReturnType<typeof setTimeout>;
+ 
+  return (...args: T) => {
+    clearTimeout(timeoutTimer);
+ 
+    timeoutTimer = setTimeout(() => {
+      callback(...args);
+    }, delay);
+  };
+};
+
+class AsyncQueue {
   private eventEmitter = new EventEmitter<{ data: any, end: any }>();
-  private buffer: T[] = [];
+  private buffer: string = '';
   private isEnded = false;
 
-  enqueue(value: T) {
+  enqueue(value: string) {
     if (this.isEnded) {
       throw new Error("Queue Ended");
     }
 
-    if (this.eventEmitter.listenerCount('data') > 0) {
-      this.eventEmitter.emit('data', value);
-    } else {
-      this.buffer.push(value);
-    }
+    this.buffer += value;
+    this.eventEmitter.emit('data', value);
   }
 
   end() {
@@ -23,31 +35,33 @@ class AsyncQueue<T> {
   }
 
   dequeue() {
-    return new Promise<T>((resolve, reject) => {
-      const bufferValueIfExist = this.buffer.shift();
-      if (bufferValueIfExist) {
-        resolve(bufferValueIfExist);
-      } else if (this.isEnded) {
+    return new Promise<string>((resolve, reject) => {
+      if (this.isEnded) {
         reject(new Error("Queue Ended"));
-      } else {
-        let teardown = () => {}
-        const onData = (value: T) => {
-          resolve(value);
-          teardown();
+        return;
+      }
+
+      const checkBuffer = debounce(() => {
+        const teardown = () => {
+          this.eventEmitter.off('data', checkBuffer);
+          this.eventEmitter.off('end', checkBuffer);
         }
         
-        const onEnd = () => {
-          reject(new Error("Queue Ended"));
+        if (this.buffer.length > 0) {
+          resolve(this.buffer);
+          this.buffer = '';
+          teardown();
+        } else if (this.isEnded) {
+          reject(new Error('Queue Ended'));
           teardown();
         }
+      }, 250);
 
-        this.eventEmitter.on('data', onData);
-        this.eventEmitter.on('end', onEnd);
-        teardown = () => {
-          this.eventEmitter.off('data', onData);
-          this.eventEmitter.off('end', onEnd);
-        }
+      if (this.buffer.length > 0) {
+        checkBuffer();
       }
+      this.eventEmitter.on('data', checkBuffer);
+      this.eventEmitter.on('end', checkBuffer);
     })
   }
 

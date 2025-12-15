@@ -206,7 +206,7 @@ class ReactFlightWebpackPlugin {
           if (!1 === clientFileNameFound)
             compilation.warnings.push(
               new webpack.WebpackError(
-                "Client runtime at react-server-dom-webpack/client was not found. React Server Components module map file " +
+                "Client runtime at react-on-rails-rsc/client was not found. React Server Components module map file " +
                   _this.clientManifestFilename +
                   " was not created."
               )
@@ -256,8 +256,12 @@ class ReactFlightWebpackPlugin {
                 try {
                   for (_iterator.s(); !(_step = _iterator.n()).done; ) {
                     const file = _step.value;
-                    if (!file.endsWith(".js")) break;
-                    if (file.endsWith(".hot-update.js")) break;
+                    if (!file.endsWith(".js") && !file.endsWith(".mjs")) break;
+                    if (
+                      file.endsWith(".hot-update.js") ||
+                      file.endsWith(".hot-update.mjs")
+                    )
+                      break;
                     chunks.push(c.id, file);
                     break;
                   }

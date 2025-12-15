@@ -12,11 +12,16 @@ class StreamReader {
     pipeableStream.pipe(readableStream);
 
     readableStream.on('data', (chunk) => {
-      const decodedChunk = decoder.decode(chunk);
+      const decodedChunk = decoder.decode(chunk, { stream: true });
       this.asyncQueue.enqueue(decodedChunk);
     });
 
     readableStream.on('end', () => {
+      // Flush any remaining bytes in the decoder
+      const remaining = decoder.decode();
+      if (remaining) {
+        this.asyncQueue.enqueue(remaining);
+      }
       this.asyncQueue.end();
     });
   }

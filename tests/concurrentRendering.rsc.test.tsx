@@ -48,7 +48,7 @@ const createParallelRenders = (size: number) => {
   });
   const readers = streams.map(stream => new StreamReader(stream));
 
-  const enqueue = (value: string) => asyncQueues.forEach(asyncQueues => asyncQueues.enqueue(value));
+  const enqueue = (value: string) => asyncQueues.forEach(asyncQueue => asyncQueue.enqueue(value));
 
   const expectNextChunk = (nextChunk: string) => Promise.all(
     readers.map(async (reader) => {
@@ -215,10 +215,12 @@ test("[bug] catches logs outside the component during reading the stream", async
 });
 
 const ContainerWithError = () => {
-  const rejectedPromise = Promise.reject("Fake Error");
+  const rejectedPromise = new Promise<string>((_, reject) => {
+    setTimeout(() => reject("Fake Error"), 10);
+  });
   const resolvedPromise = new Promise<string>(resolve => {
     setTimeout(() => resolve(""), 100);
-  })
+  });
   return (
     <div>
       <h1>Header</h1>
@@ -234,9 +236,11 @@ const ContainerWithError = () => {
 
 test("onError callback doesn't have the logs leakage bug", async () => {
   const element1 = <ContainerWithError />;
+  let receivedError = '';
   const stream1 = renderToPipeableStream(element1, {
     onError: (err) => {
       console.error("Inside onError callback", err);
+      receivedError = err as string;
     }
   });
   const readable1 = new PassThrough();
@@ -248,4 +252,5 @@ test("onError callback doesn't have the logs leakage bug", async () => {
   });
   await finished(readable1);
   expect(content).not.toContain("Inside onError callback");
+  expect(receivedError).toBe('Fake Error');
 })

@@ -37,7 +37,6 @@ async function generateRSCPayloadChunks() {
   chunk = await reader.nextChunk();
   chunks.push(chunk);
 
-  await expect(reader.nextChunk()).rejects.toThrow(/Queue Ended/);
   try {
     await reader.nextChunk();
     throw new Error("Unexpected to have more chunks");

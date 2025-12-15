@@ -55,6 +55,10 @@ const createParallelRenders = (size: number) => {
 
   const enqueueNextChunk = () => {
     const nextChunk = chunksArray.shift();
+    if (!nextChunk) {
+      throw new Error('No more chunks to enqueue');
+    }
+
     chunkStreams.forEach(chunkStream => chunkStream.push(nextChunk));
   }
 

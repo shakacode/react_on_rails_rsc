@@ -3,7 +3,6 @@
   "compilerOptions": {
     // This copies JS files to the output directory. Make false once all code is converted.
     "allowJs": true,
-    "jsx": "react-jsx",
     "esModuleInterop": false,
     "module": "node16",
     "moduleResolution": "node16",

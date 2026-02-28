@@ -240,14 +240,25 @@ class ReactFlightWebpackPlugin {
             });
             compilation.chunkGroups.forEach(function (chunkGroup) {
               function recordModule(id, module) {
-                resolvedClientFiles.has(module.resource) &&
+                if (
+                  resolvedClientFiles.has(module.resource) &&
                   ((module = url.pathToFileURL(module.resource).href),
-                  void 0 !== module &&
-                    (filePathToModuleMetadata[module] = {
+                  void 0 !== module)
+                )
+                  if (filePathToModuleMetadata[module]) {
+                    id = filePathToModuleMetadata[module];
+                    module = new Set();
+                    for (var i = 0; i < id.chunks.length; i += 2)
+                      module.add(id.chunks[i]);
+                    for (i = 0; i < chunks.length; i += 2)
+                      module.has(chunks[i]) ||
+                        id.chunks.push(chunks[i], chunks[i + 1]);
+                  } else
+                    filePathToModuleMetadata[module] = {
                       id,
-                      chunks,
+                      chunks: chunks.slice(),
                       name: "*"
-                    }));
+                    };
               }
               const chunks = [];
               chunkGroup.chunks.forEach(function (c) {

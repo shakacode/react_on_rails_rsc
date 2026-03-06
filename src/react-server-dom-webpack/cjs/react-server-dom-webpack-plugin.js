@@ -290,15 +290,6 @@ class ReactFlightWebpackPlugin {
                 });
               });
             });
-            var serverFileUrls = Object.keys(filePathToModuleMetadata);
-            for (let i = 0; i < serverFileUrls.length; i++) {
-              const fileUrl = serverFileUrls[i],
-                clientUrl = fileUrl.replace(/\.server(\.[^./]+)$/, ".client$1");
-              clientUrl !== fileUrl &&
-                void 0 !== filePathToModuleMetadata[clientUrl] &&
-                (filePathToModuleMetadata[fileUrl] =
-                  filePathToModuleMetadata[clientUrl]);
-            }
             configuredCrossOriginLoading = JSON.stringify(
               configuredCrossOriginLoading,
               null,

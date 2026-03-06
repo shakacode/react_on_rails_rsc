@@ -1,4 +1,5 @@
 import { BundleManifest } from './types';
+import { aliasServerToClientEntries } from './manifestUtils';
 import { renderToPipeableStream as renderToPipeableStreamReact } from './react-server-dom-webpack/server.node';
 
 export interface Options {
@@ -15,6 +16,7 @@ export interface PipeableStream {
 
 export const buildServerRenderer = (clientManifest: BundleManifest) => {
   const { filePathToModuleMetadata } = clientManifest;
+  aliasServerToClientEntries(filePathToModuleMetadata);
   return {
     renderToPipeableStream: (
       // Note: ReactClientValue is likely what React uses internally for RSC
@@ -29,5 +31,6 @@ export const buildServerRenderer = (clientManifest: BundleManifest) => {
 
 export const renderToPipeableStream = (model: unknown, clientManifest: BundleManifest, options?: Options) => {
   const { filePathToModuleMetadata } = clientManifest;
+  aliasServerToClientEntries(filePathToModuleMetadata);
   return renderToPipeableStreamReact(model, filePathToModuleMetadata, options) as PipeableStream;
 }

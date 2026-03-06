@@ -1,10 +1,16 @@
 import { createFromNodeStream } from './react-server-dom-webpack/client.node';
 import { BundleManifest } from './types';
+import { aliasServerToClientEntries } from './manifestUtils';
 
 const createSSRManifest = (clientManifest: BundleManifest, serverManifest: BundleManifest) => {
   const { filePathToModuleMetadata: clientFilePathToModuleMetadata, moduleLoading: clientModuleLoading } = clientManifest;
 
   const { filePathToModuleMetadata: serverFilePathToModuleMetadata } = serverManifest;
+
+  // Alias .server entries to .client entries in both manifests so that the
+  // join produces consistent mappings for paired .server/.client components.
+  aliasServerToClientEntries(clientFilePathToModuleMetadata);
+  aliasServerToClientEntries(serverFilePathToModuleMetadata);
 
   const moduleMap: Record<string, unknown> = {};
   Object.entries(clientFilePathToModuleMetadata).forEach(([aboluteFileUrl, clientFileBundlingInfo]) => {

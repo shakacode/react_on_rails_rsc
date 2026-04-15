@@ -37,6 +37,14 @@
       "types": "./dist/WebpackLoader.d.ts",
       "default": "./dist/WebpackLoader.js"
     },
+    "./RspackPlugin": {
+      "types": "./dist/react-server-dom-rspack/plugin.d.ts",
+      "default": "./dist/react-server-dom-rspack/plugin.js"
+    },
+    "./RspackLoader": {
+      "types": "./dist/react-server-dom-rspack/loader.d.ts",
+      "default": "./dist/react-server-dom-rspack/loader.js"
+    },
     "./server": {
       "react-server": {
         "workerd": "./dist/react-server-dom-webpack/server.edge.js",

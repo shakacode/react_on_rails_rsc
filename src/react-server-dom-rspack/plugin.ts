@@ -231,10 +231,22 @@ export class RSCRspackPlugin {
     // Iterate compilation.modules (both webpack and rspack expose it).
     const modulesIterable = (compilation as unknown as { modules: Iterable<AnyModule> }).modules;
 
-    const recordModule = (module: AnyModule): void => {
+    /**
+     * Record a tagged module in the manifest under the given moduleId.
+     *
+     * `idOverride` lets the caller force a specific moduleId — needed for
+     * `ConcatenatedModule` inner modules, which have no moduleId of their
+     * own (scope hoisting folded them into their parent) and must instead
+     * be recorded under the parent's moduleId. This matches the webpack
+     * reference plugin's behavior (see the vendored
+     * react-server-dom-webpack-plugin.js — its `recordModule(moduleId, ...)`
+     * is called both on the outer module and, passing the same moduleId,
+     * on each inner concatenated module).
+     */
+    const recordModule = (module: AnyModule, idOverride?: string | number): void => {
       if (!module.resource || !taggedPaths.has(module.resource)) return;
       const href = url.pathToFileURL(module.resource).href;
-      const id = compilation.chunkGraph.getModuleId(module);
+      const id = idOverride ?? compilation.chunkGraph.getModuleId(module);
       if (id === null || id === undefined) return;
 
       const chunks: (string | number)[] = [];
@@ -243,7 +255,12 @@ export class RSCRspackPlugin {
         const files = chunk.files instanceof Set ? chunk.files : new Set(chunk.files);
         for (const file of files) {
           if (file.endsWith('.js') && !file.endsWith('.hot-update.js')) {
-            if (chunk.id !== null && chunk.id !== undefined) chunks.push(chunk.id);
+            if (chunk.id !== null && chunk.id !== undefined) {
+              // Stringify chunk.id to match the entry `id` stringification
+              // below — keeps the manifest values a uniform string type
+              // rather than a mix of string / number.
+              chunks.push(String(chunk.id));
+            }
             chunks.push(file);
             break;
           }
@@ -251,7 +268,8 @@ export class RSCRspackPlugin {
       }
 
       if (filePathToModuleMetadata[href]) {
-        // Collision (unlikely) — merge chunks without duplicates
+        // Collision (multiple visits for same resource, e.g. via
+        // ConcatenatedModule iteration) — merge chunks without duplicates.
         const existing = filePathToModuleMetadata[href];
         const seen = new Set<string | number>();
         for (let i = 0; i < existing.chunks.length; i += 2) seen.add(existing.chunks[i]!);
@@ -270,9 +288,17 @@ export class RSCRspackPlugin {
     for (const m of modulesIterable) {
       const mod = m as AnyModule;
       recordModule(mod);
-      // Handle ConcatenatedModule (webpack's scope hoisting result).
+      // Handle ConcatenatedModule (scope-hoisted). Inner modules have no
+      // moduleId of their own — chunkGraph.getModuleId(inner) returns null,
+      // so a naive recursion would silently drop every concatenated client
+      // component from the manifest. Instead, reuse the OUTER module's
+      // moduleId for each inner recording, which is exactly what the
+      // webpack reference plugin does and what the runtime expects.
       if (mod.modules) {
-        for (const inner of mod.modules) recordModule(inner);
+        const outerId = compilation.chunkGraph.getModuleId(mod);
+        if (outerId !== null && outerId !== undefined) {
+          for (const inner of mod.modules) recordModule(inner, outerId);
+        }
       }
     }
 

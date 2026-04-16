@@ -130,10 +130,19 @@ export class RSCRspackPlugin {
     compiler.hooks.thisCompilation.tap('RSCRspackPlugin', (compilationUnknown) => {
       const compilation = compilationUnknown as AnyCompilation;
 
-      // Phase 1: let the loader tag modules. We do nothing here except wait.
+      // Eagerly create the shared Set so the loader never races on
+      // initialization. Rspack can run JS loaders across a worker pool;
+      // two modules finishing simultaneously could both observe
+      // `existing === undefined` under a check-then-set pattern and one
+      // would clobber the other. By pre-creating the Set here (which runs
+      // exactly once per compilation, before any loader), the loader's
+      // only job is a safe `set.add(resourcePath)`.
+      if (!compilation[CLIENT_MODULES_KEY]) {
+        compilation[CLIENT_MODULES_KEY] = new Set<string>();
+      }
 
-      // Phase 2: at `processAssets` stage REPORT, walk the chunk graph and
-      // build the manifest. The tagged set lives on
+      // At `processAssets` stage REPORT, walk the chunk graph and build
+      // the manifest. The tagged set lives on
       // `compilation[CLIENT_MODULES_KEY]`.
       compilation.hooks.processAssets.tap(
         {

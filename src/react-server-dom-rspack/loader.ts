@@ -49,10 +49,12 @@ const RSCRspackLoader: LoaderDefinition = function RSCRspackLoader(source) {
       | Record<string | symbol, unknown>
       | undefined;
     if (compilation) {
-      const existing = compilation[CLIENT_MODULES_KEY] as Set<string> | undefined;
-      const set = existing ?? new Set<string>();
-      set.add(this.resourcePath);
-      compilation[CLIENT_MODULES_KEY] = set;
+      // Plugin eagerly initializes the Set in its `thisCompilation` hook,
+      // which always runs before any loader. If the Set is missing here,
+      // the plugin wasn't applied to this compiler — skip silently (the
+      // loader is harmless on its own).
+      const set = compilation[CLIENT_MODULES_KEY] as Set<string> | undefined;
+      if (set) set.add(this.resourcePath);
     }
   }
 

@@ -39,6 +39,18 @@ const hasUseClientDirective = (source: string): boolean =>
   USE_CLIENT_REGEX.test(stripProlog(source));
 
 const RSCRspackLoader: LoaderDefinition = function RSCRspackLoader(source) {
+  // Our loader has a side effect: it mutates the compilation via
+  // `compilation[CLIENT_MODULES_KEY]`. That side effect must happen on
+  // EVERY build, including incremental rebuilds — but rspack's default
+  // loader caching would skip re-executing on cache hits, leaving the
+  // tag-set stale or empty across watch-mode rebuilds. Declaring the
+  // loader non-cacheable forces re-execution every time, which restores
+  // a correct manifest on incremental builds.
+  //
+  // The loader is effectively free (one regex test on source text), so
+  // the caching cost is negligible compared to the correctness win.
+  this.cacheable(false);
+
   // Report the module if it has "use client" at the top.
   if (hasUseClientDirective(source)) {
     // `this._compilation` is the rspack/webpack Compilation object. It is a

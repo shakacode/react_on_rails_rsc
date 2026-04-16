@@ -1,18 +1,19 @@
 /**
  * "use client" detector loader.
  *
- * Attached by RSCRspackPlugin to every JS/TS module during compilation. Reads
- * the source, checks if the file starts with a `"use client"` directive, and
- * if so records the module's resource path on the current compilation.
- *
- * The plugin picks up this set of paths in `compilation.hooks.finishModules`
- * and emits the manifest.
+ * Attached by RSCRspackPlugin to every JS/TS module during compilation.
+ * Reads the source, checks if the file starts with a `"use client"`
+ * directive (accounting for BOM, shebangs, and leading comments), and if
+ * so adds the module's resourcePath to a per-compilation Set keyed by the
+ * `CLIENT_MODULES_KEY` Symbol. The plugin consumes that Set at
+ * `processAssets` time to emit the manifest.
  *
  * The loader passes the source through unchanged — it is purely a reporter.
  *
- * IMPORTANT: communication with the plugin goes via a property attached to
- * the compilation object (`compilation[CLIENT_MODULES_KEY]`). This avoids a
- * module-level singleton that would clash in parallel test runs.
+ * IMPORTANT: communication with the plugin goes via a Symbol-keyed
+ * property on the compilation object (`compilation[CLIENT_MODULES_KEY]`).
+ * The plugin eagerly creates the Set in `thisCompilation` so the loader
+ * never races on initialization.
  */
 
 import type { LoaderDefinition } from 'webpack';

@@ -1,17 +1,21 @@
 /**
  * RSCRspackPlugin — rspack-native equivalent of RSCWebpackPlugin.
  *
- * Emits React on Rails' existing manifest schemas
- * (`react-client-manifest.json` and `react-ssr-manifest.json`) using only
+ * Emits React on Rails' existing client-manifest JSON schema using only
  * standard rspack public APIs — no dependency on rspack's experimental RSC
  * system (`rspackExperiments.reactServerComponents`, `experiments.rsc`,
  * `react-server-dom-rspack`).
  *
  * Discovery technique: a small loader (`loader.ts`) tags modules containing
- * a `"use client"` directive at parse time. This plugin collects tagged
- * modules via `compilation.hooks.finishModules`, walks the chunk graph via
- * `compilation.chunkGraph.getModuleChunks(module)`, and emits the manifest
- * JSON at `processAssets` stage `PROCESS_ASSETS_STAGE_REPORT`.
+ * a `"use client"` directive during parse by adding the module's resource
+ * path to a per-compilation Set keyed under the `CLIENT_MODULES_KEY`
+ * Symbol. This plugin:
+ *   1. Eagerly creates the shared Set in `thisCompilation` (before any
+ *      loader runs, to prevent a check-then-set race across workers).
+ *   2. At `processAssets` stage `PROCESS_ASSETS_STAGE_REPORT`, reads the
+ *      Set, iterates `compilation.modules`, looks up each tagged module's
+ *      chunks via `compilation.chunkGraph.getModuleChunks(module)`, and
+ *      emits a manifest JSON asset via `compilation.emitAsset`.
  *
  * Output schema matches RoR's existing webpack-side plugin so
  * `buildServerRenderer` / `buildClientRenderer` in server.node.ts /

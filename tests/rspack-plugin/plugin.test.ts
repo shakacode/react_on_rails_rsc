@@ -297,16 +297,65 @@ describe('RSCRspackPlugin', () => {
   });
 
   describe('plugin option validation', () => {
-    it('throws if `isServer` is not a boolean', () => {
-      // Importing from dist so we don't need TS types here.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-      const { RSCRspackPlugin } = require(DIST_PLUGIN);
-      expect(() => new RSCRspackPlugin({} as unknown as { isServer: boolean })).toThrow(
-        /isServer/,
-      );
+    // Importing from dist so we don't need TS types here.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    const { RSCRspackPlugin } = require(DIST_PLUGIN);
+
+    it('throws when options is null', () => {
+      expect(() => new RSCRspackPlugin(null)).toThrow(/isServer/);
+    });
+
+    it('throws when options is undefined', () => {
+      expect(() => new RSCRspackPlugin(undefined)).toThrow(/isServer/);
+    });
+
+    it('throws when isServer is undefined', () => {
+      expect(() => new RSCRspackPlugin({})).toThrow(/isServer/);
+    });
+
+    it('throws when isServer is a string', () => {
+      expect(() => new RSCRspackPlugin({ isServer: 'yes' })).toThrow(/isServer/);
+    });
+
+    it('throws when isServer is null', () => {
+      expect(() => new RSCRspackPlugin({ isServer: null })).toThrow(/isServer/);
+    });
+
+    it('accepts isServer: true', () => {
+      expect(() => new RSCRspackPlugin({ isServer: true })).not.toThrow();
+    });
+
+    it('accepts isServer: false', () => {
+      expect(() => new RSCRspackPlugin({ isServer: false })).not.toThrow();
+    });
+
+    it('accepts a custom clientManifestFilename alongside isServer', () => {
       expect(
-        () => new RSCRspackPlugin({ isServer: 'yes' } as unknown as { isServer: boolean }),
-      ).toThrow(/isServer/);
+        () =>
+          new RSCRspackPlugin({
+            isServer: false,
+            clientManifestFilename: 'custom.json',
+          }),
+      ).not.toThrow();
+    });
+  });
+
+  describe('manifest-entry path encoding', () => {
+    // The plugin's per-entry key is `url.pathToFileURL(resource).href`.
+    // The runtime consumer looks entries up by exact match, so the format
+    // is load-bearing: percent-encoded for non-ASCII, `file:///` prefix,
+    // no trailing slash for files. Pin it explicitly rather than relying
+    // on substring checks so future key-format drift is loud.
+    it('emits an exact file:// URL for the client entry key', () => {
+      const result = run('basic-client');
+      const url = require('url');
+      const path = require('path');
+      const expected = url.pathToFileURL(
+        path.join(__dirname, 'fixtures/basic-client/ClientButton.js'),
+      ).href;
+      expect(
+        Object.keys(result.manifest.filePathToModuleMetadata),
+      ).toContain(expected);
     });
   });
 });

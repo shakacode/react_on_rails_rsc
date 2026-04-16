@@ -66,7 +66,17 @@ type AnyCompilation = {
   warnings: unknown[];
   compiler: AnyCompiler;
   getLogger?(name: string): AnyLogger;
-  [key: string]: unknown; // allow CLIENT_MODULES_KEY access
+};
+
+// Helper to read/write our private Symbol key on the compilation. Using a
+// symbol requires a cast because TS structural types can't easily express
+// "indexable by this specific symbol." All accesses funnel through this
+// pair so the cast is isolated.
+type SymbolIndexable = Record<symbol, unknown>;
+const getTagSet = (compilation: AnyCompilation): Set<string> | undefined =>
+  (compilation as unknown as SymbolIndexable)[CLIENT_MODULES_KEY] as Set<string> | undefined;
+const setTagSet = (compilation: AnyCompilation, set: Set<string>): void => {
+  (compilation as unknown as SymbolIndexable)[CLIENT_MODULES_KEY] = set;
 };
 
 type AnyModule = {
@@ -148,8 +158,8 @@ export class RSCRspackPlugin {
       // would clobber the other. By pre-creating the Set here (which runs
       // exactly once per compilation, before any loader), the loader's
       // only job is a safe `set.add(resourcePath)`.
-      if (!compilation[CLIENT_MODULES_KEY]) {
-        compilation[CLIENT_MODULES_KEY] = new Set<string>();
+      if (!getTagSet(compilation)) {
+        setTagSet(compilation, new Set<string>());
       }
 
       // At `processAssets` stage REPORT, walk the chunk graph and build
@@ -161,7 +171,7 @@ export class RSCRspackPlugin {
           stage: bundler.Compilation.PROCESS_ASSETS_STAGE_REPORT,
         },
         () => {
-          const taggedPaths = (compilation[CLIENT_MODULES_KEY] as Set<string> | undefined) ?? new Set<string>();
+          const taggedPaths = getTagSet(compilation) ?? new Set<string>();
           const logger = compilation.getLogger?.('RSCRspackPlugin');
           if (taggedPaths.size === 0) {
             // Zero tagged modules almost always means the loader never ran

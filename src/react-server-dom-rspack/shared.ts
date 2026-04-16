@@ -1,12 +1,13 @@
 /**
  * Shared constants between loader and plugin.
  *
- * Using a Symbol would be safer (no collision risk with other plugins adding
- * properties to the compilation), but strings make tests easier to assert on
- * and match webpack's own patterns (e.g., `compilation.dependencyFactories`).
- *
- * Change the key name if you suspect a collision; nothing in the public world
- * should be using this property.
+ * A globally-registered Symbol (via `Symbol.for`) is used instead of a
+ * plain string so other plugins stashing arbitrary properties on the
+ * compilation cannot collide with our channel. `Symbol.for` also round-
+ * trips across module-instance boundaries — if the plugin is loaded twice
+ * (e.g. once via `react-on-rails-rsc/RspackPlugin` and once via a
+ * monorepo workspace alias), both copies see the same Symbol and share
+ * state correctly.
  */
 
-export const CLIENT_MODULES_KEY = '__rorRscClientModules';
+export const CLIENT_MODULES_KEY: symbol = Symbol.for('react-on-rails-rsc.clientModules');

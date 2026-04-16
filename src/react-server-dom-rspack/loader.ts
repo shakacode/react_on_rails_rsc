@@ -26,8 +26,13 @@ import { CLIENT_MODULES_KEY } from './shared';
 // and the optional `;` is allowed per ES spec.
 const USE_CLIENT_REGEX = /^\s*['"]use client['"]\s*;?\s*(?:\n|$)/;
 
-// Strip leading shebangs (#!) and UTF-8 BOM so the regex above can match even
-// when those precede the directive.
+// Strip leading shebangs (#!), UTF-8 BOM, AND any number of leading line
+// (`// ...`) or block (`/* ... */`) comments so the regex above can match
+// even when those precede the directive. The ECMAScript directive prologue
+// rules (and React's RSC spec) allow comments before directives — a copyright
+// header before `"use client"` is a common real-world case.
+const LEADING_COMMENTS = /^(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))+/;
+
 const stripProlog = (source: string): string => {
   let s = source;
   if (s.charCodeAt(0) === 0xfeff) s = s.slice(1); // BOM
@@ -35,6 +40,10 @@ const stripProlog = (source: string): string => {
     const nl = s.indexOf('\n');
     s = nl === -1 ? '' : s.slice(nl + 1);
   }
+  // Strip any sequence of leading line or block comments, separated by
+  // whitespace. Repeated so that `/* a */ // b\n /* c */` all vanishes.
+  const stripped = s.replace(LEADING_COMMENTS, '');
+  if (stripped !== s) s = stripped;
   return s;
 };
 

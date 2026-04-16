@@ -83,8 +83,14 @@ const RSCRspackLoader: LoaderDefinition = function RSCRspackLoader(source) {
       // which always runs before any loader. If the Set is missing here,
       // the plugin wasn't applied to this compiler — skip silently (the
       // loader is harmless on its own).
+      //
+      // Guard an empty / missing resourcePath (virtual modules synthesized
+      // by other plugins have no physical file and may report `undefined`
+      // or `""`). Tagging an empty string would pollute the manifest.
       const set = compilation[CLIENT_MODULES_KEY] as Set<string> | undefined;
-      if (set) set.add(this.resourcePath);
+      if (set && typeof this.resourcePath === 'string' && this.resourcePath.length > 0) {
+        set.add(this.resourcePath);
+      }
     }
   }
 

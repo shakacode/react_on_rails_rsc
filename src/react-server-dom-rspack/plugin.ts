@@ -56,7 +56,10 @@ type AnyCompilation = {
     getModuleId(module: unknown): string | number | null;
   };
   outputOptions: {
-    publicPath?: string;
+    // `publicPath` can be a string (`'/packs/'`, `'auto'`), a function
+    // (rspack/webpack 5: `(pathData) => string`), or undefined. Typed
+    // loosely so buildManifest can inspect the raw value and normalize.
+    publicPath?: string | ((...args: unknown[]) => string);
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   };
   emitAsset(filename: string, source: unknown): void;
@@ -343,13 +346,40 @@ export class RSCRspackPlugin {
     const crossOrigin =
       crossOriginRaw === 'use-credentials'
         ? 'use-credentials'
-        : crossOriginRaw
+        : crossOriginRaw === 'anonymous'
           ? 'anonymous'
           : null;
 
+    // publicPath normalization:
+    // - A plain URL/path string: use verbatim.
+    // - `'auto'`: resolved at runtime by the bundler; there is no compile-
+    //   time answer, and the literal string `"auto"` in the manifest would
+    //   be concatenated with chunk filenames at load time, producing
+    //   `"auto/main.js"` — a broken URL. Fall back to empty string and warn
+    //   so the user can configure an explicit publicPath for RSC.
+    // - A function or unknown non-string type: fall back to empty.
+    const rawPrefix = compilation.outputOptions.publicPath;
+    let prefix: string;
+    if (typeof rawPrefix === 'string' && rawPrefix !== 'auto') {
+      prefix = rawPrefix;
+    } else {
+      if (rawPrefix === 'auto') {
+        logger?.warn(
+          "output.publicPath is 'auto', which cannot be resolved at build time. " +
+            'Set an explicit publicPath for the RSC manifest to reference chunks correctly.',
+        );
+      } else if (typeof rawPrefix === 'function') {
+        logger?.warn(
+          'output.publicPath is a function, which the RSC manifest cannot serialize. ' +
+            'Set a string publicPath for reliable chunk resolution.',
+        );
+      }
+      prefix = '';
+    }
+
     return {
       moduleLoading: {
-        prefix: compilation.outputOptions.publicPath ?? '',
+        prefix,
         crossOrigin,
       },
       filePathToModuleMetadata,

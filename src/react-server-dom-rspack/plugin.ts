@@ -25,6 +25,12 @@ import { CLIENT_MODULES_KEY } from './shared';
 // Accept any bundler that looks compatible — webpack 5 or rspack. Typed loose
 // because we cannot depend on `@rspack/core` types without making it a hard
 // peer dep of a package that should stay webpack-centric.
+type AnyLogger = {
+  warn(...args: unknown[]): void;
+  info(...args: unknown[]): void;
+  debug(...args: unknown[]): void;
+};
+
 type AnyCompiler = {
   options: {
     module?: { rules?: unknown[] };
@@ -36,11 +42,11 @@ type AnyCompiler = {
   };
   rspack?: { version?: string };
   webpack?: { version?: string };
+  getInfrastructureLogger?(name: string): AnyLogger;
 };
 
 type AnyCompilation = {
   hooks: {
-    finishModules: { tapPromise: (name: string, fn: (modules: Iterable<unknown>) => Promise<void>) => void };
     processAssets: {
       tap: (opts: { name: string; stage: number }, fn: () => void) => void;
     };
@@ -54,7 +60,9 @@ type AnyCompilation = {
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   };
   emitAsset(filename: string, source: unknown): void;
+  warnings: unknown[];
   compiler: AnyCompiler;
+  getLogger?(name: string): AnyLogger;
   [key: string]: unknown; // allow CLIENT_MODULES_KEY access
 };
 
@@ -151,7 +159,25 @@ export class RSCRspackPlugin {
         },
         () => {
           const taggedPaths = (compilation[CLIENT_MODULES_KEY] as Set<string> | undefined) ?? new Set<string>();
-          const manifest = this.buildManifest(compilation, taggedPaths);
+          const logger = compilation.getLogger?.('RSCRspackPlugin');
+          if (taggedPaths.size === 0) {
+            // Zero tagged modules almost always means the loader never ran
+            // (e.g., the auto-injected rule was overridden by user config,
+            // or the user's own rules.test regex didn't match). Push an
+            // info log — not a warning, because a legitimate RSC project
+            // with only server components has no client references.
+            logger?.info(
+              'No "use client" modules detected; emitting empty manifest. ' +
+                'If this is unexpected, ensure the RSC loader rule runs on your source files.',
+            );
+          } else {
+            logger?.debug(`Tagged ${taggedPaths.size} "use client" module(s)`);
+          }
+          const manifest = this.buildManifest(compilation, taggedPaths, logger);
+          logger?.debug(
+            `Emitting ${manifestFilename} with ` +
+              `${Object.keys(manifest.filePathToModuleMetadata).length} entries`,
+          );
           compilation.emitAsset(
             manifestFilename,
             new bundler.sources.RawSource(JSON.stringify(manifest, null, 2), false),
@@ -219,6 +245,7 @@ export class RSCRspackPlugin {
   private buildManifest(
     compilation: AnyCompilation,
     taggedPaths: Set<string>,
+    logger?: AnyLogger,
   ): {
     moduleLoading: { prefix: string; crossOrigin: string | null };
     filePathToModuleMetadata: Record<string, { id: string; chunks: (string | number)[]; name: string }>;
@@ -247,7 +274,17 @@ export class RSCRspackPlugin {
       if (!module.resource || !taggedPaths.has(module.resource)) return;
       const href = url.pathToFileURL(module.resource).href;
       const id = idOverride ?? compilation.chunkGraph.getModuleId(module);
-      if (id === null || id === undefined) return;
+      if (id === null || id === undefined) {
+        // A tagged client module has no moduleId — it will not appear in
+        // the manifest, so the runtime cannot resolve it. Most likely a
+        // tree-shaken / dead-code-eliminated module. Warn so the user can
+        // investigate rather than seeing an opaque "Could not find module"
+        // at render time.
+        logger?.warn(
+          `"use client" module has no moduleId and will be omitted from the manifest: ${module.resource}`,
+        );
+        return;
+      }
 
       const chunks: (string | number)[] = [];
       for (const chunkUnknown of compilation.chunkGraph.getModuleChunks(module)) {

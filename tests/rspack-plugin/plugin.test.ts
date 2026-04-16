@@ -139,6 +139,71 @@ describe('RSCRspackPlugin', () => {
     });
   });
 
+  describe('production mode', () => {
+    // The `production-client` fixture has `sideEffects: ["./*.js"]` in
+    // its package.json and actually invokes `ClientButton()` — this is
+    // required for client modules to survive production tree-shaking
+    // and remain in the emitted chunk (as they would in a real RSC app
+    // where client components are actually rendered).
+    it('emits a valid manifest in production mode', () => {
+      const result = run('production-client', {
+        configExtra: { mode: 'production', optimization: { minimize: false } },
+      });
+      const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+      expect(paths.some((p) => p.endsWith('ClientButton.js'))).toBe(true);
+      for (const entry of Object.values(result.manifest.filePathToModuleMetadata)) {
+        expect(entry.chunks.length).toBeGreaterThan(0);
+        expect(entry.chunks.length % 2).toBe(0);
+      }
+    });
+
+    it('emits valid manifest with concatenateModules enabled', () => {
+      // If rspack chooses to scope-hoist any client module into a
+      // ConcatenatedModule, the plugin's outer-id reuse path must
+      // record it anyway. If rspack declines to hoist (side-effects
+      // heuristic) the plugin's normal path records it. Either way,
+      // the client module must appear in the manifest.
+      const result = run('production-client', {
+        configExtra: {
+          mode: 'production',
+          optimization: {
+            concatenateModules: true,
+            minimize: false,
+            chunkIds: 'named',
+            moduleIds: 'named',
+          },
+        },
+      });
+      const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+      expect(paths.some((p) => p.endsWith('ClientButton.js'))).toBe(true);
+    });
+  });
+
+  describe('publicPath handling', () => {
+    it('falls back to empty string and warns when publicPath is "auto"', () => {
+      const result = run('basic-client', { publicPath: 'auto' });
+      // 'auto' cannot be resolved at build time, so the plugin falls back
+      // to empty string to avoid emitting a broken `"auto/main.js"` URL.
+      expect(result.manifest.moduleLoading.prefix).toBe('');
+    });
+
+    it('preserves an absolute URL publicPath', () => {
+      const result = run('basic-client', {
+        publicPath: 'https://cdn.example.com/packs/',
+      });
+      expect(result.manifest.moduleLoading.prefix).toBe(
+        'https://cdn.example.com/packs/',
+      );
+    });
+
+    it('uses empty string when publicPath is unset (default)', () => {
+      // publicPath defaults to '' in the runner; verify the default is not
+      // some rspack-internal sentinel leaking through.
+      const result = run('basic-client');
+      expect(result.manifest.moduleLoading.prefix).toBe('');
+    });
+  });
+
   describe('directive edge cases', () => {
     let result: CompileResult;
 

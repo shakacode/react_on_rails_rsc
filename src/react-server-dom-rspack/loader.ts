@@ -63,8 +63,14 @@ const RSCRspackLoader: LoaderDefinition = function RSCRspackLoader(source) {
   // the caching cost is negligible compared to the correctness win.
   this.cacheable(false);
 
+  // Defensive: if another `pre` loader runs before ours and returns a
+  // Buffer (e.g., a binary loader or an ill-behaved plugin), `source`
+  // could arrive as Buffer instead of string. `charCodeAt` + `startsWith`
+  // would throw. Coerce to string so the detector is always safe.
+  const text = typeof source === 'string' ? source : String(source);
+
   // Report the module if it has "use client" at the top.
-  if (hasUseClientDirective(source)) {
+  if (hasUseClientDirective(text)) {
     // `this._compilation` is the rspack/webpack Compilation object. It is a
     // loader-context private but both rspack and webpack expose it reliably.
     // We guard with optional chaining in case the loader gets called outside

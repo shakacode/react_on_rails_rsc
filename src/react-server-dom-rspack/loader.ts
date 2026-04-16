@@ -20,8 +20,11 @@ import { CLIENT_MODULES_KEY } from './shared';
 
 // We use the same directive-detection logic as react-server-dom-webpack/node-loader:
 // the directive must be the first statement of the module, before any imports.
-// We accept both quote styles and trim leading whitespace / BOM / shebang.
-const USE_CLIENT_REGEX = /^\s*['"]use client['"];?\s*\n/;
+// We accept both quote styles, trim leading whitespace / BOM / shebang, and
+// terminate on either a newline OR end-of-input so one-line modules without
+// a trailing newline are still tagged. Whitespace between the closing quote
+// and the optional `;` is allowed per ES spec.
+const USE_CLIENT_REGEX = /^\s*['"]use client['"]\s*;?\s*(?:\n|$)/;
 
 // Strip leading shebangs (#!) and UTF-8 BOM so the regex above can match even
 // when those precede the directive.

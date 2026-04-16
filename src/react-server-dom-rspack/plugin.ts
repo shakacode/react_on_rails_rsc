@@ -276,21 +276,27 @@ export class RSCRspackPlugin {
     const modulesIterable = (compilation as unknown as { modules: Iterable<AnyModule> }).modules;
 
     /**
-     * Record a tagged module in the manifest under the given moduleId.
+     * Record a tagged module in the manifest.
      *
-     * `idOverride` lets the caller force a specific moduleId — needed for
-     * `ConcatenatedModule` inner modules, which have no moduleId of their
-     * own (scope hoisting folded them into their parent) and must instead
-     * be recorded under the parent's moduleId. This matches the webpack
-     * reference plugin's behavior (see the vendored
-     * react-server-dom-webpack-plugin.js — its `recordModule(moduleId, ...)`
-     * is called both on the outer module and, passing the same moduleId,
-     * on each inner concatenated module).
+     * `chunkSource` and `idOverride` let the caller force both the chunks
+     * and the moduleId — needed for `ConcatenatedModule` inner modules,
+     * which have no moduleId and do not appear in the chunk graph on
+     * their own (scope hoisting folded them into their parent). Inner
+     * modules must be recorded under the PARENT's moduleId AND the
+     * parent's chunk set, because at runtime the parent is what actually
+     * loads. This matches the webpack reference plugin's behavior: its
+     * `recordModule(moduleId, ...)` is called both on the outer module
+     * and, passing the same moduleId, on each inner concatenated module,
+     * while walking the outer module's chunk group.
      */
-    const recordModule = (module: AnyModule, idOverride?: string | number): void => {
+    const recordModule = (
+      module: AnyModule,
+      chunkSource: AnyModule,
+      idOverride?: string | number,
+    ): void => {
       if (!module.resource || !taggedPaths.has(module.resource)) return;
       const href = url.pathToFileURL(module.resource).href;
-      const id = idOverride ?? compilation.chunkGraph.getModuleId(module);
+      const id = idOverride ?? compilation.chunkGraph.getModuleId(chunkSource);
       if (id === null || id === undefined) {
         // A tagged client module has no moduleId — it will not appear in
         // the manifest, so the runtime cannot resolve it. Most likely a
@@ -304,7 +310,7 @@ export class RSCRspackPlugin {
       }
 
       const chunks: (string | number)[] = [];
-      for (const chunkUnknown of compilation.chunkGraph.getModuleChunks(module)) {
+      for (const chunkUnknown of compilation.chunkGraph.getModuleChunks(chunkSource)) {
         const chunk = chunkUnknown as AnyChunk;
         const files = chunk.files instanceof Set ? chunk.files : new Set(chunk.files);
         for (const file of files) {
@@ -341,18 +347,18 @@ export class RSCRspackPlugin {
 
     for (const m of modulesIterable) {
       const mod = m as AnyModule;
-      recordModule(mod);
+      // Record the module itself (chunks+id come from the module).
+      recordModule(mod, mod);
       // Handle ConcatenatedModule (scope-hoisted). Inner modules have no
-      // moduleId of their own — chunkGraph.getModuleId(inner) returns null,
-      // so a naive recursion would silently drop every concatenated client
-      // component from the manifest. Instead, reuse the OUTER module's
-      // moduleId for each inner recording, which is exactly what the
-      // webpack reference plugin does and what the runtime expects.
+      // moduleId and are NOT in the chunk graph on their own —
+      // chunkGraph.getModuleId(inner) returns null, getModuleChunks(inner)
+      // returns empty. A naive recursion would silently drop every
+      // concatenated client component from the manifest. Instead, pass
+      // the OUTER module as the chunk/id source so the inner entry ends
+      // up with the parent's id and chunks — which is what the runtime
+      // actually loads, since the parent is the one in the chunk.
       if (mod.modules) {
-        const outerId = compilation.chunkGraph.getModuleId(mod);
-        if (outerId !== null && outerId !== undefined) {
-          for (const inner of mod.modules) recordModule(inner, outerId);
-        }
+        for (const inner of mod.modules) recordModule(inner, mod);
       }
     }
 

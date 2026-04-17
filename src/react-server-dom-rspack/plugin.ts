@@ -22,9 +22,10 @@
  * client.node.ts work without changes.
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
-import { CLIENT_MODULES_KEY } from './shared';
+import { CLIENT_MODULES_KEY, hasUseClientDirective } from './shared';
 
 // Accept any bundler that looks compatible — webpack 5 or rspack. Typed loose
 // because we cannot depend on `@rspack/core` types without making it a hard
@@ -42,10 +43,14 @@ type AnyCompiler = {
   };
   context: string;
   hooks: {
+    beforeCompile: { tapAsync: (name: string, fn: (params: unknown, cb: (err?: Error | null) => void) => void) => void };
+    finishMake: { tapAsync: (name: string, fn: (compilation: unknown, cb: (err?: Error | null) => void) => void) => void };
     thisCompilation: { tap: (name: string, fn: (compilation: unknown) => void) => void };
   };
   rspack?: { version?: string };
   webpack?: { version?: string };
+  inputFileSystem?: { readFileSync?(p: string, enc: string): string };
+  resolverFactory?: { get(type: string, options?: unknown): unknown };
   getInfrastructureLogger?(name: string): AnyLogger;
 };
 
@@ -67,6 +72,7 @@ type AnyCompilation = {
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   };
   emitAsset(filename: string, source: unknown): void;
+  addInclude?(context: string, dep: unknown, options: { name: string }, cb: (err?: Error | null, module?: unknown) => void): void;
   warnings: unknown[];
   compiler: AnyCompiler;
   getLogger?(name: string): AnyLogger;
@@ -96,7 +102,23 @@ type AnyChunk = {
 type Bundler = {
   sources: { RawSource: new (source: string, convertToString?: boolean) => unknown };
   Compilation: { PROCESS_ASSETS_STAGE_REPORT: number };
+  EntryPlugin?: { createDependency(request: string, options: { name: string }): unknown };
+  Template?: { toPath(str: string): string };
 };
+
+/**
+ * A search-path descriptor matching the webpack plugin's `clientReferences`
+ * shape. Each entry tells the plugin to walk a directory for files matching
+ * `include` (a RegExp), optionally excluding via `exclude`.
+ */
+export type ClientReferenceSearchPath = {
+  directory: string;
+  recursive?: boolean;
+  include: RegExp;
+  exclude?: RegExp;
+};
+
+export type ClientReferencePath = string | ClientReferenceSearchPath;
 
 export interface Options {
   /**
@@ -111,6 +133,28 @@ export interface Options {
    * for server, matching the webpack plugin's defaults.
    */
   clientManifestFilename?: string;
+  /**
+   * Where to look for `"use client"` files. Each entry is either:
+   *   - A string (absolute path to a single file), or
+   *   - A search descriptor: `{ directory, recursive?, include, exclude? }`
+   *
+   * The plugin FS-walks each descriptor at `beforeCompile` time, reads
+   * every matching file, checks for the `"use client"` directive, and
+   * injects the discovered files into the bundle as named async chunks
+   * (via `compilation.addInclude`). This ensures the client/SSR bundle
+   * includes every client component even if nothing in the entry graph
+   * explicitly imports it — matching the webpack plugin's behavior.
+   *
+   * Default: `[{ directory: ".", recursive: true, include: /\.(js|ts|jsx|tsx)$/ }]`
+   * (scan the entire compiler context directory).
+   */
+  clientReferences?: ClientReferencePath | ReadonlyArray<ClientReferencePath>;
+  /**
+   * Template for naming async chunks created for each client reference.
+   * Supports `[index]` (sequential number) and `[request]` (sanitised
+   * file path). Default: `"client[index]"`.
+   */
+  chunkName?: string;
 }
 
 // Default loader rule — applied to all JS/TS files so our directive detector
@@ -126,6 +170,8 @@ export const RSC_LOADER_RULE = {
 
 export class RSCRspackPlugin {
   private readonly options: Options;
+  private readonly clientReferences: ClientReferenceSearchPath[];
+  private readonly chunkName: string;
 
   constructor(options: Options) {
     if (!options || typeof options.isServer !== 'boolean') {
@@ -134,6 +180,27 @@ export class RSCRspackPlugin {
       );
     }
     this.options = options;
+
+    // Normalize clientReferences exactly like the webpack plugin.
+    // Default: scan the entire context directory for JS/TS files.
+    if (options.clientReferences) {
+      const raw = Array.isArray(options.clientReferences)
+        ? options.clientReferences
+        : [options.clientReferences];
+      this.clientReferences = raw.map((ref) =>
+        typeof ref === 'string'
+          ? { directory: ref, recursive: true, include: /\.(js|ts|jsx|tsx)$/ }
+          : ref,
+      ) as ClientReferenceSearchPath[];
+    } else {
+      this.clientReferences = [
+        { directory: '.', recursive: true, include: /\.(js|ts|jsx|tsx)$/ },
+      ];
+    }
+
+    // Normalize chunkName — must contain [index] or [request].
+    const cn = typeof options.chunkName === 'string' ? options.chunkName : 'client[index]';
+    this.chunkName = /\[(index|request)\]/.test(cn) ? cn : cn + '[index]';
   }
 
   apply(compiler: AnyCompiler): void {
@@ -142,33 +209,79 @@ export class RSCRspackPlugin {
       : 'react-client-manifest.json';
     const manifestFilename = this.options.clientManifestFilename ?? defaultFilename;
 
-    // Determine which bundler this is so we can pull Compilation / sources
-    // from the correct namespace. We keep both paths so the plugin can run
-    // under webpack (for future consolidation) as well as rspack, but the
-    // webpack path is not the primary target.
     const bundler = this.resolveBundler(compiler);
 
     // Inject the tagging loader so every JS/TS module passes through it.
-    // We do this at apply-time so users don't have to add the rule manually.
     this.ensureLoaderRule(compiler);
 
+    // ── Phase 1: FS-walk discovery (before compilation starts) ──────
+    // Mirrors the webpack plugin's `beforeCompile` / `resolveAllClientFiles`.
+    // We synchronously walk each `clientReferences` search path, read files
+    // from disk, check for a `"use client"` directive, and stash the
+    // absolute paths.  This list is used in Phase 2 to inject async chunks.
+    let discoveredClientFiles: string[] = [];
+
+    compiler.hooks.beforeCompile.tapAsync(
+      'RSCRspackPlugin',
+      (_params: unknown, callback: (err?: Error | null) => void) => {
+        try {
+          discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
+          callback();
+        } catch (err) {
+          callback(err instanceof Error ? err : new Error(String(err)));
+        }
+      },
+    );
+
+    // ── Phase 2: inject discovered client files as async chunks ─────
+    // At `finishMake` every entry module has been built but assets have not
+    // been sealed yet. For each discovered "use client" file, we call
+    // `compilation.addInclude` with an EntryDependency created via
+    // `EntryPlugin.createDependency`. This causes rspack to resolve and
+    // build each file as a named async chunk — the same result the webpack
+    // plugin achieves by calling `module.addBlock(new AsyncDependenciesBlock(...))`.
+    compiler.hooks.finishMake.tapAsync(
+      'RSCRspackPlugin',
+      (compilationUnknown: unknown, callback: (err?: Error | null) => void) => {
+        const compilation = compilationUnknown as AnyCompilation;
+        if (!discoveredClientFiles.length || !compilation.addInclude || !bundler.EntryPlugin) {
+          callback();
+          return;
+        }
+
+        const toPath = bundler.Template?.toPath ?? ((s: string) => s.replace(/[^a-zA-Z0-9_!§$()=\-^°]+/g, '_'));
+        const context = compiler.context;
+        let pending = discoveredClientFiles.length;
+        let errored = false;
+
+        for (let i = 0; i < discoveredClientFiles.length; i++) {
+          const file = discoveredClientFiles[i]!;
+          const name = this.chunkName
+            .replace(/\[index\]/g, String(i))
+            .replace(/\[request\]/g, toPath(path.relative(context, file)));
+
+          const dep = bundler.EntryPlugin.createDependency(file, { name });
+          compilation.addInclude(context, dep, { name }, (err) => {
+            if (err && !errored) {
+              errored = true;
+              callback(err);
+              return;
+            }
+            if (--pending === 0 && !errored) callback();
+          });
+        }
+      },
+    );
+
+    // ── Phase 3: tag set + manifest emission ────────────────────────
     compiler.hooks.thisCompilation.tap('RSCRspackPlugin', (compilationUnknown) => {
       const compilation = compilationUnknown as AnyCompilation;
 
-      // Eagerly create the shared Set so the loader never races on
-      // initialization. Rspack can run JS loaders across a worker pool;
-      // two modules finishing simultaneously could both observe
-      // `existing === undefined` under a check-then-set pattern and one
-      // would clobber the other. By pre-creating the Set here (which runs
-      // exactly once per compilation, before any loader), the loader's
-      // only job is a safe `set.add(resourcePath)`.
+      // Eagerly create the shared Set so the loader never races on init.
       if (!getTagSet(compilation)) {
         setTagSet(compilation, new Set<string>());
       }
 
-      // At `processAssets` stage REPORT, walk the chunk graph and build
-      // the manifest. The tagged set lives on
-      // `compilation[CLIENT_MODULES_KEY]`.
       compilation.hooks.processAssets.tap(
         {
           name: 'RSCRspackPlugin',
@@ -178,11 +291,6 @@ export class RSCRspackPlugin {
           const taggedPaths = getTagSet(compilation) ?? new Set<string>();
           const logger = compilation.getLogger?.('RSCRspackPlugin');
           if (taggedPaths.size === 0) {
-            // Zero tagged modules almost always means the loader never ran
-            // (e.g., the auto-injected rule was overridden by user config,
-            // or the user's own rules.test regex didn't match). Push an
-            // info log — not a warning, because a legitimate RSC project
-            // with only server components has no client references.
             logger?.info(
               'No "use client" modules detected; emitting empty manifest. ' +
                 'If this is unexpected, ensure the RSC loader rule runs on your source files.',
@@ -202,6 +310,52 @@ export class RSCRspackPlugin {
         },
       );
     });
+  }
+
+  // ── FS-walk discovery ───────────────────────────────────────────────
+  // Mirrors the webpack plugin's `resolveAllClientFiles`. Walks each
+  // `clientReferences` search path synchronously, reads file content,
+  // checks for a `"use client"` directive (reusing the same detector
+  // the loader uses), and returns absolute paths.
+  private resolveAllClientFiles(compilerContext: string): string[] {
+    const results: string[] = [];
+    for (const ref of this.clientReferences) {
+      const dir = path.resolve(compilerContext, ref.directory);
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+      this.walkDir(dir, ref, results);
+    }
+    return results;
+  }
+
+  private walkDir(
+    dir: string,
+    ref: ClientReferenceSearchPath,
+    out: string[],
+  ): void {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        // Skip node_modules by default — the webpack plugin also doesn't
+        // recurse into them unless the user explicitly configures it.
+        if (entry.name === 'node_modules') continue;
+        if (ref.recursive !== false) this.walkDir(full, ref, out);
+      } else if (entry.isFile()) {
+        if (!ref.include.test(entry.name)) continue;
+        if (ref.exclude && ref.exclude.test(entry.name)) continue;
+        try {
+          const source = fs.readFileSync(full, 'utf-8');
+          if (hasUseClientDirective(source)) out.push(full);
+        } catch {
+          // unreadable file — skip
+        }
+      }
+    }
   }
 
   /**
@@ -411,7 +565,9 @@ export class RSCRspackPlugin {
 export default RSCRspackPlugin;
 
 function isBundler(b: unknown): b is Bundler {
-  if (!b || typeof b !== 'object') return false;
+  // Both rspack and webpack export a top-level FUNCTION (the bundler
+  // constructor), so we must accept 'function' as well as 'object'.
+  if (!b || (typeof b !== 'object' && typeof b !== 'function')) return false;
   const obj = b as { sources?: unknown; Compilation?: unknown };
   return (
     !!obj.sources &&

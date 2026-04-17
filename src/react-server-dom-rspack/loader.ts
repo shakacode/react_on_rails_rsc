@@ -17,39 +17,7 @@
  */
 
 import type { LoaderDefinition } from 'webpack';
-import { CLIENT_MODULES_KEY } from './shared';
-
-// We use the same directive-detection logic as react-server-dom-webpack/node-loader:
-// the directive must be the first statement of the module, before any imports.
-// We accept both quote styles, trim leading whitespace / BOM / shebang, and
-// terminate on either a newline OR end-of-input so one-line modules without
-// a trailing newline are still tagged. Whitespace between the closing quote
-// and the optional `;` is allowed per ES spec.
-const USE_CLIENT_REGEX = /^\s*['"]use client['"]\s*;?\s*(?:\n|$)/;
-
-// Strip leading shebangs (#!), UTF-8 BOM, AND any number of leading line
-// (`// ...`) or block (`/* ... */`) comments so the regex above can match
-// even when those precede the directive. The ECMAScript directive prologue
-// rules (and React's RSC spec) allow comments before directives — a copyright
-// header before `"use client"` is a common real-world case.
-const LEADING_COMMENTS = /^(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))+/;
-
-const stripProlog = (source: string): string => {
-  let s = source;
-  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1); // BOM
-  if (s.startsWith('#!')) {
-    const nl = s.indexOf('\n');
-    s = nl === -1 ? '' : s.slice(nl + 1);
-  }
-  // Strip any sequence of leading line or block comments, separated by
-  // whitespace. Repeated so that `/* a */ // b\n /* c */` all vanishes.
-  const stripped = s.replace(LEADING_COMMENTS, '');
-  if (stripped !== s) s = stripped;
-  return s;
-};
-
-const hasUseClientDirective = (source: string): boolean =>
-  USE_CLIENT_REGEX.test(stripProlog(source));
+import { CLIENT_MODULES_KEY, hasUseClientDirective } from './shared';
 
 const RSCRspackLoader: LoaderDefinition = function RSCRspackLoader(source) {
   // Our loader has a side effect: it mutates the compilation via

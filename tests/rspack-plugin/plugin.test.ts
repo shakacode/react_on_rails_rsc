@@ -123,14 +123,17 @@ describe('RSCRspackPlugin', () => {
       expect(paths.some((p) => p.endsWith('/nested/C.js'))).toBe(true);
     });
 
-    it('excludes unreachable "use client" files (dead code)', () => {
+    it('includes unreachable "use client" files via FS-walk discovery (matches webpack)', () => {
+      // With the default clientReferences (FS walk of the context dir),
+      // Dead.js IS discovered and injected — even though no entry imports
+      // it. This matches the webpack plugin's behavior: in RSC, the
+      // server-component tree may render a client file that the client
+      // entry never directly imports. The plugin must include it so the
+      // manifest is complete for the RSC runtime.
       const result = run('dead-code');
       const paths = Object.keys(result.manifest.filePathToModuleMetadata);
-      // Used.js is imported -> must be in manifest
       expect(paths.some((p) => p.endsWith('Used.js'))).toBe(true);
-      // Dead.js is NOT imported anywhere -> must NOT be in manifest
-      // This is the key advantage of module-graph walking over FS walking.
-      expect(paths.some((p) => p.endsWith('Dead.js'))).toBe(false);
+      expect(paths.some((p) => p.endsWith('Dead.js'))).toBe(true);
     });
 
     it('produces an empty manifest when no client files exist', () => {

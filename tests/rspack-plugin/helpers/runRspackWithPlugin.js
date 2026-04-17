@@ -52,7 +52,7 @@ const config = {
   entry: './index.js',
   output: {
     path: outputPath,
-    filename: 'main.js',
+    filename: '[name].js',
     chunkFilename: '[name].chunk.js',
     publicPath: publicPath ?? '',
     crossOriginLoading: crossOriginLoading ?? false,

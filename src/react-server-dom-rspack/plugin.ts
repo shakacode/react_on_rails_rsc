@@ -244,7 +244,12 @@ export class RSCRspackPlugin {
       'RSCRspackPlugin',
       (compilationUnknown: unknown, callback: (err?: Error | null) => void) => {
         const compilation = compilationUnknown as AnyCompilation;
-        if (!discoveredClientFiles.length || !compilation.addInclude || !bundler.EntryPlugin) {
+        // Only inject async chunks for the CLIENT bundle (isServer: false).
+        // The server bundle's entry graph already reaches all client files
+        // through the component tree (it renders them for SSR). Injecting
+        // there would conflict with LimitChunkCountPlugin({maxChunks:1})
+        // and the literal `filename: 'server-bundle.js'`.
+        if (this.options.isServer || !discoveredClientFiles.length || !compilation.addInclude || !bundler.EntryPlugin) {
           callback();
           return;
         }

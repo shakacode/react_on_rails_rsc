@@ -484,27 +484,18 @@ export class RSCRspackPlugin {
       { id: string | number | null; chunks: (string | number | null)[]; name: string }
     > = {};
 
-    // Iterate chunkGroups → chunks → modules, matching the webpack
-    // plugin's pattern (lines 241-291). For each chunk group, we first
-    // build the full `chunks` array (all chunks in the group), then
-    // record each module with that array. This ensures sibling chunks
-    // from split-chunk configs are included in the preload hints.
+    // Walk via chunkGroups → getChunkModulesIterable (matching the
+    // webpack plugin's iteration pattern, lines 241-291). However, for
+    // each module's `chunks` array we use `getModuleChunks(module)`
+    // rather than the full chunk-group chunk list. On webpack, the
+    // chunk-group approach works because entry chunk groups only contain
+    // chunks that are async-loadable. On rspack, entry chunk groups
+    // include the runtime chunk and other entry chunks that are NOT
+    // async-loadable — putting them in the manifest causes the Flight
+    // runtime to fail with `__webpack_modules__[moduleId] is not a
+    // function` when it tries to __webpack_chunk_load__ an entry chunk.
+    // Per-module chunks avoids this.
     for (const chunkGroup of compilation.chunkGroups) {
-      const chunks: (string | number | null)[] = [];
-      for (const chunkUnknown of chunkGroup.chunks) {
-        const c = chunkUnknown as AnyChunk;
-        const files = c.files instanceof Set ? c.files : new Set(c.files);
-        for (const file of files) {
-          // Match webpack exactly: if the first file is NOT .js, break
-          // (skip the chunk). If it's .hot-update.js, break. Otherwise
-          // record and break.
-          if (!file.endsWith('.js')) break;
-          if (file.endsWith('.hot-update.js')) break;
-          chunks.push(c.id, file);
-          break;
-        }
-      }
-
       for (const chunkUnknown of chunkGroup.chunks) {
         const chunk = chunkUnknown as AnyChunk;
         for (const m of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
@@ -514,12 +505,13 @@ export class RSCRspackPlugin {
           if (mod.resource === expectedRuntime) clientFileNameFound = true;
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
-          this.recordModule(mod, moduleId, chunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
-          // ConcatenatedModule: inner modules use the outer's moduleId
+          const moduleChunks = this.getChunksForModule(compilation, mod);
+          this.recordModule(mod, moduleId, moduleChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
+          // ConcatenatedModule: inner modules use the outer's id + chunks
           if (mod.modules) {
             for (const inner of mod.modules) {
               if (inner.resource === expectedRuntime) clientFileNameFound = true;
-              this.recordModule(inner, moduleId, chunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
+              this.recordModule(inner, moduleId, moduleChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
             }
           }
         }
@@ -559,6 +551,25 @@ export class RSCRspackPlugin {
 
   /** Stash resolved client files so buildManifest can filter by them. */
   private _resolvedClientFiles: string[] = [];
+
+  /** Build the chunks array for a module using getModuleChunks. */
+  private getChunksForModule(
+    compilation: AnyCompilation,
+    module: AnyModule,
+  ): (string | number | null)[] {
+    const chunks: (string | number | null)[] = [];
+    for (const chunkUnknown of compilation.chunkGraph.getModuleChunks(module)) {
+      const c = chunkUnknown as AnyChunk;
+      const files = c.files instanceof Set ? c.files : new Set(c.files);
+      for (const file of files) {
+        if (!file.endsWith('.js')) break;
+        if (file.endsWith('.hot-update.js')) break;
+        chunks.push(c.id, file);
+        break;
+      }
+    }
+    return chunks;
+  }
 
   /**
    * Record a single module in the manifest if it's a tagged client file.

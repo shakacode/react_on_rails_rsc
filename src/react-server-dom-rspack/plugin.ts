@@ -54,6 +54,10 @@ type AnyCompiler = {
   getInfrastructureLogger?(name: string): AnyLogger;
 };
 
+type AnyChunkGroup = {
+  chunks: Iterable<unknown>;
+};
+
 type AnyCompilation = {
   hooks: {
     processAssets: {
@@ -63,12 +67,11 @@ type AnyCompilation = {
   chunkGraph: {
     getModuleChunks(module: unknown): Iterable<unknown>;
     getModuleId(module: unknown): string | number | null;
+    getChunkModulesIterable(chunk: unknown): Iterable<unknown>;
   };
+  chunkGroups: Iterable<AnyChunkGroup>;
   outputOptions: {
-    // `publicPath` can be a string (`'/packs/'`, `'auto'`), a function
-    // (rspack/webpack 5: `(pathData) => string`), or undefined. Typed
-    // loosely so buildManifest can inspect the raw value and normalize.
-    publicPath?: string | ((...args: unknown[]) => string);
+    publicPath?: string;
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   };
   emitAsset(filename: string, source: unknown): void;
@@ -95,7 +98,7 @@ type AnyModule = {
 };
 
 type AnyChunk = {
-  id?: string | number | null;
+  id: string | number | null;
   files: Set<string> | string[];
 };
 
@@ -104,6 +107,7 @@ type Bundler = {
   Compilation: { PROCESS_ASSETS_STAGE_REPORT: number };
   EntryPlugin?: { createDependency(request: string, options: { name: string }): unknown };
   Template?: { toPath(str: string): string };
+  WebpackError?: new (message: string) => Error;
 };
 
 /**
@@ -170,7 +174,7 @@ export const RSC_LOADER_RULE = {
 
 export class RSCRspackPlugin {
   private readonly options: Options;
-  private readonly clientReferences: ClientReferenceSearchPath[];
+  private readonly clientReferences: (string | ClientReferenceSearchPath)[];
   private readonly chunkName: string;
 
   constructor(options: Options) {
@@ -183,18 +187,22 @@ export class RSCRspackPlugin {
 
     // Normalize clientReferences exactly like the webpack plugin.
     // Default: scan the entire context directory for JS/TS files.
+    //
+    // When a string is passed, the webpack plugin treats it as a DIRECT
+    // file reference (unconditionally included, no "use client" check).
+    // We store those separately and handle them in resolveAllClientFiles.
     if (options.clientReferences) {
       const raw = Array.isArray(options.clientReferences)
         ? options.clientReferences
         : [options.clientReferences];
       this.clientReferences = raw.map((ref) =>
         typeof ref === 'string'
-          ? { directory: ref, recursive: true, include: /\.(js|ts|jsx|tsx)$/ }
+          ? ref // keep as string — resolved in resolveAllClientFiles
           : ref,
-      ) as ClientReferenceSearchPath[];
+      );
     } else {
       this.clientReferences = [
-        { directory: '.', recursive: true, include: /\.(js|ts|jsx|tsx)$/ },
+        { directory: '.', recursive: true, include: /\.[cm]?[jt]sx?$/ },
       ];
     }
 
@@ -225,7 +233,14 @@ export class RSCRspackPlugin {
       'RSCRspackPlugin',
       (_params: unknown, callback: (err?: Error | null) => void) => {
         try {
-          discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
+          // Only run the FS walk for client bundles. Server bundles reach
+          // all client components through their entry graph; injection is
+          // skipped in finishMake anyway.
+          if (!this.options.isServer) {
+            discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
+          }
+          // Stash so buildManifest can filter by discovered files
+          this._resolvedClientFiles = discoveredClientFiles;
           callback();
         } catch (err) {
           callback(err instanceof Error ? err : new Error(String(err)));
@@ -303,7 +318,7 @@ export class RSCRspackPlugin {
           } else {
             logger?.debug(`Tagged ${taggedPaths.size} "use client" module(s)`);
           }
-          const manifest = this.buildManifest(compilation, taggedPaths, logger);
+          const manifest = this.buildManifest(compilation, taggedPaths, bundler, logger);
           logger?.debug(
             `Emitting ${manifestFilename} with ` +
               `${Object.keys(manifest.filePathToModuleMetadata).length} entries`,
@@ -318,22 +333,36 @@ export class RSCRspackPlugin {
   }
 
   // ── FS-walk discovery ───────────────────────────────────────────────
-  // Mirrors the webpack plugin's `resolveAllClientFiles`. Walks each
-  // `clientReferences` search path synchronously, reads file content,
-  // checks for a `"use client"` directive (reusing the same detector
-  // the loader uses), and returns absolute paths.
+  // Mirrors the webpack plugin's `resolveAllClientFiles`. For each
+  // `clientReferences` entry:
+  //   - string → direct file reference (unconditionally included, matching
+  //     the webpack plugin's behavior — no "use client" check)
+  //   - search descriptor → walk directory, read files, check for directive
   private resolveAllClientFiles(compilerContext: string): string[] {
     const results: string[] = [];
     for (const ref of this.clientReferences) {
+      if (typeof ref === 'string') {
+        // String = direct file reference. The webpack plugin wraps it in
+        // a ClientReferenceDependency unconditionally (line 337). We do
+        // the same: include it without checking for "use client".
+        const resolved = path.resolve(compilerContext, ref);
+        try {
+          if (fs.statSync(resolved).isFile()) results.push(resolved);
+        } catch { /* not found — skip */ }
+        continue;
+      }
       const dir = path.resolve(compilerContext, ref.directory);
-      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
-      this.walkDir(dir, ref, results);
+      try {
+        if (!fs.statSync(dir).isDirectory()) continue;
+      } catch { continue; }
+      this.walkDir(dir, dir, ref, results);
     }
     return results;
   }
 
   private walkDir(
     dir: string,
+    walkRoot: string,
     ref: ClientReferenceSearchPath,
     out: string[],
   ): void {
@@ -345,14 +374,22 @@ export class RSCRspackPlugin {
     }
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        // Skip node_modules by default — the webpack plugin also doesn't
-        // recurse into them unless the user explicitly configures it.
-        if (entry.name === 'node_modules') continue;
-        if (ref.recursive !== false) this.walkDir(full, ref, out);
-      } else if (entry.isFile()) {
-        if (!ref.include.test(entry.name)) continue;
-        if (ref.exclude && ref.exclude.test(entry.name)) continue;
+      // Use fs.statSync to follow symlinks (Dirent.isFile/isDirectory
+      // return false for symlinks). This matches the webpack plugin's
+      // behavior which resolves symlinks via the normal resolver.
+      let stat: fs.Stats;
+      try { stat = fs.statSync(full); } catch { continue; }
+
+      if (stat.isDirectory()) {
+        if (ref.recursive !== false) this.walkDir(full, walkRoot, ref, out);
+      } else if (stat.isFile()) {
+        // Test include/exclude against the RELATIVE path from the walk
+        // root (e.g. "./components/Button.tsx"), matching the webpack
+        // plugin's contextModuleFactory behavior which tests against the
+        // relative request path.
+        const relPath = './' + path.relative(walkRoot, full);
+        if (!ref.include.test(relPath)) continue;
+        if (ref.exclude && ref.exclude.test(relPath)) continue;
         try {
           const source = fs.readFileSync(full, 'utf-8');
           if (hasUseClientDirective(source)) out.push(full);
@@ -415,154 +452,147 @@ export class RSCRspackPlugin {
   /**
    * Build the RoR-shape manifest from the tagged module set.
    *
-   * Walks the compilation's modules to find the ones we tagged, then for each
-   * uses `chunkGraph.getModuleChunks(module)` to build the `chunks` array.
+   * Iterates `compilation.chunkGroups` (matching the webpack plugin's
+   * pattern) so the `chunks` array for each module reflects ALL chunks
+   * in the chunk group — not just the ones directly containing the
+   * module. This matters for split-chunk configurations where sibling
+   * chunks must be preloaded together.
    */
   private buildManifest(
     compilation: AnyCompilation,
     taggedPaths: Set<string>,
+    bundler: Bundler,
     logger?: AnyLogger,
   ): {
     moduleLoading: { prefix: string; crossOrigin: string | null };
-    filePathToModuleMetadata: Record<string, { id: string; chunks: (string | number)[]; name: string }>;
+    filePathToModuleMetadata: Record<string, { id: string | number | null; chunks: (string | number | null)[]; name: string }>;
   } {
+    // Check if the client runtime module was found in this compilation.
+    // The webpack plugin emits a warning and skips manifest emission if
+    // the runtime is missing (likely a misconfiguration).
+    const clientFileNameOnClient = path.resolve(__dirname, '../react-server-dom-webpack/client.browser.js');
+    const clientFileNameOnServer = path.resolve(__dirname, '../react-server-dom-webpack/client.node.js');
+    const expectedRuntime = this.options.isServer ? clientFileNameOnServer : clientFileNameOnClient;
+    let clientFileNameFound = false;
+
+    const resolvedClientFiles = new Set(
+      (this._resolvedClientFiles ?? []).map((f: string) => f),
+    );
+
     const filePathToModuleMetadata: Record<
       string,
-      { id: string; chunks: (string | number)[]; name: string }
+      { id: string | number | null; chunks: (string | number | null)[]; name: string }
     > = {};
 
-    // Iterate compilation.modules (both webpack and rspack expose it).
-    const modulesIterable = (compilation as unknown as { modules: Iterable<AnyModule> }).modules;
-
-    /**
-     * Record a tagged module in the manifest.
-     *
-     * `chunkSource` and `idOverride` let the caller force both the chunks
-     * and the moduleId — needed for `ConcatenatedModule` inner modules,
-     * which have no moduleId and do not appear in the chunk graph on
-     * their own (scope hoisting folded them into their parent). Inner
-     * modules must be recorded under the PARENT's moduleId AND the
-     * parent's chunk set, because at runtime the parent is what actually
-     * loads. This matches the webpack reference plugin's behavior: its
-     * `recordModule(moduleId, ...)` is called both on the outer module
-     * and, passing the same moduleId, on each inner concatenated module,
-     * while walking the outer module's chunk group.
-     */
-    const recordModule = (
-      module: AnyModule,
-      chunkSource: AnyModule,
-      idOverride?: string | number,
-    ): void => {
-      if (!module.resource || !taggedPaths.has(module.resource)) return;
-      const href = url.pathToFileURL(module.resource).href;
-      const id = idOverride ?? compilation.chunkGraph.getModuleId(chunkSource);
-      if (id === null || id === undefined) {
-        // A tagged client module has no moduleId — it will not appear in
-        // the manifest, so the runtime cannot resolve it. Most likely a
-        // tree-shaken / dead-code-eliminated module. Warn so the user can
-        // investigate rather than seeing an opaque "Could not find module"
-        // at render time.
-        logger?.warn(
-          `"use client" module has no moduleId and will be omitted from the manifest: ${module.resource}`,
-        );
-        return;
+    // Iterate chunkGroups → chunks → modules, matching the webpack
+    // plugin's pattern (lines 241-291). For each chunk group, we first
+    // build the full `chunks` array (all chunks in the group), then
+    // record each module with that array. This ensures sibling chunks
+    // from split-chunk configs are included in the preload hints.
+    for (const chunkGroup of compilation.chunkGroups) {
+      const chunks: (string | number | null)[] = [];
+      for (const chunkUnknown of chunkGroup.chunks) {
+        const c = chunkUnknown as AnyChunk;
+        const files = c.files instanceof Set ? c.files : new Set(c.files);
+        for (const file of files) {
+          // Match webpack exactly: if the first file is NOT .js, break
+          // (skip the chunk). If it's .hot-update.js, break. Otherwise
+          // record and break.
+          if (!file.endsWith('.js')) break;
+          if (file.endsWith('.hot-update.js')) break;
+          chunks.push(c.id, file);
+          break;
+        }
       }
 
-      const chunks: (string | number)[] = [];
-      for (const chunkUnknown of compilation.chunkGraph.getModuleChunks(chunkSource)) {
+      for (const chunkUnknown of chunkGroup.chunks) {
         const chunk = chunkUnknown as AnyChunk;
-        const files = chunk.files instanceof Set ? chunk.files : new Set(chunk.files);
-        for (const file of files) {
-          if (file.endsWith('.js') && !file.endsWith('.hot-update.js')) {
-            if (chunk.id !== null && chunk.id !== undefined) {
-              // Stringify chunk.id to match the entry `id` stringification
-              // below — keeps the manifest values a uniform string type
-              // rather than a mix of string / number.
-              chunks.push(String(chunk.id));
+        for (const m of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
+          const mod = m as AnyModule;
+
+          // Check if this is the client runtime module
+          if (mod.resource === expectedRuntime) clientFileNameFound = true;
+
+          const moduleId = compilation.chunkGraph.getModuleId(mod);
+          this.recordModule(mod, moduleId, chunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
+          // ConcatenatedModule: inner modules use the outer's moduleId
+          if (mod.modules) {
+            for (const inner of mod.modules) {
+              if (inner.resource === expectedRuntime) clientFileNameFound = true;
+              this.recordModule(inner, moduleId, chunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
             }
-            chunks.push(file);
-            break;
           }
         }
       }
+    }
 
-      if (filePathToModuleMetadata[href]) {
-        // Collision (multiple visits for same resource, e.g. via
-        // ConcatenatedModule iteration) — merge chunks without duplicates.
-        const existing = filePathToModuleMetadata[href];
-        const seen = new Set<string | number>();
-        for (let i = 0; i < existing.chunks.length; i += 2) seen.add(existing.chunks[i]!);
-        for (let i = 0; i < chunks.length; i += 2) {
-          if (!seen.has(chunks[i]!)) existing.chunks.push(chunks[i]!, chunks[i + 1]!);
-        }
-      } else {
-        filePathToModuleMetadata[href] = {
-          id: String(id),
-          chunks,
-          name: '*',
-        };
-      }
-    };
-
-    for (const m of modulesIterable) {
-      const mod = m as AnyModule;
-      // Record the module itself (chunks+id come from the module).
-      recordModule(mod, mod);
-      // Handle ConcatenatedModule (scope-hoisted). Inner modules have no
-      // moduleId and are NOT in the chunk graph on their own —
-      // chunkGraph.getModuleId(inner) returns null, getModuleChunks(inner)
-      // returns empty. A naive recursion would silently drop every
-      // concatenated client component from the manifest. Instead, pass
-      // the OUTER module as the chunk/id source so the inner entry ends
-      // up with the parent's id and chunks — which is what the runtime
-      // actually loads, since the parent is the one in the chunk.
-      if (mod.modules) {
-        for (const inner of mod.modules) recordModule(inner, mod);
-      }
+    // Warn if the client runtime was not found (matches webpack plugin
+    // lines 206-213). Without the runtime, the manifest is useless.
+    if (!clientFileNameFound) {
+      const warning = bundler.WebpackError
+        ? new bundler.WebpackError(
+            `Client runtime at react-on-rails-rsc/client was not found. ` +
+              `React Server Components module map file ${this.options.clientManifestFilename ?? '(default)'} was not created.`,
+          )
+        : new Error(
+            `Client runtime at react-on-rails-rsc/client was not found.`,
+          );
+      compilation.warnings.push(warning);
     }
 
     const crossOriginRaw = compilation.outputOptions.crossOriginLoading;
     const crossOrigin =
-      crossOriginRaw === 'use-credentials'
-        ? 'use-credentials'
-        : crossOriginRaw === 'anonymous'
-          ? 'anonymous'
-          : null;
-
-    // publicPath normalization:
-    // - A plain URL/path string: use verbatim.
-    // - `'auto'`: resolved at runtime by the bundler; there is no compile-
-    //   time answer, and the literal string `"auto"` in the manifest would
-    //   be concatenated with chunk filenames at load time, producing
-    //   `"auto/main.js"` — a broken URL. Fall back to empty string and warn
-    //   so the user can configure an explicit publicPath for RSC.
-    // - A function or unknown non-string type: fall back to empty.
-    const rawPrefix = compilation.outputOptions.publicPath;
-    let prefix: string;
-    if (typeof rawPrefix === 'string' && rawPrefix !== 'auto') {
-      prefix = rawPrefix;
-    } else {
-      if (rawPrefix === 'auto') {
-        logger?.warn(
-          "output.publicPath is 'auto', which cannot be resolved at build time. " +
-            'Set an explicit publicPath for the RSC manifest to reference chunks correctly.',
-        );
-      } else if (typeof rawPrefix === 'function') {
-        logger?.warn(
-          'output.publicPath is a function, which the RSC manifest cannot serialize. ' +
-            'Set a string publicPath for reliable chunk resolution.',
-        );
-      }
-      prefix = '';
-    }
+      typeof crossOriginRaw === 'string'
+        ? crossOriginRaw === 'use-credentials'
+          ? crossOriginRaw
+          : 'anonymous'
+        : null;
 
     return {
       moduleLoading: {
-        prefix,
+        prefix: compilation.outputOptions.publicPath || '',
         crossOrigin,
       },
       filePathToModuleMetadata,
     };
+  }
+
+  /** Stash resolved client files so buildManifest can filter by them. */
+  private _resolvedClientFiles: string[] = [];
+
+  /**
+   * Record a single module in the manifest if it's a tagged client file.
+   * `moduleId` and `chunks` come from the enclosing context (the chunk
+   * group walk or the outer ConcatenatedModule).
+   */
+  private recordModule(
+    module: AnyModule,
+    moduleId: string | number | null,
+    chunks: (string | number | null)[],
+    taggedPaths: Set<string>,
+    resolvedClientFiles: Set<string>,
+    filePathToModuleMetadata: Record<string, { id: string | number | null; chunks: (string | number | null)[]; name: string }>,
+  ): void {
+    if (!module.resource) return;
+    if (!resolvedClientFiles.has(module.resource) && !taggedPaths.has(module.resource)) return;
+    if (moduleId === null || moduleId === undefined) return;
+
+    const href = url.pathToFileURL(module.resource).href;
+    if (filePathToModuleMetadata[href]) {
+      // Collision — merge chunks without duplicates (same as webpack)
+      const existing = filePathToModuleMetadata[href];
+      const seen = new Set<string | number>();
+      for (let i = 0; i < existing.chunks.length; i += 2) seen.add(existing.chunks[i]!);
+      for (let i = 0; i < chunks.length; i += 2) {
+        if (!seen.has(chunks[i]!)) existing.chunks.push(chunks[i]!, chunks[i + 1]!);
+      }
+    } else {
+      filePathToModuleMetadata[href] = {
+        id: moduleId,
+        chunks: chunks.slice(),
+        name: '*',
+      };
+    }
   }
 }
 

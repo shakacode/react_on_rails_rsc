@@ -183,11 +183,12 @@ describe('RSCRspackPlugin', () => {
   });
 
   describe('publicPath handling', () => {
-    it('falls back to empty string and warns when publicPath is "auto"', () => {
+    it('passes publicPath "auto" through verbatim (matches webpack)', () => {
       const result = run('basic-client', { publicPath: 'auto' });
-      // 'auto' cannot be resolved at build time, so the plugin falls back
-      // to empty string to avoid emitting a broken `"auto/main.js"` URL.
-      expect(result.manifest.moduleLoading.prefix).toBe('');
+      // Matches webpack plugin behavior: publicPath || "" — since "auto"
+      // is truthy, it passes through. The runtime may produce broken URLs
+      // like "auto/main.js" but this matches the webpack contract.
+      expect(result.manifest.moduleLoading.prefix).toBe('auto');
     });
 
     it('preserves an absolute URL publicPath', () => {

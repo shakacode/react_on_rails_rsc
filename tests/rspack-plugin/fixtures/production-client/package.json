@@ -1,0 +1,5 @@
+{
+  "name": "production-client-fixture",
+  "version": "0.0.0",
+  "sideEffects": ["./*.js"]
+}

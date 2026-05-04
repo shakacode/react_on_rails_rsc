@@ -665,7 +665,7 @@ function initializeModelChunk(chunk) {
   chunk.value = null;
   chunk.reason = null;
   try {
-    var value = JSON.parse(resolvedModel, chunk._response._fromJSON),
+    var value = parseModel(chunk._response, resolvedModel),
       resolveListeners = chunk.value;
     null !== resolveListeners &&
       ((chunk.value = null),
@@ -1033,11 +1033,9 @@ function ResponseInstance(
   this._nonce = nonce;
   this._chunks = chunks;
   this._stringDecoder = new TextDecoder();
-  this._fromJSON = null;
   this._rowLength = this._rowTag = this._rowID = this._rowState = 0;
   this._buffer = [];
   this._tempRefs = temporaryReferences;
-  this._fromJSON = createFromJSONCallback(this);
 }
 function resolveBuffer(response, id, buffer) {
   var chunks = response._chunks,
@@ -1049,7 +1047,7 @@ function resolveBuffer(response, id, buffer) {
 function resolveModule(response, id, model) {
   var chunks = response._chunks,
     chunk = chunks.get(id);
-  model = JSON.parse(model, response._fromJSON);
+  model = parseModel(response, model);
   var clientReference = resolveClientReference(response._bundlerConfig, model);
   if ((model = preloadModule(clientReference))) {
     if (chunk) {
@@ -1357,7 +1355,7 @@ function processFullBinaryRow(response, id, tag, buffer, chunk) {
     case 72:
       id = buffer[0];
       buffer = buffer.slice(1);
-      response = JSON.parse(buffer, response._fromJSON);
+      response = parseModel(response, buffer);
       buffer = ReactDOMSharedInternals.d;
       switch (id) {
         case "D":
@@ -1447,45 +1445,58 @@ function processFullBinaryRow(response, id, tag, buffer, chunk) {
             );
   }
 }
-function createFromJSONCallback(response) {
-  return function (key, value) {
-    if ("string" === typeof value)
-      return parseModelString(response, this, key, value);
-    if ("object" === typeof value && null !== value) {
-      if (value[0] === REACT_ELEMENT_TYPE) {
-        if (
-          ((key = {
+function parseModel(response, json) {
+  json = JSON.parse(json);
+  return reviveModel(response, json, { "": json }, "");
+}
+function reviveModel(response, value, parentObject, key) {
+  if ("string" === typeof value)
+    return "$" === value[0]
+      ? parseModelString(response, parentObject, key, value)
+      : value;
+  if ("object" !== typeof value || null === value) return value;
+  if (isArrayImpl(value)) {
+    for (var i = 0; i < value.length; i++)
+      value[i] = reviveModel(response, value[i], value, "" + i);
+    if (value[0] === REACT_ELEMENT_TYPE) {
+      if (value[0] === REACT_ELEMENT_TYPE)
+        b: {
+          value = {
             $$typeof: REACT_ELEMENT_TYPE,
             type: value[1],
             key: value[2],
             ref: null,
             props: value[3]
-          }),
-          null !== initializingHandler)
-        )
-          if (
-            ((value = initializingHandler),
-            (initializingHandler = value.parent),
-            value.errored)
-          )
-            (key = new ReactPromise("rejected", null, value.value, response)),
-              (key = createLazyChunkWrapper(key));
-          else if (0 < value.deps) {
-            var blockedChunk = new ReactPromise(
-              "blocked",
-              null,
-              null,
-              response
-            );
-            value.value = key;
-            value.chunk = blockedChunk;
-            key = createLazyChunkWrapper(blockedChunk);
+          };
+          if (null !== initializingHandler) {
+            i = initializingHandler;
+            initializingHandler = i.parent;
+            if (i.errored) {
+              response = new ReactPromise("rejected", null, i.value, response);
+              response = createLazyChunkWrapper(response);
+              break b;
+            }
+            if (0 < i.deps) {
+              response = new ReactPromise("blocked", null, null, response);
+              i.value = value;
+              i.chunk = response;
+              response = createLazyChunkWrapper(response);
+              break b;
+            }
           }
-      } else key = value;
-      return key;
+          response = value;
+        }
+      else response = value;
+      return response;
     }
     return value;
-  };
+  }
+  for (i in value)
+    "__proto__" === i
+      ? delete value[i]
+      : ((parentObject = reviveModel(response, value[i], value, i)),
+        void 0 !== parentObject ? (value[i] = parentObject) : delete value[i]);
+  return value;
 }
 function createResponseFromOptions(options) {
   return new ResponseInstance(

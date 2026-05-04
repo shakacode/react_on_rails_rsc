@@ -1205,7 +1205,7 @@
       chunk.value = null;
       chunk.reason = null;
       try {
-        var value = JSON.parse(resolvedModel, chunk._response._fromJSON),
+        var value = parseModel(chunk._response, resolvedModel),
           resolveListeners = chunk.value;
         null !== resolveListeners &&
           ((chunk.value = null),
@@ -1637,6 +1637,7 @@
                 get: function () {
                   return "This object has been omitted by React in the console log to avoid sending too much data from the server. Try logging smaller or more specific objects.";
                 },
+                set: function () {},
                 enumerable: !0,
                 configurable: !1
               }),
@@ -1677,7 +1678,6 @@
       this._nonce = nonce;
       this._chunks = chunks;
       this._stringDecoder = new util.TextDecoder();
-      this._fromJSON = null;
       this._rowLength = this._rowTag = this._rowID = this._rowState = 0;
       this._buffer = [];
       this._tempRefs = temporaryReferences;
@@ -1692,7 +1692,6 @@
       this._replayConsole = replayConsole;
       this._rootEnvironmentName =
         void 0 === environmentName ? "Server" : environmentName;
-      this._fromJSON = createFromJSONCallback(this);
     }
     function resolveModel(response, id, model) {
       var chunks = response._chunks,
@@ -1721,7 +1720,7 @@
     function resolveModule(response, id, model) {
       var chunks = response._chunks,
         chunk = chunks.get(id);
-      model = JSON.parse(model, response._fromJSON);
+      model = parseModel(response, model);
       var clientReference = resolveClientReference(
         response._bundlerConfig,
         model
@@ -1973,7 +1972,7 @@
       return response;
     }
     function resolveHint(response, code, model) {
-      response = JSON.parse(model, response._fromJSON);
+      response = parseModel(response, model);
       model = ReactDOMSharedInternals.d;
       switch (code) {
         case "D":
@@ -2131,7 +2130,7 @@
     }
     function resolveConsoleEntry(response, value) {
       if (response._replayConsole) {
-        var payload = JSON.parse(value, response._fromJSON);
+        var payload = parseModel(response, value);
         value = payload[0];
         var stackTrace = payload[1],
           owner = payload[2],
@@ -2292,67 +2291,90 @@
           resolveModel(response, id, row);
       }
     }
-    function createFromJSONCallback(response) {
-      return function (key, value) {
-        if ("string" === typeof value)
-          return parseModelString(response, this, key, value);
-        if ("object" === typeof value && null !== value) {
+    function parseModel(response, json) {
+      json = JSON.parse(json);
+      return reviveModel(response, json, { "": json }, "");
+    }
+    function reviveModel(response, value, parentObject, key) {
+      if ("string" === typeof value)
+        return "$" === value[0]
+          ? parseModelString(response, parentObject, key, value)
+          : value;
+      if ("object" !== typeof value || null === value) return value;
+      if (isArrayImpl(value)) {
+        for (var i = 0; i < value.length; i++)
+          value[i] = reviveModel(response, value[i], value, "" + i);
+        if (value[0] === REACT_ELEMENT_TYPE) {
           if (value[0] === REACT_ELEMENT_TYPE)
-            if (
-              ((key = value[4]),
-              (value = {
+            b: {
+              i = value[4];
+              value = {
                 $$typeof: REACT_ELEMENT_TYPE,
                 type: value[1],
                 key: value[2],
                 props: value[3],
-                _owner: null === key ? response._debugRootOwner : key
-              }),
+                _owner: null === i ? response._debugRootOwner : i
+              };
               Object.defineProperty(value, "ref", {
                 enumerable: !1,
                 get: nullRefGetter
-              }),
-              (value._store = {}),
+              });
+              value._store = {};
               Object.defineProperty(value._store, "validated", {
                 configurable: !1,
                 enumerable: !1,
                 writable: !0,
                 value: 1
-              }),
+              });
               Object.defineProperty(value, "_debugInfo", {
                 configurable: !1,
                 enumerable: !1,
                 writable: !0,
                 value: null
-              }),
-              null !== initializingHandler)
-            ) {
-              var handler = initializingHandler;
-              initializingHandler = handler.parent;
-              handler.errored
-                ? ((key = new ReactPromise(
+              });
+              if (null !== initializingHandler) {
+                i = initializingHandler;
+                initializingHandler = i.parent;
+                if (i.errored) {
+                  response = new ReactPromise(
                     "rejected",
                     null,
-                    handler.value,
+                    i.value,
                     response
-                  )),
-                  (value = {
+                  );
+                  value = {
                     name: getComponentNameFromType(value.type) || "",
                     owner: value._owner
-                  }),
-                  (key._debugInfo = [value]),
-                  (value = createLazyChunkWrapper(key)))
-                : 0 < handler.deps &&
-                  ((key = new ReactPromise("blocked", null, null, response)),
-                  (handler.value = value),
-                  (handler.chunk = key),
-                  (value = Object.freeze.bind(Object, value.props)),
-                  key.then(value, value),
-                  (value = createLazyChunkWrapper(key)));
-            } else Object.freeze(value.props);
-          return value;
+                  };
+                  response._debugInfo = [value];
+                  response = createLazyChunkWrapper(response);
+                  break b;
+                }
+                if (0 < i.deps) {
+                  response = new ReactPromise("blocked", null, null, response);
+                  i.value = value;
+                  i.chunk = response;
+                  value = Object.freeze.bind(Object, value.props);
+                  response.then(value, value);
+                  response = createLazyChunkWrapper(response);
+                  break b;
+                }
+              } else Object.freeze(value.props);
+              response = value;
+            }
+          else response = value;
+          return response;
         }
         return value;
-      };
+      }
+      for (i in value)
+        "__proto__" === i
+          ? delete value[i]
+          : ((parentObject = reviveModel(response, value[i], value, i)),
+            void 0 !== parentObject
+              ? (value[i] = parentObject)
+              : delete value[i]);
+      return value;
     }
     function noServerCall() {
       throw Error(

@@ -3028,6 +3028,7 @@ exports.registerServerReference = function (reference, id, exportName) {
   });
 };
 exports.renderToPipeableStream = function (model, webpackMap, options) {
+  globalThis.__reactFlightClientManifest = webpackMap;
   var request = new RequestInstance(
       20,
       model,

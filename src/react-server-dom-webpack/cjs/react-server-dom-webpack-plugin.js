@@ -206,7 +206,7 @@ class ReactFlightWebpackPlugin {
           if (!1 === clientFileNameFound)
             compilation.warnings.push(
               new webpack.WebpackError(
-                "Client runtime at react-on-rails-rsc/client was not found. React Server Components module map file " +
+                "Client runtime at react-server-dom-webpack/client was not found. React Server Components module map file " +
                   _this.clientManifestFilename +
                   " was not created."
               )
@@ -238,6 +238,10 @@ class ReactFlightWebpackPlugin {
                   runtimeChunkFiles.add(runtimeFile);
                 });
             });
+            var cssPrefix =
+              "string" === typeof compilation.outputOptions.publicPath
+                ? compilation.outputOptions.publicPath
+                : "";
             compilation.chunkGroups.forEach(function (chunkGroup) {
               function recordModule(id, module) {
                 if (
@@ -253,23 +257,33 @@ class ReactFlightWebpackPlugin {
                     for (i = 0; i < chunks.length; i += 2)
                       module.has(chunks[i]) ||
                         id.chunks.push(chunks[i], chunks[i + 1]);
+                    null == id.css && (id.css = []);
+                    for (module = 0; module < cssFiles.length; module++)
+                      -1 === id.css.indexOf(cssFiles[module]) &&
+                        id.css.push(cssFiles[module]);
                   } else
                     filePathToModuleMetadata[module] = {
                       id,
                       chunks: chunks.slice(),
+                      css: cssFiles.slice(),
                       name: "*"
                     };
               }
-              const chunks = [];
+              const chunks = [],
+                cssFiles = [];
               chunkGroup.chunks.forEach(function (c) {
                 var _iterator = _createForOfIteratorHelper(c.files),
                   _step;
                 try {
                   for (_iterator.s(); !(_step = _iterator.n()).done; ) {
                     const file = _step.value;
-                    if (
+                    if (file.endsWith(".css")) {
+                      const cssUrl = cssPrefix + file;
+                      -1 === cssFiles.indexOf(cssUrl) && cssFiles.push(cssUrl);
+                    } else if (
                       file.endsWith(".js") &&
-                      !file.endsWith(".hot-update.js")
+                      !file.endsWith(".hot-update.js") &&
+                      (_this.isServer || !runtimeChunkFiles.has(file))
                     ) {
                       chunks.push(c.id, file);
                       break;

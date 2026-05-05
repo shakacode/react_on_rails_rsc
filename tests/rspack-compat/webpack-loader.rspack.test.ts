@@ -121,11 +121,13 @@ describe('RSCWebpackLoader runs under rspack', () => {
           ],
         },
         externals: {
-          // The transformed output imports from react-on-rails-rsc/server.
-          // We don't need to resolve it for this test — we just want to
-          // verify the loader RAN and emitted the right shape.
+          // The transformed output imports from react-on-rails-rsc/server and
+          // (for the use-client CSS wrapper) react. We don't need to resolve
+          // them for this test — we just want to verify the loader RAN and
+          // emitted the right shape.
           'react-on-rails-rsc/server': 'commonjs2 react-on-rails-rsc/server',
           'react-server-dom-webpack/server': 'commonjs2 react-server-dom-webpack/server',
+          react: 'commonjs2 react',
         },
       },
       tmpDir,
@@ -170,11 +172,13 @@ describe('RSCWebpackLoader runs under rspack', () => {
           rules: [{ test: /\.jsx$/, use: [{ loader: DIST_LOADER }] }],
         },
         externals: {
-          // The transformed output imports from react-on-rails-rsc/server.
-          // We don't need to resolve it for this test — we just want to
-          // verify the loader RAN and emitted the right shape.
+          // The transformed output imports from react-on-rails-rsc/server and
+          // (for the use-client CSS wrapper) react. We don't need to resolve
+          // them for this test — we just want to verify the loader RAN and
+          // emitted the right shape.
           'react-on-rails-rsc/server': 'commonjs2 react-on-rails-rsc/server',
           'react-server-dom-webpack/server': 'commonjs2 react-server-dom-webpack/server',
+          react: 'commonjs2 react',
         },
       },
       tmpDir,

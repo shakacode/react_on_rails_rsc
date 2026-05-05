@@ -2496,7 +2496,7 @@
     })({
       bundleType: 1,
       version: "19.0.3",
-      rendererPackageName: "react-server-dom-webpack",
+      rendererPackageName: "react-on-rails-rsc",
       currentDispatcherRef: ReactSharedInternals,
       reconcilerVersion: "19.0.3",
       getCurrentComponentInfo: function () {

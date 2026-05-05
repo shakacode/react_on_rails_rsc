@@ -269,7 +269,7 @@ function transformServerModule(source, program, url, sourceMap, loader) {
     }
 
     newSrc += '\n\n;';
-    newSrc += 'import {registerServerReference} from "react-server-dom-webpack/server";\n';
+    newSrc += 'import {registerServerReference} from "react-on-rails-rsc/server";\n';
 
     if (mappings) {
       mappings += ';;';
@@ -477,7 +477,7 @@ async function transformClientModule(program, url, sourceMap, loader) {
   //   Flight server's serializeClientReference, which is out of scope here.
 
 
-  let newSrc = 'import {registerClientReference} from "react-server-dom-webpack/server";\n' + 'import {createElement as __rfwn_h, Fragment as __rfwn_F} from "react";\n' + 'function __rfwn_css(refUrl){' + 'var m=globalThis.__reactFlightClientManifest;' + 'if(!m)return [];' + 'var entries=m.filePathToModuleMetadata||m;' + 'var e=entries[refUrl];' + 'return (e&&e.css)||[];' + '}\n' + 'function __rfwn_wrap(ref,refUrl){' + 'return function __rfwn_wrapped(props){' + 'var __h=__rfwn_css(refUrl);' + 'if(__h.length===0)return __rfwn_h(ref,props);' + 'var c=[__rfwn_F,null];' + 'for(var i=0;i<__h.length;i++){' + 'c.push(__rfwn_h("link",{key:"__rfwn_link_"+__h[i],rel:"stylesheet",href:__h[i],precedence:"rsc-css"}));' + '}' + 'c.push(__rfwn_h(ref,props));' + 'return __rfwn_h.apply(null,c);' + '};' + '}\n'; // Component-shape: default export OR named export starting with PascalCase
+  let newSrc = 'import {registerClientReference} from "react-on-rails-rsc/server";\n' + 'import {createElement as __rfwn_h, Fragment as __rfwn_F} from "react";\n' + 'function __rfwn_css(refUrl){' + 'var m=globalThis.__reactFlightClientManifest;' + 'if(!m)return [];' + 'var entries=m.filePathToModuleMetadata||m;' + 'var e=entries[refUrl];' + 'return (e&&e.css)||[];' + '}\n' + 'function __rfwn_wrap(ref,refUrl){' + 'return function __rfwn_wrapped(props){' + 'var __h=__rfwn_css(refUrl);' + 'if(__h.length===0)return __rfwn_h(ref,props);' + 'var c=[__rfwn_F,null];' + 'for(var i=0;i<__h.length;i++){' + 'c.push(__rfwn_h("link",{key:"__rfwn_link_"+__h[i],rel:"stylesheet",href:__h[i],precedence:"rsc-css"}));' + '}' + 'c.push(__rfwn_h(ref,props));' + 'return __rfwn_h.apply(null,c);' + '};' + '}\n'; // Component-shape: default export OR named export starting with PascalCase
   // (uppercase letter followed by lowercase). Lowercase, UPPER_SNAKE, and
   // single-letter names get the bare shim.
 

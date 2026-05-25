@@ -233,12 +233,14 @@ export class RSCRspackPlugin {
       'RSCRspackPlugin',
       (_params: unknown, callback: (err?: Error | null) => void) => {
         try {
-          // Only run the FS walk for client bundles. Server bundles reach
-          // all client components through their entry graph; injection is
-          // skipped in finishMake anyway.
-          if (!this.options.isServer) {
-            discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
-          }
+          // Run the FS walk for BOTH client and server bundles. The webpack
+          // plugin does this unconditionally (line 125 of the webpack plugin).
+          // Server bundles need the discovered files so that Phase 2 can
+          // inject them into the module graph — without injection, files not
+          // in the server entry's import tree get fallback path-based IDs
+          // that can't be resolved at runtime, causing "Element type is
+          // invalid" errors during production SSR.
+          discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
           // Stash so buildManifest can filter by discovered files
           this._resolvedClientFiles = discoveredClientFiles;
           callback();
@@ -259,12 +261,18 @@ export class RSCRspackPlugin {
       'RSCRspackPlugin',
       (compilationUnknown: unknown, callback: (err?: Error | null) => void) => {
         const compilation = compilationUnknown as AnyCompilation;
-        // Only inject async chunks for the CLIENT bundle (isServer: false).
-        // The server bundle's entry graph already reaches all client files
-        // through the component tree (it renders them for SSR). Injecting
-        // there would conflict with LimitChunkCountPlugin({maxChunks:1})
-        // and the literal `filename: 'server-bundle.js'`.
-        if (this.options.isServer || !discoveredClientFiles.length || !compilation.addInclude || !bundler.EntryPlugin) {
+        // Inject async chunks for BOTH client and server bundles. The
+        // webpack plugin injects AsyncDependenciesBlocks unconditionally
+        // for both (line 143-151). Server bundles need the discovered
+        // client files in their module graph so every manifest entry gets
+        // a proper numeric module ID. Without injection, files not in the
+        // server entry's import tree either (a) are missing from the
+        // server manifest entirely — causing createSSRManifest() to throw,
+        // or (b) get fallback path-based IDs that can't be resolved at
+        // runtime. Server bundles typically use LimitChunkCountPlugin
+        // ({maxChunks:1}) which merges the injected async chunks into
+        // the single server chunk, so this doesn't create extra files.
+        if (!discoveredClientFiles.length || !compilation.addInclude || !bundler.EntryPlugin) {
           callback();
           return;
         }

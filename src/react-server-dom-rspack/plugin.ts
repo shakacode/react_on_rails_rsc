@@ -39,6 +39,7 @@ type AnyLogger = {
 type AnyCompiler = {
   options: {
     module?: { rules?: unknown[] };
+    optimization?: { mangleExports?: boolean };
     context?: string;
   };
   context: string;
@@ -222,6 +223,16 @@ export class RSCRspackPlugin {
     // Inject the tagging loader so every JS/TS module passes through it.
     this.ensureLoaderRule(compiler);
 
+    // Server bundles must not mangle export names.  The RSC Flight runtime
+    // resolves client components by their original export names (e.g.,
+    // "BookmarkShareBar").  rspack's production mode mangles exports by
+    // default (e.g., renames to "z"), causing `requireModule` to return
+    // `undefined` and triggering "Element type is invalid" errors.
+    if (this.options.isServer) {
+      const opt = (compiler.options.optimization ??= {}) as { mangleExports?: boolean };
+      opt.mangleExports = false;
+    }
+
     // ── Phase 1: FS-walk discovery (before compilation starts) ──────
     // Mirrors the webpack plugin's `beforeCompile` / `resolveAllClientFiles`.
     // We synchronously walk each `clientReferences` search path, read files
@@ -261,20 +272,24 @@ export class RSCRspackPlugin {
       'RSCRspackPlugin',
       (compilationUnknown: unknown, callback: (err?: Error | null) => void) => {
         const compilation = compilationUnknown as AnyCompilation;
-        // Inject async chunks for BOTH client and server bundles. The
-        // webpack plugin injects AsyncDependenciesBlocks unconditionally
-        // for both (line 143-151). Server bundles need the discovered
-        // client files in their module graph so every manifest entry gets
-        // a proper numeric module ID. Without injection, files not in the
-        // server entry's import tree either (a) are missing from the
-        // server manifest entirely — causing createSSRManifest() to throw,
-        // or (b) get fallback path-based IDs that can't be resolved at
-        // runtime. Server bundles typically use LimitChunkCountPlugin
-        // ({maxChunks:1}) which merges the injected async chunks into
-        // the single server chunk, so this doesn't create extra files.
         if (!discoveredClientFiles.length || !compilation.addInclude || !bundler.EntryPlugin) {
           callback();
           return;
+        }
+
+        // For server bundles, reuse the existing entry name so modules are
+        // added to the entry's includeDependencies instead of creating new
+        // entry chunks.  rspack 2.x has a bug where addInclude-created
+        // entry chunks containing node-commonjs externals (e.g. `fs` from
+        // target:'node') crash with "Cannot fulfil chunk condition" in
+        // optimizeChunks.  Reusing the entry name avoids new chunks entirely.
+        let serverEntryName: string | undefined;
+        if (this.options.isServer) {
+          const entries = (compilation as unknown as { entries?: Map<string, unknown> }).entries;
+          if (entries && typeof entries.keys === 'function') {
+            const first = entries.keys().next();
+            if (!first.done) serverEntryName = first.value as string;
+          }
         }
 
         const toPath = bundler.Template?.toPath ?? ((s: string) => s.replace(/[^a-zA-Z0-9_!§$()=\-^°]+/g, '_'));
@@ -284,7 +299,7 @@ export class RSCRspackPlugin {
 
         for (let i = 0; i < discoveredClientFiles.length; i++) {
           const file = discoveredClientFiles[i]!;
-          const name = this.chunkName
+          const name = serverEntryName ?? this.chunkName
             .replace(/\[index\]/g, String(i))
             .replace(/\[request\]/g, toPath(path.relative(context, file)));
 
@@ -522,6 +537,45 @@ export class RSCRspackPlugin {
               this.recordModule(inner, moduleId, moduleChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
             }
           }
+        }
+      }
+    }
+
+    // For server bundles, add fallback entries for discovered client files
+    // that weren't found in the module graph. This happens when isServer
+    // skips Phase 2 injection (to avoid the rspack chunk-optimization bug
+    // with node-commonjs externals). Without these fallback entries,
+    // createSSRManifest() throws because client manifest keys are missing
+    // from the server manifest. The fallback uses the server bundle's
+    // entry chunk so the runtime can locate the module at SSR time.
+    if (this.options.isServer && resolvedClientFiles.size > 0) {
+      const recordedHrefs = new Set(Object.keys(filePathToModuleMetadata));
+      // Find the server bundle's main entry chunk for fallback chunk info
+      let serverChunkInfo: (string | number | null)[] = [];
+      for (const chunkGroup of compilation.chunkGroups) {
+        for (const chunkUnknown of chunkGroup.chunks) {
+          const c = chunkUnknown as AnyChunk;
+          const files = c.files instanceof Set ? c.files : new Set(c.files as Iterable<string>);
+          for (const file of files) {
+            if (file.endsWith('.js') && !file.endsWith('.hot-update.js')) {
+              serverChunkInfo = [c.id, file];
+              break;
+            }
+          }
+          if (serverChunkInfo.length > 0) break;
+        }
+        if (serverChunkInfo.length > 0) break;
+      }
+
+      for (const filePath of resolvedClientFiles) {
+        const href = url.pathToFileURL(filePath).href;
+        if (!recordedHrefs.has(href)) {
+          filePathToModuleMetadata[href] = {
+            id: filePath,
+            chunks: serverChunkInfo.slice(),
+            name: '*',
+          };
+          logger?.debug(`Fallback server manifest entry for ${path.basename(filePath)} (not in module graph)`);
         }
       }
     }

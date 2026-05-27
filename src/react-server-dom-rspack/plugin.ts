@@ -39,7 +39,6 @@ type AnyLogger = {
 type AnyCompiler = {
   options: {
     module?: { rules?: unknown[] };
-    optimization?: { mangleExports?: boolean };
     context?: string;
   };
   context: string;
@@ -75,8 +74,12 @@ type AnyCompilation = {
     publicPath?: string;
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   };
+  moduleGraph: {
+    getExportsInfo(module: unknown): { setUsedInUnknownWay(runtime: string | string[] | undefined): boolean };
+  };
   emitAsset(filename: string, source: unknown): void;
   addInclude?(context: string, dep: unknown, options: { name: string }, cb: (err?: Error | null, module?: unknown) => void): void;
+  entries?: Map<string, { options?: { name?: string } }>;
   warnings: unknown[];
   compiler: AnyCompiler;
   getLogger?(name: string): AnyLogger;
@@ -223,16 +226,6 @@ export class RSCRspackPlugin {
     // Inject the tagging loader so every JS/TS module passes through it.
     this.ensureLoaderRule(compiler);
 
-    // Server bundles must not mangle export names.  The RSC Flight runtime
-    // resolves client components by their original export names (e.g.,
-    // "BookmarkShareBar").  rspack's production mode mangles exports by
-    // default (e.g., renames to "z"), causing `requireModule` to return
-    // `undefined` and triggering "Element type is invalid" errors.
-    if (this.options.isServer) {
-      const opt = (compiler.options.optimization ??= {}) as { mangleExports?: boolean };
-      opt.mangleExports = false;
-    }
-
     // ── Phase 1: FS-walk discovery (before compilation starts) ──────
     // Mirrors the webpack plugin's `beforeCompile` / `resolveAllClientFiles`.
     // We synchronously walk each `clientReferences` search path, read files
@@ -247,10 +240,7 @@ export class RSCRspackPlugin {
           // Run the FS walk for BOTH client and server bundles. The webpack
           // plugin does this unconditionally (line 125 of the webpack plugin).
           // Server bundles need the discovered files so that Phase 2 can
-          // inject them into the module graph — without injection, files not
-          // in the server entry's import tree get fallback path-based IDs
-          // that can't be resolved at runtime, causing "Element type is
-          // invalid" errors during production SSR.
+          // inject them into the module graph via addInclude.
           discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
           // Stash so buildManifest can filter by discovered files
           this._resolvedClientFiles = discoveredClientFiles;
@@ -284,12 +274,9 @@ export class RSCRspackPlugin {
         // target:'node') crash with "Cannot fulfil chunk condition" in
         // optimizeChunks.  Reusing the entry name avoids new chunks entirely.
         let serverEntryName: string | undefined;
-        if (this.options.isServer) {
-          const entries = (compilation as unknown as { entries?: Map<string, unknown> }).entries;
-          if (entries && typeof entries.keys === 'function') {
-            const first = entries.keys().next();
-            if (!first.done) serverEntryName = first.value as string;
-          }
+        if (this.options.isServer && compilation.entries) {
+          const first = compilation.entries.keys().next();
+          if (!first.done) serverEntryName = first.value as string;
         }
 
         const toPath = bundler.Template?.toPath ?? ((s: string) => s.replace(/[^a-zA-Z0-9_!§$()=\-^°]+/g, '_'));
@@ -304,11 +291,21 @@ export class RSCRspackPlugin {
             .replace(/\[request\]/g, toPath(path.relative(context, file)));
 
           const dep = bundler.EntryPlugin.createDependency(file, { name });
-          compilation.addInclude(context, dep, { name }, (err) => {
+          compilation.addInclude(context, dep, { name }, (err, mod) => {
             if (err && !errored) {
               errored = true;
               callback(err);
               return;
+            }
+            // Mark injected modules so rspack preserves their original
+            // export names (prevents mangling "BookmarkShareBar" → "z").
+            // This matches rspack's native RSC plugin and Next.js's
+            // FlightClientEntryPlugin, which both call setUsedInUnknownWay
+            // in the addInclude callback inside finishMake.
+            if (mod && this.options.isServer) {
+              try {
+                compilation.moduleGraph.getExportsInfo(mod).setUsedInUnknownWay(serverEntryName);
+              } catch { /* moduleGraph API unavailable — older bundler */ }
             }
             if (--pending === 0 && !errored) callback();
           });
@@ -537,45 +534,6 @@ export class RSCRspackPlugin {
               this.recordModule(inner, moduleId, moduleChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
             }
           }
-        }
-      }
-    }
-
-    // For server bundles, add fallback entries for discovered client files
-    // that weren't found in the module graph. This happens when isServer
-    // skips Phase 2 injection (to avoid the rspack chunk-optimization bug
-    // with node-commonjs externals). Without these fallback entries,
-    // createSSRManifest() throws because client manifest keys are missing
-    // from the server manifest. The fallback uses the server bundle's
-    // entry chunk so the runtime can locate the module at SSR time.
-    if (this.options.isServer && resolvedClientFiles.size > 0) {
-      const recordedHrefs = new Set(Object.keys(filePathToModuleMetadata));
-      // Find the server bundle's main entry chunk for fallback chunk info
-      let serverChunkInfo: (string | number | null)[] = [];
-      for (const chunkGroup of compilation.chunkGroups) {
-        for (const chunkUnknown of chunkGroup.chunks) {
-          const c = chunkUnknown as AnyChunk;
-          const files = c.files instanceof Set ? c.files : new Set(c.files as Iterable<string>);
-          for (const file of files) {
-            if (file.endsWith('.js') && !file.endsWith('.hot-update.js')) {
-              serverChunkInfo = [c.id, file];
-              break;
-            }
-          }
-          if (serverChunkInfo.length > 0) break;
-        }
-        if (serverChunkInfo.length > 0) break;
-      }
-
-      for (const filePath of resolvedClientFiles) {
-        const href = url.pathToFileURL(filePath).href;
-        if (!recordedHrefs.has(href)) {
-          filePathToModuleMetadata[href] = {
-            id: filePath,
-            chunks: serverChunkInfo.slice(),
-            name: '*',
-          };
-          logger?.debug(`Fallback server manifest entry for ${path.basename(filePath)} (not in module graph)`);
         }
       }
     }

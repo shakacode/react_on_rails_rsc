@@ -280,6 +280,32 @@ export class RSCRspackPlugin {
           loader: path.resolve(__dirname, './injection-loader.js'),
         }],
       });
+
+      // Prevent splitChunks from extracting modules out of the async
+      // chunks created by the injection-loader. The RSC streaming HTML
+      // injects <script async> tags for each chunk in the client manifest.
+      // If splitChunks extracts shared modules into sibling chunks, those
+      // siblings race with hydration — React calls requireModule
+      // synchronously, and the sibling may not have loaded yet. Keeping
+      // each client component's async chunk self-contained matches
+      // webpack's AsyncDependenciesBlock behavior where splitChunks does
+      // not extract from block-created async chunks.
+      if (!this.options.isServer) {
+        type SplitChunksConfig = { chunks?: unknown };
+        const optimization = (compiler.options as { optimization?: { splitChunks?: SplitChunksConfig } }).optimization;
+        const splitChunks = optimization?.splitChunks;
+        if (splitChunks) {
+          const origChunks = splitChunks.chunks;
+          const chunkNamePrefix = this.chunkName.replace(/\[(?:index|request)\].*$/, '');
+          splitChunks.chunks = (chunk: { name?: string }) => {
+            if (chunk.name != null && chunk.name.startsWith(chunkNamePrefix)) return false;
+            if (typeof origChunks === 'function') return origChunks(chunk);
+            if (origChunks === 'initial') return !!(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
+            if (origChunks === 'async') return !(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
+            return true;
+          };
+        }
+      }
     }
 
     // ── Phase 3: tag set + manifest emission ────────────────────────

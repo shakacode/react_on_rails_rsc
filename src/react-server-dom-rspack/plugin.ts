@@ -26,6 +26,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import { CLIENT_MODULES_KEY, hasUseClientDirective } from './shared';
+import type {} from './injection-loader';
+
+function setInjectionState(files: string[], chunkName: string): void {
+  const injLoader = require('./injection-loader') as { _discoveredClientFiles: string[]; _chunkName: string };
+  injLoader._discoveredClientFiles = files;
+  injLoader._chunkName = chunkName;
+}
 
 // Accept any bundler that looks compatible — webpack 5 or rspack. Typed loose
 // because we cannot depend on `@rspack/core` types without making it a hard
@@ -44,7 +51,6 @@ type AnyCompiler = {
   context: string;
   hooks: {
     beforeCompile: { tapAsync: (name: string, fn: (params: unknown, cb: (err?: Error | null) => void) => void) => void };
-    finishMake: { tapAsync: (name: string, fn: (compilation: unknown, cb: (err?: Error | null) => void) => void) => void };
     thisCompilation: { tap: (name: string, fn: (compilation: unknown) => void) => void };
   };
   rspack?: { version?: string };
@@ -74,12 +80,7 @@ type AnyCompilation = {
     publicPath?: string;
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   };
-  moduleGraph: {
-    getExportsInfo(module: unknown): { setUsedInUnknownWay(runtime: string | string[] | undefined): boolean };
-  };
   emitAsset(filename: string, source: unknown): void;
-  addInclude?(context: string, dep: unknown, options: { name: string }, cb: (err?: Error | null, module?: unknown) => void): void;
-  entries?: Map<string, { options?: { name?: string } }>;
   warnings: unknown[];
   compiler: AnyCompiler;
   getLogger?(name: string): AnyLogger;
@@ -109,8 +110,6 @@ type AnyChunk = {
 type Bundler = {
   sources: { RawSource: new (source: string, convertToString?: boolean) => unknown };
   Compilation: { PROCESS_ASSETS_STAGE_REPORT: number };
-  EntryPlugin?: { createDependency(request: string, options: { name: string }): unknown };
-  Template?: { toPath(str: string): string };
   WebpackError?: new (message: string) => Error;
 };
 
@@ -237,13 +236,9 @@ export class RSCRspackPlugin {
       'RSCRspackPlugin',
       (_params: unknown, callback: (err?: Error | null) => void) => {
         try {
-          // Run the FS walk for BOTH client and server bundles. The webpack
-          // plugin does this unconditionally (line 125 of the webpack plugin).
-          // Server bundles need the discovered files so that Phase 2 can
-          // inject them into the module graph via addInclude.
           discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
-          // Stash so buildManifest can filter by discovered files
           this._resolvedClientFiles = discoveredClientFiles;
+          setInjectionState(discoveredClientFiles, this.chunkName);
           callback();
         } catch (err) {
           callback(err instanceof Error ? err : new Error(String(err)));
@@ -252,66 +247,38 @@ export class RSCRspackPlugin {
     );
 
     // ── Phase 2: inject discovered client files as async chunks ─────
-    // At `finishMake` every entry module has been built but assets have not
-    // been sealed yet. For each discovered "use client" file, we call
-    // `compilation.addInclude` with an EntryDependency created via
-    // `EntryPlugin.createDependency`. This causes rspack to resolve and
-    // build each file as a named async chunk — the same result the webpack
-    // plugin achieves by calling `module.addBlock(new AsyncDependenciesBlock(...))`.
-    compiler.hooks.finishMake.tapAsync(
-      'RSCRspackPlugin',
-      (compilationUnknown: unknown, callback: (err?: Error | null) => void) => {
-        const compilation = compilationUnknown as AnyCompilation;
-        if (!discoveredClientFiles.length || !compilation.addInclude || !bundler.EntryPlugin) {
-          callback();
-          return;
-        }
+    // A loader on the Flight client runtime module (client.browser.js or
+    // client.node.js) prepends dynamic import() statements for every
+    // discovered "use client" file. This replicates what the webpack RSC
+    // plugin does with AsyncDependenciesBlock: each import() creates an
+    // async chunk group attached to the runtime module. rspack does not
+    // expose a constructible AsyncDependenciesBlock from JS, so dynamic
+    // imports are the only way to create proper async chunks.
+    //
+    // The loader runs for BOTH client and server bundles (matching the
+    // webpack plugin which attaches AsyncDependenciesBlock to both
+    // client.browser.js and client.node.js). On the server, the async
+    // chunks are merged back into server-bundle.js by
+    // LimitChunkCountPlugin, giving every module a proper numeric ID.
+    {
+      const clientRuntimePath = path.resolve(
+        __dirname,
+        this.options.isServer
+          ? '../react-server-dom-webpack/client.node.js'
+          : '../react-server-dom-webpack/client.browser.js',
+      );
 
-        // For server bundles, reuse the existing entry name so modules are
-        // added to the entry's includeDependencies instead of creating new
-        // entry chunks.  rspack 2.x has a bug where addInclude-created
-        // entry chunks containing node-commonjs externals (e.g. `fs` from
-        // target:'node') crash with "Cannot fulfil chunk condition" in
-        // optimizeChunks.  Reusing the entry name avoids new chunks entirely.
-        let serverEntryName: string | undefined;
-        if (this.options.isServer && compilation.entries) {
-          const first = compilation.entries.keys().next();
-          if (!first.done) serverEntryName = first.value as string;
-        }
+      const moduleConfig = (compiler.options.module ??= {}) as { rules?: unknown[] };
+      const rules = (moduleConfig.rules ??= []) as unknown[];
 
-        const toPath = bundler.Template?.toPath ?? ((s: string) => s.replace(/[^a-zA-Z0-9_!§$()=\-^°]+/g, '_'));
-        const context = compiler.context;
-        let pending = discoveredClientFiles.length;
-        let errored = false;
-
-        for (let i = 0; i < discoveredClientFiles.length; i++) {
-          const file = discoveredClientFiles[i]!;
-          const name = serverEntryName ?? this.chunkName
-            .replace(/\[index\]/g, String(i))
-            .replace(/\[request\]/g, toPath(path.relative(context, file)));
-
-          const dep = bundler.EntryPlugin.createDependency(file, { name });
-          compilation.addInclude(context, dep, { name }, (err, mod) => {
-            if (err && !errored) {
-              errored = true;
-              callback(err);
-              return;
-            }
-            // Mark injected modules so rspack preserves their original
-            // export names (prevents mangling "BookmarkShareBar" → "z").
-            // This matches rspack's native RSC plugin and Next.js's
-            // FlightClientEntryPlugin, which both call setUsedInUnknownWay
-            // in the addInclude callback inside finishMake.
-            if (mod && this.options.isServer) {
-              try {
-                compilation.moduleGraph.getExportsInfo(mod).setUsedInUnknownWay(serverEntryName);
-              } catch { /* moduleGraph API unavailable — older bundler */ }
-            }
-            if (--pending === 0 && !errored) callback();
-          });
-        }
-      },
-    );
+      rules.push({
+        test: (resource: string) => resource === clientRuntimePath,
+        enforce: 'pre' as const,
+        use: [{
+          loader: path.resolve(__dirname, './injection-loader.js'),
+        }],
+      });
+    }
 
     // ── Phase 3: tag set + manifest emission ────────────────────────
     compiler.hooks.thisCompilation.tap('RSCRspackPlugin', (compilationUnknown) => {

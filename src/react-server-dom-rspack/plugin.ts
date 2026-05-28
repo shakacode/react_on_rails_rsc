@@ -61,6 +61,7 @@ type AnyCompiler = {
 };
 
 type AnyChunkGroup = {
+  name?: string;
   chunks: Iterable<unknown>;
 };
 
@@ -80,6 +81,7 @@ type AnyCompilation = {
     publicPath?: string;
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   };
+  entrypoints?: ReadonlyMap<string, unknown>;
   emitAsset(filename: string, source: unknown): void;
   warnings: unknown[];
   compiler: AnyCompiler;
@@ -471,34 +473,40 @@ export class RSCRspackPlugin {
       { id: string | number | null; chunks: (string | number | null)[]; name: string }
     > = {};
 
-    // Walk via chunkGroups → getChunkModulesIterable (matching the
-    // webpack plugin's iteration pattern, lines 241-291). However, for
-    // each module's `chunks` array we use `getModuleChunks(module)`
-    // rather than the full chunk-group chunk list. On webpack, the
-    // chunk-group approach works because entry chunk groups only contain
-    // chunks that are async-loadable. On rspack, entry chunk groups
-    // include the runtime chunk and other entry chunks that are NOT
-    // async-loadable — putting them in the manifest causes the Flight
-    // runtime to fail with `__webpack_modules__[moduleId] is not a
-    // function` when it tries to __webpack_chunk_load__ an entry chunk.
-    // Per-module chunks avoids this.
+    // Collect entrypoint names so we can skip entry chunk groups below.
+    // In rspack, entry chunk groups include the runtime chunk and entry
+    // chunks that are NOT async-loadable. Including them in the manifest
+    // causes the Flight runtime to fail when it tries to
+    // __webpack_chunk_load__ an entry chunk. Async chunk groups (created
+    // by our injection-loader's import() statements) only contain
+    // async-loadable chunks and their splitChunks siblings.
+    const entryNames = new Set(
+      compilation.entrypoints ? [...compilation.entrypoints.keys()] : [],
+    );
+
+    // Walk chunk groups using group-level chunks (matching the webpack
+    // plugin, lines 241-294). Each module gets the full list of sibling
+    // chunks in its group — this ensures splitChunks dependencies are
+    // included. We skip entry chunk groups since their chunks are loaded
+    // via <script> tags, not __webpack_chunk_load__.
     for (const chunkGroup of compilation.chunkGroups) {
+      if (chunkGroup.name && entryNames.has(chunkGroup.name)) continue;
+
+      const groupChunks = this.getGroupChunks(chunkGroup);
+
       for (const chunkUnknown of chunkGroup.chunks) {
         const chunk = chunkUnknown as AnyChunk;
         for (const m of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
           const mod = m as AnyModule;
 
-          // Check if this is the client runtime module
           if (mod.resource === expectedRuntime) clientFileNameFound = true;
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
-          const moduleChunks = this.getChunksForModule(compilation, mod);
-          this.recordModule(mod, moduleId, moduleChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
-          // ConcatenatedModule: inner modules use the outer's id + chunks
+          this.recordModule(mod, moduleId, groupChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
           if (mod.modules) {
             for (const inner of mod.modules) {
               if (inner.resource === expectedRuntime) clientFileNameFound = true;
-              this.recordModule(inner, moduleId, moduleChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
+              this.recordModule(inner, moduleId, groupChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
             }
           }
         }
@@ -539,13 +547,12 @@ export class RSCRspackPlugin {
   /** Stash resolved client files so buildManifest can filter by them. */
   private _resolvedClientFiles: string[] = [];
 
-  /** Build the chunks array for a module using getModuleChunks. */
-  private getChunksForModule(
-    compilation: AnyCompilation,
-    module: AnyModule,
+  /** Build the chunks array from all chunks in a chunk group. */
+  private getGroupChunks(
+    chunkGroup: AnyChunkGroup,
   ): (string | number | null)[] {
     const chunks: (string | number | null)[] = [];
-    for (const chunkUnknown of compilation.chunkGraph.getModuleChunks(module)) {
+    for (const chunkUnknown of chunkGroup.chunks) {
       const c = chunkUnknown as AnyChunk;
       const files = c.files instanceof Set ? c.files : new Set(c.files);
       for (const file of files) {

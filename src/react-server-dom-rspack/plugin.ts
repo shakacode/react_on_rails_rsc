@@ -34,6 +34,11 @@ function setInjectionState(files: string[], chunkName: string): void {
   injLoader._chunkName = chunkName;
 }
 
+function getGeneratedChunkNames(): Set<string> {
+  const injLoader = require('./injection-loader') as { _generatedChunkNames: Set<string> };
+  return injLoader._generatedChunkNames;
+}
+
 // Accept any bundler that looks compatible — webpack 5 or rspack. Typed loose
 // because we cannot depend on `@rspack/core` types without making it a hard
 // peer dep of a package that should stay webpack-centric.
@@ -296,9 +301,8 @@ export class RSCRspackPlugin {
         const splitChunks = optimization?.splitChunks;
         if (splitChunks) {
           const origChunks = splitChunks.chunks;
-          const chunkNamePrefix = this.chunkName.replace(/\[(?:index|request)\].*$/, '');
           splitChunks.chunks = (chunk: { name?: string }) => {
-            if (chunk.name != null && chunk.name.startsWith(chunkNamePrefix)) return false;
+            if (chunk.name != null && getGeneratedChunkNames().has(chunk.name)) return false;
             if (typeof origChunks === 'function') return origChunks(chunk);
             if (origChunks === 'initial') return !!(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
             if (origChunks === 'async') return !(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();

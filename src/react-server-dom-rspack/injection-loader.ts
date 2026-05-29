@@ -18,17 +18,21 @@ import type { LoaderDefinition } from 'webpack';
 
 export let _discoveredClientFiles: string[] = [];
 export let _chunkName = 'client[index]';
+export let _generatedChunkNames: Set<string> = new Set();
 
 const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
   if (!_discoveredClientFiles.length) return source;
 
+  const names: string[] = [];
   const imports = _discoveredClientFiles.map((file, i) => {
     const name = _chunkName
       .replace(/\[index\]/g, String(i))
       .replace(/\[request\]/g, file.replace(/[^a-zA-Z0-9_]/g, '_'));
+    names.push(name);
     return `import(/* webpackChunkName: ${JSON.stringify(name)} */ ${JSON.stringify(file)});`;
   });
 
+  _generatedChunkNames = new Set(names);
   return imports.join('\n') + '\n' + source;
 };
 

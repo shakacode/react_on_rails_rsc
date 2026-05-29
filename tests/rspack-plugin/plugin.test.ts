@@ -142,6 +142,39 @@ describe('RSCRspackPlugin', () => {
     });
   });
 
+  describe('server manifest parity (isServer: true)', () => {
+    // Regression tests for the server-manifest bug: the plugin previously
+    // skipped the FS walk and addInclude injection for isServer:true. This
+    // caused "use client" files NOT in the server entry's import tree to be
+    // missing from the server manifest, making createSSRManifest() throw
+    // "Server module metadata not found for <file>".
+    //
+    // Uses the dead-code fixture: index.js imports Used.js but NOT Dead.js.
+    // Both have "use client". The FS walk discovers both; addInclude injects
+    // Dead.js into the module graph even though no entry imports it.
+    let clientResult: CompileResult;
+    let serverResult: CompileResult;
+
+    beforeAll(() => {
+      clientResult = run('dead-code', { isServer: false });
+      serverResult = run('dead-code', { isServer: true });
+    });
+
+    it('includes unreachable "use client" files in the server manifest', () => {
+      const paths = Object.keys(serverResult.manifest.filePathToModuleMetadata);
+      expect(paths.some((p) => p.endsWith('Used.js'))).toBe(true);
+      expect(paths.some((p) => p.endsWith('Dead.js'))).toBe(true);
+    });
+
+    it('client and server manifests have the same entry keys', () => {
+      // createSSRManifest() iterates every client manifest entry and looks
+      // it up in the server manifest. If any key is missing, it throws.
+      const clientKeys = Object.keys(clientResult.manifest.filePathToModuleMetadata).sort();
+      const serverKeys = Object.keys(serverResult.manifest.filePathToModuleMetadata).sort();
+      expect(clientKeys).toEqual(serverKeys);
+    });
+  });
+
   describe('production mode', () => {
     // The `production-client` fixture has `sideEffects: ["./*.js"]` in
     // its package.json and actually invokes `ClientButton()` — this is

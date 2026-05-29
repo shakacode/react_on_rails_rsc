@@ -26,6 +26,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import { CLIENT_MODULES_KEY, hasUseClientDirective } from './shared';
+import type {} from './injection-loader';
+
+function setInjectionState(files: string[], chunkName: string): void {
+  const injLoader = require('./injection-loader') as { _discoveredClientFiles: string[]; _chunkName: string };
+  injLoader._discoveredClientFiles = files;
+  injLoader._chunkName = chunkName;
+}
+
+function getGeneratedChunkNames(): Set<string> {
+  const injLoader = require('./injection-loader') as { _generatedChunkNames: Set<string> };
+  return injLoader._generatedChunkNames;
+}
 
 // Accept any bundler that looks compatible — webpack 5 or rspack. Typed loose
 // because we cannot depend on `@rspack/core` types without making it a hard
@@ -44,7 +56,6 @@ type AnyCompiler = {
   context: string;
   hooks: {
     beforeCompile: { tapAsync: (name: string, fn: (params: unknown, cb: (err?: Error | null) => void) => void) => void };
-    finishMake: { tapAsync: (name: string, fn: (compilation: unknown, cb: (err?: Error | null) => void) => void) => void };
     thisCompilation: { tap: (name: string, fn: (compilation: unknown) => void) => void };
   };
   rspack?: { version?: string };
@@ -55,6 +66,7 @@ type AnyCompiler = {
 };
 
 type AnyChunkGroup = {
+  name?: string;
   chunks: Iterable<unknown>;
 };
 
@@ -74,8 +86,8 @@ type AnyCompilation = {
     publicPath?: string;
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   };
+  entrypoints?: ReadonlyMap<string, unknown>;
   emitAsset(filename: string, source: unknown): void;
-  addInclude?(context: string, dep: unknown, options: { name: string }, cb: (err?: Error | null, module?: unknown) => void): void;
   warnings: unknown[];
   compiler: AnyCompiler;
   getLogger?(name: string): AnyLogger;
@@ -105,8 +117,6 @@ type AnyChunk = {
 type Bundler = {
   sources: { RawSource: new (source: string, convertToString?: boolean) => unknown };
   Compilation: { PROCESS_ASSETS_STAGE_REPORT: number };
-  EntryPlugin?: { createDependency(request: string, options: { name: string }): unknown };
-  Template?: { toPath(str: string): string };
   WebpackError?: new (message: string) => Error;
 };
 
@@ -233,14 +243,9 @@ export class RSCRspackPlugin {
       'RSCRspackPlugin',
       (_params: unknown, callback: (err?: Error | null) => void) => {
         try {
-          // Only run the FS walk for client bundles. Server bundles reach
-          // all client components through their entry graph; injection is
-          // skipped in finishMake anyway.
-          if (!this.options.isServer) {
-            discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
-          }
-          // Stash so buildManifest can filter by discovered files
+          discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
           this._resolvedClientFiles = discoveredClientFiles;
+          setInjectionState(discoveredClientFiles, this.chunkName);
           callback();
         } catch (err) {
           callback(err instanceof Error ? err : new Error(String(err)));
@@ -249,49 +254,63 @@ export class RSCRspackPlugin {
     );
 
     // ── Phase 2: inject discovered client files as async chunks ─────
-    // At `finishMake` every entry module has been built but assets have not
-    // been sealed yet. For each discovered "use client" file, we call
-    // `compilation.addInclude` with an EntryDependency created via
-    // `EntryPlugin.createDependency`. This causes rspack to resolve and
-    // build each file as a named async chunk — the same result the webpack
-    // plugin achieves by calling `module.addBlock(new AsyncDependenciesBlock(...))`.
-    compiler.hooks.finishMake.tapAsync(
-      'RSCRspackPlugin',
-      (compilationUnknown: unknown, callback: (err?: Error | null) => void) => {
-        const compilation = compilationUnknown as AnyCompilation;
-        // Only inject async chunks for the CLIENT bundle (isServer: false).
-        // The server bundle's entry graph already reaches all client files
-        // through the component tree (it renders them for SSR). Injecting
-        // there would conflict with LimitChunkCountPlugin({maxChunks:1})
-        // and the literal `filename: 'server-bundle.js'`.
-        if (this.options.isServer || !discoveredClientFiles.length || !compilation.addInclude || !bundler.EntryPlugin) {
-          callback();
-          return;
+    // A loader on the Flight client runtime module (client.browser.js or
+    // client.node.js) prepends dynamic import() statements for every
+    // discovered "use client" file. This replicates what the webpack RSC
+    // plugin does with AsyncDependenciesBlock: each import() creates an
+    // async chunk group attached to the runtime module. rspack does not
+    // expose a constructible AsyncDependenciesBlock from JS, so dynamic
+    // imports are the only way to create proper async chunks.
+    //
+    // The loader runs for BOTH client and server bundles (matching the
+    // webpack plugin which attaches AsyncDependenciesBlock to both
+    // client.browser.js and client.node.js). On the server, the async
+    // chunks are merged back into server-bundle.js by
+    // LimitChunkCountPlugin, giving every module a proper numeric ID.
+    {
+      const clientRuntimePath = path.resolve(
+        __dirname,
+        this.options.isServer
+          ? '../react-server-dom-webpack/client.node.js'
+          : '../react-server-dom-webpack/client.browser.js',
+      );
+
+      const moduleConfig = (compiler.options.module ??= {}) as { rules?: unknown[] };
+      const rules = (moduleConfig.rules ??= []) as unknown[];
+
+      rules.push({
+        test: (resource: string) => resource === clientRuntimePath,
+        enforce: 'pre' as const,
+        use: [{
+          loader: path.resolve(__dirname, './injection-loader.js'),
+        }],
+      });
+
+      // Prevent splitChunks from extracting modules out of the async
+      // chunks created by the injection-loader. The RSC streaming HTML
+      // injects <script async> tags for each chunk in the client manifest.
+      // If splitChunks extracts shared modules into sibling chunks, those
+      // siblings race with hydration — React calls requireModule
+      // synchronously, and the sibling may not have loaded yet. Keeping
+      // each client component's async chunk self-contained matches
+      // webpack's AsyncDependenciesBlock behavior where splitChunks does
+      // not extract from block-created async chunks.
+      if (!this.options.isServer) {
+        type SplitChunksConfig = { chunks?: unknown };
+        const optimization = (compiler.options as { optimization?: { splitChunks?: SplitChunksConfig } }).optimization;
+        const splitChunks = optimization?.splitChunks;
+        if (splitChunks) {
+          const origChunks = splitChunks.chunks;
+          splitChunks.chunks = (chunk: { name?: string }) => {
+            if (chunk.name != null && getGeneratedChunkNames().has(chunk.name)) return false;
+            if (typeof origChunks === 'function') return origChunks(chunk);
+            if (origChunks === 'initial') return !!(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
+            if (origChunks === 'async') return !(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
+            return true;
+          };
         }
-
-        const toPath = bundler.Template?.toPath ?? ((s: string) => s.replace(/[^a-zA-Z0-9_!§$()=\-^°]+/g, '_'));
-        const context = compiler.context;
-        let pending = discoveredClientFiles.length;
-        let errored = false;
-
-        for (let i = 0; i < discoveredClientFiles.length; i++) {
-          const file = discoveredClientFiles[i]!;
-          const name = this.chunkName
-            .replace(/\[index\]/g, String(i))
-            .replace(/\[request\]/g, toPath(path.relative(context, file)));
-
-          const dep = bundler.EntryPlugin.createDependency(file, { name });
-          compilation.addInclude(context, dep, { name }, (err) => {
-            if (err && !errored) {
-              errored = true;
-              callback(err);
-              return;
-            }
-            if (--pending === 0 && !errored) callback();
-          });
-        }
-      },
-    );
+      }
+    }
 
     // ── Phase 3: tag set + manifest emission ────────────────────────
     compiler.hooks.thisCompilation.tap('RSCRspackPlugin', (compilationUnknown) => {
@@ -484,34 +503,40 @@ export class RSCRspackPlugin {
       { id: string | number | null; chunks: (string | number | null)[]; name: string }
     > = {};
 
-    // Walk via chunkGroups → getChunkModulesIterable (matching the
-    // webpack plugin's iteration pattern, lines 241-291). However, for
-    // each module's `chunks` array we use `getModuleChunks(module)`
-    // rather than the full chunk-group chunk list. On webpack, the
-    // chunk-group approach works because entry chunk groups only contain
-    // chunks that are async-loadable. On rspack, entry chunk groups
-    // include the runtime chunk and other entry chunks that are NOT
-    // async-loadable — putting them in the manifest causes the Flight
-    // runtime to fail with `__webpack_modules__[moduleId] is not a
-    // function` when it tries to __webpack_chunk_load__ an entry chunk.
-    // Per-module chunks avoids this.
+    // Collect entrypoint names so we can skip entry chunk groups below.
+    // In rspack, entry chunk groups include the runtime chunk and entry
+    // chunks that are NOT async-loadable. Including them in the manifest
+    // causes the Flight runtime to fail when it tries to
+    // __webpack_chunk_load__ an entry chunk. Async chunk groups (created
+    // by our injection-loader's import() statements) only contain
+    // async-loadable chunks and their splitChunks siblings.
+    const entryNames = new Set(
+      compilation.entrypoints ? [...compilation.entrypoints.keys()] : [],
+    );
+
+    // Walk chunk groups using group-level chunks (matching the webpack
+    // plugin, lines 241-294). Each module gets the full list of sibling
+    // chunks in its group — this ensures splitChunks dependencies are
+    // included. We skip entry chunk groups since their chunks are loaded
+    // via <script> tags, not __webpack_chunk_load__.
     for (const chunkGroup of compilation.chunkGroups) {
+      if (chunkGroup.name && entryNames.has(chunkGroup.name)) continue;
+
+      const groupChunks = this.getGroupChunks(chunkGroup);
+
       for (const chunkUnknown of chunkGroup.chunks) {
         const chunk = chunkUnknown as AnyChunk;
         for (const m of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
           const mod = m as AnyModule;
 
-          // Check if this is the client runtime module
           if (mod.resource === expectedRuntime) clientFileNameFound = true;
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
-          const moduleChunks = this.getChunksForModule(compilation, mod);
-          this.recordModule(mod, moduleId, moduleChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
-          // ConcatenatedModule: inner modules use the outer's id + chunks
+          this.recordModule(mod, moduleId, groupChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
           if (mod.modules) {
             for (const inner of mod.modules) {
               if (inner.resource === expectedRuntime) clientFileNameFound = true;
-              this.recordModule(inner, moduleId, moduleChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
+              this.recordModule(inner, moduleId, groupChunks, taggedPaths, resolvedClientFiles, filePathToModuleMetadata);
             }
           }
         }
@@ -552,13 +577,12 @@ export class RSCRspackPlugin {
   /** Stash resolved client files so buildManifest can filter by them. */
   private _resolvedClientFiles: string[] = [];
 
-  /** Build the chunks array for a module using getModuleChunks. */
-  private getChunksForModule(
-    compilation: AnyCompilation,
-    module: AnyModule,
+  /** Build the chunks array from all chunks in a chunk group. */
+  private getGroupChunks(
+    chunkGroup: AnyChunkGroup,
   ): (string | number | null)[] {
     const chunks: (string | number | null)[] = [];
-    for (const chunkUnknown of compilation.chunkGraph.getModuleChunks(module)) {
+    for (const chunkUnknown of chunkGroup.chunks) {
       const c = chunkUnknown as AnyChunk;
       const files = c.files instanceof Set ? c.files : new Set(c.files);
       for (const file of files) {

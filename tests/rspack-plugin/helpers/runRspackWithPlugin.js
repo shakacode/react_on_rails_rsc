@@ -11,6 +11,7 @@
  *     outputPath: string,
  *     isServer: boolean,
  *     clientManifestFilename?: string,
+ *     clientReferences?: unknown,
  *     publicPath?: string,
  *     crossOriginLoading?: false|'anonymous'|'use-credentials',
  *     configExtra?: object,
@@ -40,16 +41,40 @@ const {
   outputPath,
   isServer,
   clientManifestFilename,
+  clientReferences: rawClientReferences,
   publicPath,
   crossOriginLoading,
   configExtra,
 } = args;
 
+if (configExtra && Object.prototype.hasOwnProperty.call(configExtra, 'entry')) {
+  throw new Error(
+    'configExtra.entry is not supported; the test runner must keep the Flight runtime entry.',
+  );
+}
+
+const runtimeEntries = {
+  server: path.resolve(__dirname, '../../../dist/client.node.js'),
+  client: path.resolve(__dirname, '../../../dist/client.browser.js'),
+};
+const missingRuntimeEntries = Object.values(runtimeEntries).filter((entry) => !fs.existsSync(entry));
+if (missingRuntimeEntries.length > 0) {
+  process.stdout.write(JSON.stringify({
+    ok: false,
+    errors: missingRuntimeEntries.map((entry) =>
+      `Missing ${path.relative(path.resolve(__dirname, '../../..'), entry)}. Run \`yarn build\` first.`,
+    ),
+  }));
+  process.exit(1);
+}
+const runtimeEntry = isServer ? runtimeEntries.server : runtimeEntries.client;
+const clientReferences = reviveFromRunner(rawClientReferences);
+
 const config = {
   mode: 'development',
-  target: 'web',
+  target: isServer ? 'node' : 'web',
   context,
-  entry: './index.js',
+  entry: [runtimeEntry, './index.js'],
   output: {
     path: outputPath,
     filename: '[name].js',
@@ -67,6 +92,7 @@ const config = {
     new RSCRspackPlugin({
       isServer: isServer,
       clientManifestFilename: clientManifestFilename,
+      clientReferences: clientReferences,
     }),
   ],
   ...(configExtra || {}),
@@ -100,3 +126,30 @@ rspack(config, (err, stats) => {
     }),
   );
 });
+
+function reviveFromRunner(value) {
+  if (value && typeof value === 'object' && value.__type === 'RegExp') {
+    if (
+      typeof value.source !== 'string' ||
+      typeof value.flags !== 'string' ||
+      /[^gimsuy]/.test(value.flags)
+    ) {
+      throw new TypeError('reviveFromRunner: invalid RegExp payload');
+    }
+    try {
+      return new RegExp(value.source, value.flags);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      throw new TypeError(`reviveFromRunner: invalid RegExp source "${value.source}": ${message}`);
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.map(reviveFromRunner);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, reviveFromRunner(child)]),
+    );
+  }
+  return value;
+}

@@ -140,6 +140,51 @@ describe('RSCRspackPlugin', () => {
       const result = run('no-client');
       expect(result.manifest.filePathToModuleMetadata).toEqual({});
     });
+
+    it('honors explicit clientReferences instead of recording every imported "use client" file', () => {
+      const result = run('multiple-clients', { clientReferences: ['./A.js'] });
+      const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+      expect(paths.length).toBe(1);
+      expect(paths[0]).toContain('/A.js');
+    });
+
+    it('does not preload initial entry chunks for statically imported client references', () => {
+      const result = run('basic-client');
+      const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientButton.js'),
+      );
+      expect(key).toBeTruthy();
+
+      const entry = result.manifest.filePathToModuleMetadata[key!]!;
+      const chunkFiles = entry.chunks
+        .filter((_chunk, index) => index % 2 === 1)
+        .map(String);
+      const initialAssets = new Set(
+        result.assets.filter((asset) => asset === 'main.js' || asset.startsWith('vendors-')),
+      );
+
+      expect(entry.id).toBe('./ClientButton.js');
+      expect(initialAssets.size).toBeGreaterThan(0);
+      expect(chunkFiles.filter((file) => initialAssets.has(file))).toEqual([]);
+    });
+
+    it('preserves client references discovered through symlinked directories', () => {
+      const fixtureRoot = path.join(__dirname, 'fixtures/symlink-client');
+      const targetPath = path.join(__dirname, 'fixtures/symlink-target');
+      const linkPath = path.join(fixtureRoot, 'linked');
+      fs.rmSync(linkPath, { force: true, recursive: true });
+      fs.symlinkSync(targetPath, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+
+      try {
+        const result = run('symlink-client', {
+          clientReferences: [{ directory: './linked', recursive: true, include: /\.js$/ }],
+        });
+        const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+        expect(paths.some((p) => p.endsWith('/symlink-target/SymlinkButton.js'))).toBe(true);
+      } finally {
+        fs.rmSync(linkPath, { force: true, recursive: true });
+      }
+    });
   });
 
   describe('server manifest parity (isServer: true)', () => {
@@ -188,7 +233,6 @@ describe('RSCRspackPlugin', () => {
       const paths = Object.keys(result.manifest.filePathToModuleMetadata);
       expect(paths.some((p) => p.endsWith('ClientButton.js'))).toBe(true);
       for (const entry of Object.values(result.manifest.filePathToModuleMetadata)) {
-        expect(entry.chunks.length).toBeGreaterThan(0);
         expect(entry.chunks.length % 2).toBe(0);
       }
     });
@@ -336,7 +380,7 @@ describe('RSCRspackPlugin', () => {
   describe('plugin option validation', () => {
     // Importing from dist so we don't need TS types here.
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-    const { RSCRspackPlugin } = require(DIST_PLUGIN);
+    const { RSC_LOADER_RULE, RSCRspackPlugin } = require(DIST_PLUGIN);
 
     it('throws when options is null', () => {
       expect(() => new RSCRspackPlugin(null)).toThrow(/isServer/);
@@ -374,6 +418,10 @@ describe('RSCRspackPlugin', () => {
             clientManifestFilename: 'custom.json',
           }),
       ).not.toThrow();
+    });
+
+    it('does not attach the directive detector to node_modules', () => {
+      expect(RSC_LOADER_RULE.exclude.test('/app/node_modules/pkg/index.ts')).toBe(true);
     });
   });
 

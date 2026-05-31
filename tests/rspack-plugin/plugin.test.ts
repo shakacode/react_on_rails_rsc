@@ -290,6 +290,7 @@ describe('RSCRspackPlugin', () => {
       const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
 
       expect(jsAssets).toContain('main.js');
+      // Generated client-reference chunks use the default `client[index]` chunkName.
       expect(jsAssets.some((asset) => /^client\d+\.chunk\.js$/.test(asset))).toBe(true);
       expect(jsAssets.filter((asset) => /vendors|biglib|clientlib/.test(asset))).toEqual([]);
 

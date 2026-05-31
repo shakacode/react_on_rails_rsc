@@ -306,13 +306,16 @@ export class RSCRspackPlugin {
         const optimization = (compiler.options as { optimization?: { splitChunks?: SplitChunksConfig } }).optimization;
         const splitChunks = optimization?.splitChunks;
         if (splitChunks) {
-          const origChunks = splitChunks.chunks;
+          const origChunks = splitChunks.chunks ?? 'async';
           splitChunks.chunks = (chunk: { name?: string }) => {
             if (chunk.name != null && getGeneratedChunkNames().has(chunk.name)) return false;
             if (typeof origChunks === 'function') return origChunks(chunk);
-            if (origChunks === 'initial') return !!(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
-            if (origChunks === 'async') return !(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
-            return true;
+            // Rspack/Webpack chunks expose canBeInitial(); keep the historical
+            // fallback for non-standard chunk shapes explicit.
+            const canBeInitial = (chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
+            if (origChunks === 'initial') return !!canBeInitial;
+            if (origChunks === 'async') return !canBeInitial;
+            return true; // origChunks === 'all': include every non-generated chunk.
           };
         }
       }

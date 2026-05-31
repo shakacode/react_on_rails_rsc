@@ -19,6 +19,13 @@ const run = (fixture: string, options?: Parameters<typeof compile>[1]): CompileR
   return r;
 };
 
+type ManifestChunks =
+  CompileResult['manifest']['filePathToModuleMetadata'][string]['chunks'];
+
+// Manifest chunks are encoded as [id, file, id, file, ...].
+const manifestChunkFiles = (chunks: ManifestChunks): string[] =>
+  chunks.filter((_chunk, index) => index % 2 === 1).map(String);
+
 afterAll(() => cleanupOutputDirs(created));
 
 const DIST_PLUGIN = path.resolve(__dirname, '../../dist/react-server-dom-rspack/plugin.js');
@@ -156,9 +163,7 @@ describe('RSCRspackPlugin', () => {
       expect(key).toBeTruthy();
 
       const entry = result.manifest.filePathToModuleMetadata[key!]!;
-      const chunkFiles = entry.chunks
-        .filter((_chunk, index) => index % 2 === 1)
-        .map(String);
+      const chunkFiles = manifestChunkFiles(entry.chunks);
       const initialAssets = new Set(
         result.assets.filter((asset) => asset === 'main.js' || asset.startsWith('vendors-')),
       );
@@ -256,6 +261,87 @@ describe('RSCRspackPlugin', () => {
       });
       const paths = Object.keys(result.manifest.filePathToModuleMetadata);
       expect(paths.some((p) => p.endsWith('ClientButton.js'))).toBe(true);
+    });
+  });
+
+  describe('splitChunks integration', () => {
+    it('preserves default async chunk selection while excluding generated client-reference chunks', () => {
+      const result = run('default-splitchunks', {
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              minSize: 0,
+              cacheGroups: {
+                forcedVendor: {
+                  // No `test` filter: match all eligible modules so the old
+                  // undefined-as-all bug extracts biglib from the initial chunk.
+                  name: 'vendors-biglib',
+                  minChunks: 1,
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
+
+      expect(jsAssets).toContain('main.js');
+      // Generated client-reference chunks use the default `client[index]` chunkName.
+      expect(jsAssets.some((asset) => /^client\d+\.chunk\.js$/.test(asset))).toBe(true);
+      expect(jsAssets.filter((asset) => /vendors|biglib|clientlib/.test(asset))).toEqual([]);
+
+      const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(clientEntryKey).toBeTruthy();
+
+      const clientChunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+      );
+      expect(clientChunkFiles).toEqual(
+        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)]),
+      );
+      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
+    });
+
+    it('preserves explicit all chunk selection for non-generated chunks', () => {
+      const result = run('default-splitchunks', {
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              chunks: 'all',
+              minSize: 0,
+              cacheGroups: {
+                forcedVendor: {
+                  name: 'vendors-biglib',
+                  minChunks: 1,
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
+
+      expect(jsAssets).toContain('vendors-biglib.js');
+
+      const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(clientEntryKey).toBeTruthy();
+
+      const clientChunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+      );
+      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
     });
   });
 

@@ -271,6 +271,8 @@ describe('RSCRspackPlugin', () => {
               minSize: 0,
               cacheGroups: {
                 forcedVendor: {
+                  // No `test` filter: match all eligible modules so the old
+                  // undefined-as-all bug extracts biglib from the initial chunk.
                   name: 'vendors-biglib',
                   minChunks: 1,
                   enforce: true,
@@ -291,6 +293,7 @@ describe('RSCRspackPlugin', () => {
       );
       expect(clientEntryKey).toBeTruthy();
 
+      // Manifest chunks are [id, file, id, file, ...]; odd indices are files.
       const clientChunkFiles = result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks
         .filter((_chunk, index) => index % 2 === 1)
         .map(String);

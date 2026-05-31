@@ -312,7 +312,7 @@ export class RSCRspackPlugin {
             if (typeof origChunks === 'function') return origChunks(chunk);
             if (origChunks === 'initial') return !!(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
             if (origChunks === 'async') return !(chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
-            return true;
+            return true; // 'all' intentionally includes every non-generated chunk.
           };
         }
       }

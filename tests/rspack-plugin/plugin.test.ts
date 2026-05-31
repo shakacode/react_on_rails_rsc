@@ -19,6 +19,13 @@ const run = (fixture: string, options?: Parameters<typeof compile>[1]): CompileR
   return r;
 };
 
+type ManifestChunks =
+  CompileResult['manifest']['filePathToModuleMetadata'][string]['chunks'];
+
+// Manifest chunks are encoded as [id, file, id, file, ...].
+const manifestChunkFiles = (chunks: ManifestChunks): string[] =>
+  chunks.filter((_chunk, index) => index % 2 === 1).map(String);
+
 afterAll(() => cleanupOutputDirs(created));
 
 const DIST_PLUGIN = path.resolve(__dirname, '../../dist/react-server-dom-rspack/plugin.js');
@@ -156,9 +163,7 @@ describe('RSCRspackPlugin', () => {
       expect(key).toBeTruthy();
 
       const entry = result.manifest.filePathToModuleMetadata[key!]!;
-      const chunkFiles = entry.chunks
-        .filter((_chunk, index) => index % 2 === 1)
-        .map(String);
+      const chunkFiles = manifestChunkFiles(entry.chunks);
       const initialAssets = new Set(
         result.assets.filter((asset) => asset === 'main.js' || asset.startsWith('vendors-')),
       );
@@ -293,10 +298,9 @@ describe('RSCRspackPlugin', () => {
       );
       expect(clientEntryKey).toBeTruthy();
 
-      // Manifest chunks are [id, file, id, file, ...]; odd indices are files.
-      const clientChunkFiles = result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks
-        .filter((_chunk, index) => index % 2 === 1)
-        .map(String);
+      const clientChunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+      );
       expect(clientChunkFiles).toEqual(
         expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)]),
       );

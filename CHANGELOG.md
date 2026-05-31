@@ -2,6 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
+## [19.0.5-rc.3] - 2026-05-30
+
+### Fixed
+- Fixed `RSCRspackPlugin` so an unset `optimization.splitChunks.chunks` preserves the Rspack/Webpack default `async` behavior while still excluding generated RSC client-reference chunks from splitChunks extraction.
+
 ## [19.0.5-rc.2] - 2026-05-30
 
 ### Added
@@ -24,5 +29,6 @@ All notable changes to this package will be documented in this file.
 ### Changed
 - Released the first `19.0.5` release candidate.
 
+[19.0.5-rc.3]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.2...19.0.5-rc.3
 [19.0.5-rc.2]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.1...19.0.5-rc.2
 [19.0.5-rc.1]: https://github.com/shakacode/react_on_rails_rsc/releases/tag/19.0.5-rc.1

@@ -306,7 +306,7 @@ export class RSCRspackPlugin {
         const optimization = (compiler.options as { optimization?: { splitChunks?: SplitChunksConfig } }).optimization;
         const splitChunks = optimization?.splitChunks;
         if (splitChunks) {
-          const origChunks = splitChunks.chunks;
+          const origChunks = splitChunks.chunks ?? 'async';
           splitChunks.chunks = (chunk: { name?: string }) => {
             if (chunk.name != null && getGeneratedChunkNames().has(chunk.name)) return false;
             if (typeof origChunks === 'function') return origChunks(chunk);

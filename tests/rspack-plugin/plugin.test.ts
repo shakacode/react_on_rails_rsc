@@ -259,6 +259,48 @@ describe('RSCRspackPlugin', () => {
     });
   });
 
+  describe('splitChunks integration', () => {
+    it('preserves default async chunk selection while excluding generated client-reference chunks', () => {
+      const result = run('default-splitchunks', {
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              minSize: 0,
+              cacheGroups: {
+                forcedVendor: {
+                  name: 'vendors-biglib',
+                  minChunks: 1,
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
+
+      expect(jsAssets).toContain('main.js');
+      expect(jsAssets.some((asset) => /^client\d+\.chunk\.js$/.test(asset))).toBe(true);
+      expect(jsAssets.filter((asset) => /vendors|biglib|clientlib/.test(asset))).toEqual([]);
+
+      const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(clientEntryKey).toBeTruthy();
+
+      const clientChunkFiles = result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks
+        .filter((_chunk, index) => index % 2 === 1)
+        .map(String);
+      expect(clientChunkFiles).toEqual(
+        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)]),
+      );
+      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
+    });
+  });
+
   describe('publicPath handling', () => {
     it('passes publicPath "auto" through verbatim (matches webpack)', () => {
       const result = run('basic-client', { publicPath: 'auto' });

@@ -307,6 +307,42 @@ describe('RSCRspackPlugin', () => {
       );
       expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
     });
+
+    it('preserves explicit all chunk selection for non-generated chunks', () => {
+      const result = run('default-splitchunks', {
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              chunks: 'all',
+              minSize: 0,
+              cacheGroups: {
+                forcedVendor: {
+                  name: 'vendors-biglib',
+                  minChunks: 1,
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
+
+      expect(jsAssets).toContain('vendors-biglib.js');
+
+      const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(clientEntryKey).toBeTruthy();
+
+      const clientChunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+      );
+      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
+    });
   });
 
   describe('publicPath handling', () => {

@@ -420,6 +420,8 @@ export class RSCRspackPlugin {
       try { stat = fs.statSync(full); } catch { continue; }
 
       if (stat.isDirectory()) {
+        const relPath = './' + path.relative(walkRoot, full);
+        if (ref.exclude && ref.exclude.test(relPath)) continue;
         if (ref.recursive !== false) this.walkDir(full, walkRoot, ref, out);
       } else if (stat.isFile()) {
         // Test include/exclude against the RELATIVE path from the walk

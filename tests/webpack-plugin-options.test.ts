@@ -1,4 +1,7 @@
-import { DEFAULT_CLIENT_REFERENCES_EXCLUDE } from '../src/clientReferences';
+import {
+  DEFAULT_CLIENT_REFERENCES_EXCLUDE,
+  DEFAULT_CLIENT_REFERENCES_INCLUDE,
+} from '../src/clientReferences';
 import { RSCWebpackPlugin } from '../src/WebpackPlugin';
 
 describe('RSCWebpackPlugin clientReferences defaults', () => {
@@ -10,7 +13,7 @@ describe('RSCWebpackPlugin clientReferences defaults', () => {
       {
         directory: '.',
         recursive: true,
-        include: /\.[cm]?[jt]sx?$/,
+        include: DEFAULT_CLIENT_REFERENCES_INCLUDE,
         exclude: DEFAULT_CLIENT_REFERENCES_EXCLUDE,
       },
     ]);

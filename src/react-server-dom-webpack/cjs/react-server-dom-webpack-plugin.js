@@ -9,7 +9,8 @@
  */
 
 "use strict";
-var path = require("path"),
+var fs = require("fs"),
+  path = require("path"),
   url = require("url"),
   asyncLib = require("neo-async"),
   acorn = require("acorn-loose"),
@@ -94,6 +95,33 @@ class ClientReferenceDependency extends ModuleDependency {
 }
 const clientFileNameOnClient = require.resolve("../client.browser.js"),
   clientFileNameOnServer = require.resolve("../client.node.js");
+function isReactOnRailsRSCRuntimeResource(resource, isServer) {
+  if (
+    resource === (isServer ? clientFileNameOnServer : clientFileNameOnClient)
+  )
+    return !0;
+  if ("string" !== typeof resource) return !1;
+  const normalizedResource = path.normalize(resource),
+    expectedSuffix = path.join(
+      "react-server-dom-webpack",
+      isServer ? "client.node.js" : "client.browser.js"
+    );
+  if (!normalizedResource.endsWith(expectedSuffix)) return !1;
+  let dir = path.dirname(normalizedResource);
+  for (let i = 0; 20 > i; i++) {
+    const packageJsonPath = path.join(dir, "package.json");
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+      if ("react-on-rails-rsc" === packageJson.name) return !0;
+    } catch (x) {
+      if ("ENOENT" !== x.code && "ENOTDIR" !== x.code) return !1;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return !1;
+    dir = parent;
+  }
+  return !1;
+}
 class ReactFlightWebpackPlugin {
   constructor(options) {
     this.isServer =
@@ -164,10 +192,10 @@ class ReactFlightWebpackPlugin {
           parser.hooks.program.tap("React Server Plugin", () => {
             const module = parser.state.module;
             if (
-              module.resource ===
-                (_this.isServer
-                  ? clientFileNameOnServer
-                  : clientFileNameOnClient) &&
+              isReactOnRailsRSCRuntimeResource(
+                module.resource,
+                _this.isServer
+              ) &&
               ((clientFileNameFound = !0), resolvedClientReferences)
             )
               for (let i = 0; i < resolvedClientReferences.length; i++) {
@@ -409,4 +437,6 @@ class ReactFlightWebpackPlugin {
     );
   }
 }
+ReactFlightWebpackPlugin.__internal_isReactOnRailsRSCRuntimeResource =
+  isReactOnRailsRSCRuntimeResource;
 module.exports = ReactFlightWebpackPlugin;

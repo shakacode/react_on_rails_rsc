@@ -95,7 +95,16 @@ class ClientReferenceDependency extends ModuleDependency {
 }
 const clientFileNameOnClient = require.resolve("../client.browser.js"),
   clientFileNameOnServer = require.resolve("../client.node.js");
+const runtimeResourceDetectionCache = new Map();
 function isReactOnRailsRSCRuntimeResource(resource, isServer) {
+  const cacheKey = isServer + "\0" + resource;
+  if (runtimeResourceDetectionCache.has(cacheKey))
+    return runtimeResourceDetectionCache.get(cacheKey);
+  const result = detectReactOnRailsRSCRuntimeResource(resource, isServer);
+  runtimeResourceDetectionCache.set(cacheKey, result);
+  return result;
+}
+function detectReactOnRailsRSCRuntimeResource(resource, isServer) {
   if (
     resource === (isServer ? clientFileNameOnServer : clientFileNameOnClient)
   )
@@ -106,7 +115,7 @@ function isReactOnRailsRSCRuntimeResource(resource, isServer) {
       "react-server-dom-webpack",
       isServer ? "client.node.js" : "client.browser.js"
     );
-  if (!normalizedResource.endsWith(expectedSuffix)) return !1;
+  if (!normalizedResource.endsWith(path.sep + expectedSuffix)) return !1;
   let dir = path.dirname(normalizedResource);
   for (let i = 0; 20 > i; i++) {
     const packageJsonPath = path.join(dir, "package.json");
@@ -114,7 +123,12 @@ function isReactOnRailsRSCRuntimeResource(resource, isServer) {
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
       if ("react-on-rails-rsc" === packageJson.name) return !0;
     } catch (x) {
-      if ("ENOENT" !== x.code && "ENOTDIR" !== x.code) return !1;
+      if (
+        !(x instanceof SyntaxError) &&
+        "ENOENT" !== x.code &&
+        "ENOTDIR" !== x.code
+      )
+        return !1;
     }
     const parent = path.dirname(dir);
     if (parent === dir) return !1;

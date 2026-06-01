@@ -22,6 +22,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
+import {
+  DEFAULT_CLIENT_REFERENCES_EXCLUDE,
+  DEFAULT_CLIENT_REFERENCES_INCLUDE,
+} from '../clientReferences';
 import { CLIENT_MODULES_KEY, hasUseClientDirective } from './shared';
 import type {} from './injection-loader';
 
@@ -162,8 +166,9 @@ export interface Options {
    * bundle includes every client component even if nothing in the entry graph
    * explicitly imports it — matching the webpack plugin's behavior.
    *
-   * Default: `[{ directory: ".", recursive: true, include: /\.(js|ts|jsx|tsx)$/ }]`
-   * (scan the entire compiler context directory).
+   * Default: scan the compiler context for JS/TS files while excluding
+   * dependency and generated asset directories such as `node_modules`,
+   * `vendor/bundle`, and `vendor/cache`.
    */
   clientReferences?: ClientReferencePath | ReadonlyArray<ClientReferencePath>;
   /**
@@ -200,7 +205,8 @@ export class RSCRspackPlugin {
     this.options = options;
 
     // Normalize clientReferences exactly like the webpack plugin.
-    // Default: scan the entire context directory for JS/TS files.
+    // Default: scan the context directory for JS/TS files, but skip dependency
+    // and generated asset directories that can contain Rails gem templates.
     //
     // When a string is passed, the webpack plugin treats it as a DIRECT
     // file reference (unconditionally included, no "use client" check).
@@ -216,7 +222,12 @@ export class RSCRspackPlugin {
       );
     } else {
       this.clientReferences = [
-        { directory: '.', recursive: true, include: /\.[cm]?[jt]sx?$/ },
+        {
+          directory: '.',
+          recursive: true,
+          include: DEFAULT_CLIENT_REFERENCES_INCLUDE,
+          exclude: DEFAULT_CLIENT_REFERENCES_EXCLUDE,
+        },
       ];
     }
 

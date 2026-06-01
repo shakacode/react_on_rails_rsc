@@ -5,6 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [19.0.5-rc.3] - 2026-05-30
 
 ### Fixed
+- Fixed default client reference discovery to skip dependency and generated asset directories such as `node_modules`, `vendor/bundle`, and `vendor/cache`.
 - Fixed `RSCRspackPlugin` so an unset `optimization.splitChunks.chunks` preserves the Rspack/Webpack default `async` behavior while still excluding generated RSC client-reference chunks from splitChunks extraction.
 
 ## [19.0.5-rc.2] - 2026-05-30

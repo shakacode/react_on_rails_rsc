@@ -150,6 +150,7 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
     expect(metadata).toEqual({
       id: './ClientComponent.js',
       chunks: ['client-chunk', 'client.js'],
+      css: ['/assets/client.css'],
       name: '*',
     });
   });

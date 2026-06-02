@@ -14,3 +14,24 @@ export const DEFAULT_CLIENT_REFERENCES_EXCLUDE =
  * Matches JavaScript, TypeScript, JSX, TSX, and their CommonJS/ESM variants.
  */
 export const DEFAULT_CLIENT_REFERENCES_INCLUDE = /\.[cm]?[jt]sx?$/;
+
+const USE_CLIENT_REGEX = /^\s*['"]use client['"]\s*;?\s*(?:\n|$)/;
+const LEADING_COMMENTS = /^(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))+/;
+
+function stripProlog(source: string): string {
+  let s = source;
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  if (s.startsWith('#!')) {
+    const nl = s.indexOf('\n');
+    s = nl === -1 ? '' : s.slice(nl + 1);
+  }
+  const stripped = s.replace(LEADING_COMMENTS, '');
+  if (stripped !== s) s = stripped;
+  return s;
+}
+
+/** Check whether `source` starts with a `"use client"` directive. */
+export function hasUseClientDirective(source: string | Buffer): boolean {
+  const text = Buffer.isBuffer(source) ? source.toString('utf8') : source;
+  return USE_CLIENT_REGEX.test(stripProlog(text));
+}

@@ -37,6 +37,10 @@
       "types": "./dist/WebpackLoader.d.ts",
       "default": "./dist/WebpackLoader.js"
     },
+    "./RSCReferenceDiscoveryPlugin": {
+      "types": "./dist/RSCReferenceDiscoveryPlugin.d.ts",
+      "default": "./dist/RSCReferenceDiscoveryPlugin.js"
+    },
     "./RspackPlugin": {
       "types": "./dist/react-server-dom-rspack/plugin.d.ts",
       "default": "./dist/react-server-dom-rspack/plugin.js"

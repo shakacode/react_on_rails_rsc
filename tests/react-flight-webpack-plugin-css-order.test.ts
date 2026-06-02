@@ -8,12 +8,14 @@ type SyncHookCallback = (...args: unknown[]) => void;
 describe('ReactFlightWebpackPlugin manifest chunk files', () => {
   it('records the JavaScript chunk when CSS appears first in chunk.files', () => {
     const clientFile = '/app/components/ClientComponent.js';
+    // The plugin matches this specific runtime resource to inject client-reference dependency blocks.
     const runtimeFile = require.resolve('../src/react-server-dom-webpack/client.browser.js');
     const plugin = new ReactFlightWebpackPlugin({
       isServer: false,
       clientReferences: [clientFile],
     });
 
+    // Keep this focused on manifest generation once the plugin has discovered the client reference.
     plugin.resolveAllClientFiles = jest.fn(
       (
         _context: string,
@@ -57,6 +59,7 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
 
     plugin.apply(compiler);
 
+    expect(beforeCompileCallbacks).toHaveLength(1);
     beforeCompileCallbacks[0]!(
       { contextModuleFactory: {} },
       (error?: Error | null) => {
@@ -129,12 +132,18 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
       },
     };
 
+    expect(thisCompilationCallbacks).toHaveLength(1);
     thisCompilationCallbacks[0]!(compilation, { normalModuleFactory });
-    programCallbacks[0]!();
+    expect(programCallbacks).toHaveLength(3);
+    programCallbacks.forEach((callback) => callback());
+    expect(makeCallbacks).toHaveLength(1);
     makeCallbacks[0]!(compilation);
+    expect(processAssetCallbacks).toHaveLength(1);
     processAssetCallbacks[0]!();
 
-    const manifestSource = emittedAssets.get('react-client-manifest.json')!.source().toString();
+    const manifestAsset = emittedAssets.get('react-client-manifest.json');
+    expect(manifestAsset).toBeDefined();
+    const manifestSource = manifestAsset!.source().toString();
     const manifest = JSON.parse(manifestSource);
     const metadata = manifest.filePathToModuleMetadata[pathToFileURL(clientFile).href];
 

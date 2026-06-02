@@ -32,6 +32,8 @@ describe('RSCRspackPlugin filesystem discovery', () => {
     const readdirSpy = jest.spyOn(fs, 'readdirSync');
 
     try {
+      // This intentionally reaches into the private helper because the behavior
+      // under test is traversal pruning, not only the final manifest contents.
       const plugin = new RSCRspackPlugin({ isServer: false }) as unknown as WalkDirCapable;
       const out = new Set<string>();
       plugin.walkDir(

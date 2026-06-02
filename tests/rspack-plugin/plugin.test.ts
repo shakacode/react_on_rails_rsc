@@ -151,6 +151,8 @@ describe('RSCRspackPlugin', () => {
       expect(paths.some((p) => p.includes('/vendor/bundle/'))).toBe(false);
       expect(paths.some((p) => p.includes('/vendor/cache/'))).toBe(false);
       expect(paths.some((p) => p.includes('/node_modules/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/public/assets/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/app/assets/vite/'))).toBe(false);
     });
 
     it('produces an empty manifest when no client files exist', () => {

@@ -420,7 +420,7 @@ export class RSCRspackPlugin {
       try { stat = fs.statSync(full); } catch { continue; }
 
       if (stat.isDirectory()) {
-        const relPath = './' + path.relative(walkRoot, full);
+        const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
         if (ref.exclude && ref.exclude.test(relPath)) continue;
         if (ref.recursive !== false) this.walkDir(full, walkRoot, ref, out);
       } else if (stat.isFile()) {
@@ -428,7 +428,7 @@ export class RSCRspackPlugin {
         // root (e.g. "./components/Button.tsx"), matching the webpack
         // plugin's contextModuleFactory behavior which tests against the
         // relative request path.
-        const relPath = './' + path.relative(walkRoot, full);
+        const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
         if (!ref.include.test(relPath)) continue;
         if (ref.exclude && ref.exclude.test(relPath)) continue;
         try {

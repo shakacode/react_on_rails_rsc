@@ -281,9 +281,41 @@ class ReactFlightWebpackPlugin {
                 });
             });
             compilation.chunkGroups.forEach(function (chunkGroup) {
+              let chunkResolvedClientFiles = resolvedClientFiles;
+              if (!_this.isServer) {
+                const blocks =
+                  "function" === typeof chunkGroup.getBlocks
+                    ? chunkGroup.getBlocks()
+                    : chunkGroup.blocksIterable;
+                if (!blocks) return;
+                chunkResolvedClientFiles = new Set();
+                var _iterator = _createForOfIteratorHelper(blocks),
+                  _step;
+                try {
+                  for (_iterator.s(); !(_step = _iterator.n()).done; ) {
+                    const block = _step.value,
+                      dependencies = block && block.dependencies;
+                    if (!dependencies) continue;
+                    for (let i = 0; i < dependencies.length; i++) {
+                      const dep = dependencies[i];
+                      if (
+                        (dep instanceof ClientReferenceDependency ||
+                          "client-reference" === dep.type) &&
+                        resolvedClientFiles.has(dep.request)
+                      )
+                        chunkResolvedClientFiles.add(dep.request);
+                    }
+                  }
+                } catch (err) {
+                  _iterator.e(err);
+                } finally {
+                  _iterator.f();
+                }
+                if (0 === chunkResolvedClientFiles.size) return;
+              }
               function recordModule(id, module) {
                 if (
-                  resolvedClientFiles.has(module.resource) &&
+                  chunkResolvedClientFiles.has(module.resource) &&
                   ((module = url.pathToFileURL(module.resource).href),
                   void 0 !== module)
                 )

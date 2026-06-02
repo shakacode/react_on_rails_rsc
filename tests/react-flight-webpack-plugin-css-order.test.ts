@@ -25,7 +25,9 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
         _contextModuleFactory: unknown,
         callback: (error: Error | null, refs?: Array<{ request: string; userRequest: string }>) => void,
       ) => {
-        callback(null, [{ request: clientFile, userRequest: './ClientComponent.js' }]);
+        callback(null, [
+          { request: clientFile, type: 'client-reference', userRequest: './ClientComponent.js' } as never,
+        ]);
       },
     );
 
@@ -68,11 +70,14 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
     );
 
     const programCallbacks: Array<() => void> = [];
+    const clientReferenceBlocks: unknown[] = [];
     const parser = {
       state: {
         module: {
           resource: runtimeFile,
-          addBlock: jest.fn(),
+          addBlock: jest.fn((block: unknown) => {
+            clientReferenceBlocks.push(block);
+          }),
         },
       },
       hooks: {
@@ -113,6 +118,7 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
       entrypoints: new Map(),
       chunkGroups: [
         {
+          getBlocks: () => clientReferenceBlocks,
           chunks: [chunk],
         },
       ],
@@ -136,6 +142,7 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
     thisCompilationCallbacks[0]!(compilation, { normalModuleFactory });
     expect(programCallbacks).toHaveLength(3);
     programCallbacks.forEach((callback) => callback());
+    expect(clientReferenceBlocks).not.toHaveLength(0);
     expect(makeCallbacks).toHaveLength(1);
     makeCallbacks[0]!(compilation);
     expect(processAssetCallbacks).toHaveLength(1);

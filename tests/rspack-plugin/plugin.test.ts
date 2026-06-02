@@ -19,6 +19,13 @@ const run = (fixture: string, options?: Parameters<typeof compile>[1]): CompileR
   return r;
 };
 
+type ManifestChunks =
+  CompileResult['manifest']['filePathToModuleMetadata'][string]['chunks'];
+
+// Manifest chunks are encoded as [id, file, id, file, ...].
+const manifestChunkFiles = (chunks: ManifestChunks): string[] =>
+  chunks.filter((_chunk, index) => index % 2 === 1).map(String);
+
 afterAll(() => cleanupOutputDirs(created));
 
 const DIST_PLUGIN = path.resolve(__dirname, '../../dist/react-server-dom-rspack/plugin.js');
@@ -136,9 +143,97 @@ describe('RSCRspackPlugin', () => {
       expect(paths.some((p) => p.endsWith('Dead.js'))).toBe(true);
     });
 
+    it('excludes dependency and generated directories from the default FS walk', () => {
+      const result = run('default-excludes');
+      const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+
+      expect(paths.some((p) => p.endsWith('/app/javascript/AppClient.js'))).toBe(true);
+      expect(paths.some((p) => p.includes('/vendor/bundle/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/vendor/cache/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/node_modules/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/public/assets/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/app/assets/vite/'))).toBe(false);
+    });
+
     it('produces an empty manifest when no client files exist', () => {
       const result = run('no-client');
       expect(result.manifest.filePathToModuleMetadata).toEqual({});
+    });
+
+    it('honors explicit clientReferences instead of recording every imported "use client" file', () => {
+      const result = run('multiple-clients', { clientReferences: ['./A.js'] });
+      const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+      expect(paths.length).toBe(1);
+      expect(paths[0]).toContain('/A.js');
+    });
+
+    it('does not preload initial entry chunks for statically imported client references', () => {
+      const result = run('basic-client');
+      const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientButton.js'),
+      );
+      expect(key).toBeTruthy();
+
+      const entry = result.manifest.filePathToModuleMetadata[key!]!;
+      const chunkFiles = manifestChunkFiles(entry.chunks);
+      const initialAssets = new Set(
+        result.assets.filter((asset) => asset === 'main.js' || asset.startsWith('vendors-')),
+      );
+
+      expect(entry.id).toBe('./ClientButton.js');
+      expect(initialAssets.size).toBeGreaterThan(0);
+      expect(chunkFiles.filter((file) => initialAssets.has(file))).toEqual([]);
+    });
+
+    it('preserves client references discovered through symlinked directories', () => {
+      const fixtureRoot = path.join(__dirname, 'fixtures/symlink-client');
+      const targetPath = path.join(__dirname, 'fixtures/symlink-target');
+      const linkPath = path.join(fixtureRoot, 'linked');
+      fs.rmSync(linkPath, { force: true, recursive: true });
+      fs.symlinkSync(targetPath, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+
+      try {
+        const result = run('symlink-client', {
+          clientReferences: [{ directory: './linked', recursive: true, include: /\.js$/ }],
+        });
+        const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+        expect(paths.some((p) => p.endsWith('/symlink-target/SymlinkButton.js'))).toBe(true);
+      } finally {
+        fs.rmSync(linkPath, { force: true, recursive: true });
+      }
+    });
+  });
+
+  describe('server manifest parity (isServer: true)', () => {
+    // Regression tests for the server-manifest bug: the plugin previously
+    // skipped the FS walk and addInclude injection for isServer:true. This
+    // caused "use client" files NOT in the server entry's import tree to be
+    // missing from the server manifest, making createSSRManifest() throw
+    // "Server module metadata not found for <file>".
+    //
+    // Uses the dead-code fixture: index.js imports Used.js but NOT Dead.js.
+    // Both have "use client". The FS walk discovers both; addInclude injects
+    // Dead.js into the module graph even though no entry imports it.
+    let clientResult: CompileResult;
+    let serverResult: CompileResult;
+
+    beforeAll(() => {
+      clientResult = run('dead-code', { isServer: false });
+      serverResult = run('dead-code', { isServer: true });
+    });
+
+    it('includes unreachable "use client" files in the server manifest', () => {
+      const paths = Object.keys(serverResult.manifest.filePathToModuleMetadata);
+      expect(paths.some((p) => p.endsWith('Used.js'))).toBe(true);
+      expect(paths.some((p) => p.endsWith('Dead.js'))).toBe(true);
+    });
+
+    it('client and server manifests have the same entry keys', () => {
+      // createSSRManifest() iterates every client manifest entry and looks
+      // it up in the server manifest. If any key is missing, it throws.
+      const clientKeys = Object.keys(clientResult.manifest.filePathToModuleMetadata).sort();
+      const serverKeys = Object.keys(serverResult.manifest.filePathToModuleMetadata).sort();
+      expect(clientKeys).toEqual(serverKeys);
     });
   });
 
@@ -155,7 +250,6 @@ describe('RSCRspackPlugin', () => {
       const paths = Object.keys(result.manifest.filePathToModuleMetadata);
       expect(paths.some((p) => p.endsWith('ClientButton.js'))).toBe(true);
       for (const entry of Object.values(result.manifest.filePathToModuleMetadata)) {
-        expect(entry.chunks.length).toBeGreaterThan(0);
         expect(entry.chunks.length % 2).toBe(0);
       }
     });
@@ -179,6 +273,87 @@ describe('RSCRspackPlugin', () => {
       });
       const paths = Object.keys(result.manifest.filePathToModuleMetadata);
       expect(paths.some((p) => p.endsWith('ClientButton.js'))).toBe(true);
+    });
+  });
+
+  describe('splitChunks integration', () => {
+    it('preserves default async chunk selection while excluding generated client-reference chunks', () => {
+      const result = run('default-splitchunks', {
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              minSize: 0,
+              cacheGroups: {
+                forcedVendor: {
+                  // No `test` filter: match all eligible modules so the old
+                  // undefined-as-all bug extracts biglib from the initial chunk.
+                  name: 'vendors-biglib',
+                  minChunks: 1,
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
+
+      expect(jsAssets).toContain('main.js');
+      // Generated client-reference chunks use the default `client[index]` chunkName.
+      expect(jsAssets.some((asset) => /^client\d+\.chunk\.js$/.test(asset))).toBe(true);
+      expect(jsAssets.filter((asset) => /vendors|biglib|clientlib/.test(asset))).toEqual([]);
+
+      const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(clientEntryKey).toBeTruthy();
+
+      const clientChunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+      );
+      expect(clientChunkFiles).toEqual(
+        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)]),
+      );
+      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
+    });
+
+    it('preserves explicit all chunk selection for non-generated chunks', () => {
+      const result = run('default-splitchunks', {
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              chunks: 'all',
+              minSize: 0,
+              cacheGroups: {
+                forcedVendor: {
+                  name: 'vendors-biglib',
+                  minChunks: 1,
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
+
+      expect(jsAssets).toContain('vendors-biglib.js');
+
+      const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(clientEntryKey).toBeTruthy();
+
+      const clientChunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+      );
+      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
     });
   });
 
@@ -303,7 +478,7 @@ describe('RSCRspackPlugin', () => {
   describe('plugin option validation', () => {
     // Importing from dist so we don't need TS types here.
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-    const { RSCRspackPlugin } = require(DIST_PLUGIN);
+    const { RSC_LOADER_RULE, RSCRspackPlugin } = require(DIST_PLUGIN);
 
     it('throws when options is null', () => {
       expect(() => new RSCRspackPlugin(null)).toThrow(/isServer/);
@@ -341,6 +516,10 @@ describe('RSCRspackPlugin', () => {
             clientManifestFilename: 'custom.json',
           }),
       ).not.toThrow();
+    });
+
+    it('does not attach the directive detector to node_modules', () => {
+      expect(RSC_LOADER_RULE.exclude.test('/app/node_modules/pkg/index.ts')).toBe(true);
     });
   });
 

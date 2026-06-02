@@ -21,6 +21,7 @@ export interface CompileOptions {
   clientManifestFilename?: string;
   publicPath?: string;
   crossOriginLoading?: false | 'anonymous' | 'use-credentials';
+  clientReferences?: unknown;
   /** Additional rspack config to merge. Use sparingly. */
   configExtra?: Record<string, unknown>;
 }
@@ -54,6 +55,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     outputPath,
     isServer: options.isServer ?? false,
     clientManifestFilename: options.clientManifestFilename,
+    clientReferences: serializeForRunner(options.clientReferences),
     publicPath: options.publicPath,
     crossOriginLoading: options.crossOriginLoading,
     configExtra: options.configExtra ?? {},
@@ -104,6 +106,21 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     assets: result.assets ?? [],
     outputPath,
   };
+};
+
+const serializeForRunner = (value: unknown): unknown => {
+  if (value instanceof RegExp) {
+    return { __type: 'RegExp', source: value.source, flags: value.flags };
+  }
+  if (Array.isArray(value)) {
+    return value.map(serializeForRunner);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, serializeForRunner(child)]),
+    );
+  }
+  return value;
 };
 
 /**

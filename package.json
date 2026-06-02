@@ -1,6 +1,6 @@
 {
   "name": "react-on-rails-rsc",
-  "version": "19.0.5-rc.1",
+  "version": "19.0.5-rc.3",
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
     "./client": {
@@ -66,7 +66,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "yarn test:rsc && yarn test:non-rsc",
@@ -74,7 +75,7 @@
     "test:non-rsc": "jest tests --testPathIgnorePatterns=\".*\\.rsc\\.test\\..*\"",
     "build": "rm -rf dist tsconfig.tsbuildinfo && yarn run tsc",
     "prepublishOnly": "yarn run build",
-    "build-if-needed": "[ -f dist/client.js ] || (yarn run build >/dev/null 2>&1 || true) && [ -f dist/client.js ] || { echo 'Build failed'; }",
+    "build-if-needed": "test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js || (yarn run build && test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js)",
     "prepack": "yarn run build-if-needed",
     "prepare": "yarn run build-if-needed"
   },

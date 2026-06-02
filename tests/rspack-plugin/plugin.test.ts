@@ -143,6 +143,18 @@ describe('RSCRspackPlugin', () => {
       expect(paths.some((p) => p.endsWith('Dead.js'))).toBe(true);
     });
 
+    it('excludes dependency and generated directories from the default FS walk', () => {
+      const result = run('default-excludes');
+      const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+
+      expect(paths.some((p) => p.endsWith('/app/javascript/AppClient.js'))).toBe(true);
+      expect(paths.some((p) => p.includes('/vendor/bundle/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/vendor/cache/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/node_modules/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/public/assets/'))).toBe(false);
+      expect(paths.some((p) => p.includes('/app/assets/vite/'))).toBe(false);
+    });
+
     it('produces an empty manifest when no client files exist', () => {
       const result = run('no-client');
       expect(result.manifest.filePathToModuleMetadata).toEqual({});

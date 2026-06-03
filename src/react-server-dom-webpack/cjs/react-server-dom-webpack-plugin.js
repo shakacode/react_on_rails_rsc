@@ -287,7 +287,18 @@ class ReactFlightWebpackPlugin {
                   "function" === typeof chunkGroup.getBlocks
                     ? chunkGroup.getBlocks()
                     : chunkGroup.blocksIterable;
-                if (!blocks) return;
+                if (!blocks) {
+                  const chunkGroupName =
+                    chunkGroup.name || chunkGroup.id || "(unnamed)";
+                  compilation.warnings.push(
+                    new webpack.WebpackError(
+                      "Client reference blocks were unavailable for chunk group " +
+                        chunkGroupName +
+                        ". React Server Components client manifest entries for this chunk group were skipped."
+                    )
+                  );
+                  return;
+                }
                 chunkResolvedClientFiles = new Set();
                 var _iterator = _createForOfIteratorHelper(blocks),
                   _step;

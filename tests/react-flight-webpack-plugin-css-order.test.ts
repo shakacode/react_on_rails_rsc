@@ -4,6 +4,11 @@ const ReactFlightWebpackPlugin = require('../src/react-server-dom-webpack/cjs/re
 
 type AsyncHookCallback = (params: unknown, callback: (error?: Error | null) => void) => void;
 type SyncHookCallback = (...args: unknown[]) => void;
+type ClientReference = {
+  request: string;
+  userRequest: string;
+  type?: string;
+};
 
 describe('ReactFlightWebpackPlugin manifest chunk files', () => {
   it('records the JavaScript chunk when CSS appears first in chunk.files', () => {
@@ -23,10 +28,10 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
         _normalResolver: unknown,
         _fs: unknown,
         _contextModuleFactory: unknown,
-        callback: (error: Error | null, refs?: Array<{ request: string; userRequest: string }>) => void,
+        callback: (error: Error | null, refs?: ClientReference[]) => void,
       ) => {
         callback(null, [
-          { request: clientFile, type: 'client-reference', userRequest: './ClientComponent.js' } as never,
+          { request: clientFile, type: 'client-reference', userRequest: './ClientComponent.js' },
         ]);
       },
     );

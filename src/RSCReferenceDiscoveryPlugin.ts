@@ -55,8 +55,7 @@ function existingClientReferenceSet(compilation: AnyCompilation): Set<string> | 
 function resolveBundler(compiler: AnyCompiler) {
   if (compiler.webpack) return compiler.webpack;
   if (compiler.rspack) return compiler.rspack;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-  return require('webpack');
+  throw new Error('RSCReferenceDiscoveryPlugin requires a compiler with webpack or rspack APIs');
 }
 
 export function recordDiscoveredClientReferenceIfNeeded(

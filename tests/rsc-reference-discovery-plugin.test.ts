@@ -88,6 +88,17 @@ const createCompiler = (context: string): {
 };
 
 describe('RSCReferenceDiscoveryPlugin', () => {
+  it('throws a descriptive error when no bundler API is available', () => {
+    const compiler = {
+      context: '/app',
+      hooks: { thisCompilation: { tap: jest.fn() } },
+    };
+
+    expect(() => new RSCReferenceDiscoveryPlugin().apply(compiler)).toThrow(
+      'RSCReferenceDiscoveryPlugin requires a compiler with webpack or rspack APIs',
+    );
+  });
+
   it('emits references recorded by RSCWebpackLoader', () => {
     const context = path.join(__dirname, 'fixtures');
     const component = path.join(context, 'components', 'ClientComponent.jsx');

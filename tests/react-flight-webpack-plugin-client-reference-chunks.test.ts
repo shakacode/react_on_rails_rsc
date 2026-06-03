@@ -4,6 +4,11 @@ const ReactFlightWebpackPlugin = require('../src/react-server-dom-webpack/cjs/re
 
 type AsyncHookCallback = (params: unknown, callback: (error?: Error | null) => void) => void;
 type SyncHookCallback = (...args: unknown[]) => void;
+type ClientReference = {
+  request: string;
+  userRequest: string;
+  type?: string;
+};
 
 type Chunk = {
   id: string;
@@ -36,10 +41,10 @@ const buildManifest = ({
       _normalResolver: unknown,
       _fs: unknown,
       _contextModuleFactory: unknown,
-      callback: (error: Error | null, refs?: Array<{ request: string; userRequest: string }>) => void,
+      callback: (error: Error | null, refs?: ClientReference[]) => void,
     ) => {
       callback(null, [
-        { request: clientFile, type: 'client-reference', userRequest: './ErrorBoundary.tsx' } as never,
+        { request: clientFile, type: 'client-reference', userRequest: './ErrorBoundary.tsx' },
       ]);
     },
   );
@@ -148,7 +153,10 @@ const buildManifest = ({
   );
   expect(manifestAsset).toBeDefined();
 
-  return JSON.parse(manifestAsset!.source().toString());
+  return {
+    manifest: JSON.parse(manifestAsset!.source().toString()),
+    warnings: compilation.warnings,
+  };
 };
 
 describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
@@ -160,7 +168,7 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
       files: new Set(['js/generated/ServerComponentRouter.js']),
     };
 
-    const manifest = buildManifest({
+    const { manifest } = buildManifest({
       isServer: false,
       chunkGroups: (clientReferenceBlocks) => [
         {
@@ -186,7 +194,7 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     const serverModule = { resource: clientFile };
     const serverChunk = { id: 'server-bundle', files: new Set(['server-bundle.js']) };
 
-    const manifest = buildManifest({
+    const { manifest } = buildManifest({
       isServer: true,
       chunkGroups: () => [
         {
@@ -201,5 +209,27 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
       chunks: ['server-bundle', 'server-bundle.js'],
       name: '*',
     });
+  });
+
+  it('warns when a client chunk group cannot expose client-reference blocks', () => {
+    const clientModule = { resource: clientFile };
+    const clientChunk = { id: 'client0', files: new Set(['js/client0.chunk.js']) };
+
+    const { manifest, warnings } = buildManifest({
+      isServer: false,
+      chunkGroups: () => [
+        {
+          name: 'client-entry',
+          chunks: [clientChunk],
+        },
+      ],
+      getChunkModulesIterable: () => [clientModule],
+    });
+
+    expect(manifest.filePathToModuleMetadata).toEqual({});
+    expect(warnings).toHaveLength(1);
+    expect(String(warnings[0])).toContain(
+      'Client reference blocks were unavailable for chunk group client-entry',
+    );
   });
 });

@@ -191,6 +191,28 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     });
   });
 
+  it('uses blocksIterable when getBlocks is unavailable', () => {
+    const clientModule = { resource: clientFile };
+    const clientChunk = { id: 'client0', files: new Set(['js/client0.chunk.js']) };
+
+    const { manifest } = buildManifest({
+      isServer: false,
+      chunkGroups: (clientReferenceBlocks) => [
+        {
+          blocksIterable: clientReferenceBlocks,
+          chunks: [clientChunk],
+        },
+      ],
+      getChunkModulesIterable: () => [clientModule],
+    });
+
+    expect(manifest.filePathToModuleMetadata[pathToFileURL(clientFile).href]).toEqual({
+      id: './client/app/components/ErrorBoundary.tsx',
+      chunks: ['client0', 'js/client0.chunk.js'],
+      name: '*',
+    });
+  });
+
   it('keeps generating server manifest metadata from server chunk groups without client-reference blocks', () => {
     const serverModule = { resource: clientFile };
     const serverChunk = { id: 'server-bundle', files: new Set(['server-bundle.js']) };

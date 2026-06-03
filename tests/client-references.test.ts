@@ -1,3 +1,4 @@
+import * as acorn from 'acorn-loose';
 import { hasUseClientDirective } from '../src/clientReferences';
 
 describe('hasUseClientDirective', () => {
@@ -67,6 +68,14 @@ describe('hasUseClientDirective', () => {
     expect(
       hasUseClientDirective('"use\\u0020client";\nexport default function Server() {}\n'),
     ).toBe(false);
+  });
+
+  it('returns false when directive parsing fails', () => {
+    jest.spyOn(acorn, 'parse').mockImplementationOnce(() => {
+      throw new Error('parse failed');
+    });
+
+    expect(hasUseClientDirective("'use client';\n")).toBe(false);
   });
 
   it('ignores server modules without directives', () => {

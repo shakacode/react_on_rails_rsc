@@ -61,11 +61,16 @@ export function hasUseClientDirective(source: string | Buffer): boolean {
   const text = Buffer.isBuffer(source) ? source.toString('utf8') : source;
   if (!text.includes('use client')) return false;
 
-  const program = acorn.parse(text, {
-    allowHashBang: true,
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-  }) as ParsedProgram;
+  let program: ParsedProgram;
+  try {
+    program = acorn.parse(text, {
+      allowHashBang: true,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+    }) as ParsedProgram;
+  } catch {
+    return false;
+  }
 
   for (const statement of program.body || []) {
     if (

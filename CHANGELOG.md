@@ -2,6 +2,14 @@
 
 All notable changes to this package will be documented in this file.
 
+## [19.0.5-rc.5] - 2026-06-03
+
+### Changed
+- Updated the vendored `react-server-dom-webpack` runtime to React 19.0.4 and aligned package peer dependencies with React 19.0.4.
+
+### Fixed
+- Replaced the `19.0.5-rc.4` runtime bundle that still reported React 19.0.3, so release candidates no longer include React Server Components runtime versions affected by CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779.
+
 ## [19.0.5-rc.4] - 2026-06-02
 
 ### Added
@@ -44,6 +52,7 @@ All notable changes to this package will be documented in this file.
 ### Changed
 - Released the first `19.0.5` release candidate.
 
+[19.0.5-rc.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.4...19.0.5-rc.5
 [19.0.5-rc.4]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.3...19.0.5-rc.4
 [19.0.5-rc.3]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.2...19.0.5-rc.3
 [19.0.5-rc.2]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.1...19.0.5-rc.2

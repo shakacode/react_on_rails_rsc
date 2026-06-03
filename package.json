@@ -1,6 +1,6 @@
 {
   "name": "react-on-rails-rsc",
-  "version": "19.0.5-rc.4",
+  "version": "19.0.5-rc.5",
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
     "./client": {
@@ -97,8 +97,8 @@
     "webpack": "^5.98.0"
   },
   "peerDependencies": {
-    "react": "^19.0.3",
-    "react-dom": "^19.0.3",
+    "react": "^19.0.4",
+    "react-dom": "^19.0.4",
     "webpack": "^5.59.0"
   },
   "dependencies": {

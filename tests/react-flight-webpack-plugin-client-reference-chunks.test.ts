@@ -233,4 +233,30 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
       'Client reference blocks were unavailable for chunk group client-entry',
     );
   });
+
+  it('warns only once when several client chunk groups cannot expose client-reference blocks', () => {
+    const clientModule = { resource: clientFile };
+    const firstChunk = { id: 'client0', files: new Set(['js/client0.chunk.js']) };
+    const secondChunk = { id: 'client1', files: new Set(['js/client1.chunk.js']) };
+
+    const { warnings } = buildManifest({
+      isServer: false,
+      chunkGroups: () => [
+        {
+          name: 'client-entry',
+          chunks: [firstChunk],
+        },
+        {
+          name: 'admin-entry',
+          chunks: [secondChunk],
+        },
+      ],
+      getChunkModulesIterable: () => [clientModule],
+    });
+
+    expect(warnings).toHaveLength(1);
+    expect(String(warnings[0])).toContain(
+      'Client reference blocks were unavailable for chunk group client-entry',
+    );
+  });
 });

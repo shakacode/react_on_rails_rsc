@@ -23,6 +23,16 @@ describe('hasUseClientDirective', () => {
     expect(hasUseClientDirective("'use client'")).toBe(true);
   });
 
+  it('recognizes directives with Windows line endings', () => {
+    expect(hasUseClientDirective("'use client'\r\nexport default function Client() {}\r\n")).toBe(
+      true,
+    );
+  });
+
+  it('rejects same-line code without a directive semicolon', () => {
+    expect(hasUseClientDirective("'use client' export const answer = 42;\n")).toBe(false);
+  });
+
   it('ignores server modules without directives', () => {
     expect(hasUseClientDirective('export default function Server() {}\n')).toBe(false);
   });

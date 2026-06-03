@@ -63,7 +63,8 @@ export function recordDiscoveredClientReferenceIfNeeded(
   source: string | Buffer,
 ): boolean {
   // Webpack/Rspack do not expose a public loader API for the active compilation.
-  // `_compilation` is the only available bridge for recording loader side effects.
+  // `_compilation` is the only available bridge for recording loader side effects;
+  // re-check this private API when upgrading webpack or rspack major versions.
   const compilation = loaderContext._compilation as AnyCompilation | undefined;
   if (!compilation) return false;
 
@@ -83,6 +84,12 @@ export function recordDiscoveredClientReferenceIfNeeded(
   return true;
 }
 
+/**
+ * Emits the client-reference list discovered during the RSC loader pass.
+ *
+ * While active, RSC loader output is marked non-cacheable so watch rebuilds
+ * cannot reuse cached modules and silently miss files that gained `"use client"`.
+ */
 export class RSCReferenceDiscoveryPlugin {
   private readonly filename: string;
 

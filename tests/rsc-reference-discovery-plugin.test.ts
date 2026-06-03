@@ -51,10 +51,17 @@ const createCompilation = (): {
   };
 };
 
-const createCompiler = (context: string): {
+const createCompiler = (
+  context: string,
+  bundler: 'webpack' | 'rspack' = 'webpack',
+): {
   compiler: {
     context: string;
-    webpack: {
+    webpack?: {
+      Compilation: { PROCESS_ASSETS_STAGE_REPORT: number };
+      sources: { RawSource: typeof FakeRawSource };
+    };
+    rspack?: {
       Compilation: { PROCESS_ASSETS_STAGE_REPORT: number };
       sources: { RawSource: typeof FakeRawSource };
     };
@@ -63,12 +70,12 @@ const createCompiler = (context: string): {
   getThisCompilationCallback: () => (compilation: FakeCompilation) => void;
 } => {
   let thisCompilationCallback: ((compilation: FakeCompilation) => void) | undefined;
+  const bundlerApi = {
+    Compilation: { PROCESS_ASSETS_STAGE_REPORT: 5000 },
+    sources: { RawSource: FakeRawSource },
+  };
   const compiler = {
     context,
-    webpack: {
-      Compilation: { PROCESS_ASSETS_STAGE_REPORT: 5000 },
-      sources: { RawSource: FakeRawSource },
-    },
     hooks: {
       thisCompilation: {
         tap: jest.fn((_name, callback) => {
@@ -76,6 +83,7 @@ const createCompiler = (context: string): {
         }),
       },
     },
+    [bundler]: bundlerApi,
   };
 
   return {
@@ -97,6 +105,18 @@ describe('RSCReferenceDiscoveryPlugin', () => {
     expect(() => new RSCReferenceDiscoveryPlugin().apply(compiler)).toThrow(
       'RSCReferenceDiscoveryPlugin requires a compiler with webpack or rspack APIs',
     );
+  });
+
+  it('accepts Rspack compiler APIs', () => {
+    const context = path.join(__dirname, 'fixtures');
+    const { compiler, getThisCompilationCallback } = createCompiler(context, 'rspack');
+    const { compilation, getProcessAssetsCallback } = createCompilation();
+
+    new RSCReferenceDiscoveryPlugin().apply(compiler);
+    getThisCompilationCallback()(compilation);
+    getProcessAssetsCallback()();
+
+    expect(compilation.emitAsset).toHaveBeenCalledTimes(1);
   });
 
   it('emits references recorded by RSCWebpackLoader', () => {

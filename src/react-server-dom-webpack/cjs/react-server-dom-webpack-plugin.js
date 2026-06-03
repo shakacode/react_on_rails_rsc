@@ -280,6 +280,7 @@ class ReactFlightWebpackPlugin {
                   runtimeChunkFiles.add(runtimeFile);
                 });
             });
+            var missingClientReferenceBlocksWarningEmitted = false;
             compilation.chunkGroups.forEach(function (chunkGroup) {
               let chunkResolvedClientFiles = resolvedClientFiles;
               if (!_this.isServer) {
@@ -290,15 +291,18 @@ class ReactFlightWebpackPlugin {
                     ? chunkGroup.getBlocks()
                     : chunkGroup.blocksIterable;
                 if (!blocks) {
-                  const chunkGroupName =
-                    chunkGroup.name || chunkGroup.id || "(unnamed)";
-                  compilation.warnings.push(
-                    new webpack.WebpackError(
-                      "Client reference blocks were unavailable for chunk group " +
-                        chunkGroupName +
-                        ". React Server Components client manifest entries for this chunk group were skipped."
-                    )
-                  );
+                  if (!missingClientReferenceBlocksWarningEmitted) {
+                    missingClientReferenceBlocksWarningEmitted = true;
+                    const chunkGroupName =
+                      chunkGroup.name || chunkGroup.id || "(unnamed)";
+                    compilation.warnings.push(
+                      new webpack.WebpackError(
+                        "Client reference blocks were unavailable for chunk group " +
+                          chunkGroupName +
+                          ". React Server Components client manifest entries for this chunk group were skipped."
+                      )
+                    );
+                  }
                   return;
                 }
                 chunkResolvedClientFiles = new Set();

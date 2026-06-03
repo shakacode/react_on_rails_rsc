@@ -15,7 +15,7 @@ export const DEFAULT_CLIENT_REFERENCES_EXCLUDE =
  */
 export const DEFAULT_CLIENT_REFERENCES_INCLUDE = /\.[cm]?[jt]sx?$/;
 
-const USE_CLIENT_REGEX = /^\s*['"]use client['"]\s*(?:;|\n|$)/;
+const USE_CLIENT_REGEX = /^\s*['"]use client['"]\s*(?:;|\r?\n|$)/;
 const LEADING_COMMENTS = /^(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))+/;
 
 function stripProlog(source: string): string {

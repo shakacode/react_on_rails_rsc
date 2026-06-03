@@ -422,6 +422,11 @@
         return "$" + (iterable ? "x" : "X") + streamId.toString(16);
       }
       function resolveToJSON(key, value) {
+        "__proto__" === key &&
+          console.error(
+            "Expected not to serialize an object with own property `__proto__`. When parsed this property will be omitted.%s",
+            describeObjectForErrorMessage(this, key)
+          );
         var originalValue = this[key];
         "object" !== typeof originalValue ||
           originalValue === value ||
@@ -666,14 +671,17 @@
         if ("undefined" === typeof value) return "$undefined";
         if ("function" === typeof value) {
           parentReference = knownServerReferences.get(value);
-          if (void 0 !== parentReference)
-            return (
-              (key = JSON.stringify(parentReference, resolveToJSON)),
-              null === formData && (formData = new FormData()),
-              (parentReference = nextPartId++),
-              formData.set(formFieldPrefix + parentReference, key),
-              "$h" + parentReference.toString(16)
-            );
+          if (void 0 !== parentReference) {
+            key = writtenObjects.get(value);
+            if (void 0 !== key) return key;
+            key = JSON.stringify(parentReference, resolveToJSON);
+            null === formData && (formData = new FormData());
+            parentReference = nextPartId++;
+            formData.set(formFieldPrefix + parentReference, key);
+            key = "$h" + parentReference.toString(16);
+            writtenObjects.set(value, key);
+            return key;
+          }
           if (
             void 0 !== temporaryReferences &&
             -1 === key.indexOf(":") &&
@@ -1279,10 +1287,17 @@
               value.then(fulfill, reject);
               return;
             }
-          value = value[path[i]];
+          var name = path[i];
+          if (
+            "object" === typeof value &&
+            null !== value &&
+            hasOwnProperty.call(value, name)
+          )
+            value = value[name];
+          else throw Error("Invalid reference.");
         }
         i = map(response, value, parentObject, key);
-        parentObject[key] = i;
+        "__proto__" !== key && (parentObject[key] = i);
         "" === key && null === handler.value && (handler.value = i);
         if (
           parentObject[0] === REACT_ELEMENT_TYPE &&
@@ -1375,7 +1390,7 @@
             boundArgs.unshift(null);
             resolvedValue = resolvedValue.bind.apply(resolvedValue, boundArgs);
           }
-          parentObject[key] = resolvedValue;
+          "__proto__" !== key && (parentObject[key] = resolvedValue);
           "" === key &&
             null === handler.value &&
             (handler.value = resolvedValue);
@@ -1633,14 +1648,15 @@
             }
           case "Y":
             return (
-              Object.defineProperty(parentObject, key, {
-                get: function () {
-                  return "This object has been omitted by React in the console log to avoid sending too much data from the server. Try logging smaller or more specific objects.";
-                },
-                set: function () {},
-                enumerable: !0,
-                configurable: !1
-              }),
+              "__proto__" !== key &&
+                Object.defineProperty(parentObject, key, {
+                  get: function () {
+                    return "This object has been omitted by React in the console log to avoid sending too much data from the server. Try logging smaller or more specific objects.";
+                  },
+                  set: function () {},
+                  enumerable: !0,
+                  configurable: !1
+                }),
               null
             );
           default:

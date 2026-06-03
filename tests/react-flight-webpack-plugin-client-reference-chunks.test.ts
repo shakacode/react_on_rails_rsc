@@ -116,11 +116,12 @@ const buildManifest = ({
     },
   };
   const emittedAssets = new Map<string, { source(): string | Buffer }>();
+  const warnings: unknown[] = [];
   const processAssetCallbacks: Array<() => void> = [];
   const compilation = {
     dependencyFactories: new Map(),
     dependencyTemplates: new Map(),
-    warnings: [],
+    warnings,
     outputOptions: {
       publicPath: '/assets/',
     },
@@ -155,7 +156,7 @@ const buildManifest = ({
 
   return {
     manifest: JSON.parse(manifestAsset!.source().toString()),
-    warnings: compilation.warnings,
+    warnings,
   };
 };
 

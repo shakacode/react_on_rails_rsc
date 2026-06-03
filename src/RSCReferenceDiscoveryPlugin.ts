@@ -62,15 +62,18 @@ export function recordDiscoveredClientReferenceIfNeeded(
   loaderContext: LoaderContextWithCompilation,
   source: string | Buffer,
 ): boolean {
+  // Webpack/Rspack do not expose a public loader API for the active compilation.
+  // `_compilation` is the only available bridge for recording loader side effects.
   const compilation = loaderContext._compilation as AnyCompilation | undefined;
   if (!compilation) return false;
 
   const refs = existingClientReferenceSet(compilation);
   if (!refs) return false;
 
-  // Recording is a loader side effect. If this loader output is reused from a
-  // cache in a later watch rebuild, the side effect can be skipped and the
-  // emitted references can become stale.
+  // Recording is a loader side effect. If cached loader output is reused in a
+  // watch rebuild, discovery can miss files that gained a `"use client"`
+  // directive. This intentionally disables caching for every RSC loader input
+  // while the plugin is active.
   loaderContext.cacheable?.(false);
 
   const resourcePath = loaderContext.resourcePath;

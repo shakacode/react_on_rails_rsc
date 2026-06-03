@@ -284,6 +284,8 @@ class ReactFlightWebpackPlugin {
               let chunkResolvedClientFiles = resolvedClientFiles;
               if (!_this.isServer) {
                 const blocks =
+                  // `getBlocks()` exists in newer webpack 5 builds; older
+                  // webpack 5 builds expose the same data via `blocksIterable`.
                   "function" === typeof chunkGroup.getBlocks
                     ? chunkGroup.getBlocks()
                     : chunkGroup.blocksIterable;

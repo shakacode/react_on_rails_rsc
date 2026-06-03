@@ -1,7 +1,10 @@
 import { pathToFileURL } from 'url';
 import { LoaderDefinition } from 'webpack';
+import { recordDiscoveredClientReferenceIfNeeded } from './RSCReferenceDiscoveryPlugin';
 
 const RSCWebpackLoader: LoaderDefinition = async function RSCWebpackLoader(source) {
+  recordDiscoveredClientReferenceIfNeeded(this, source);
+
   // Convert file path to URL format
   const fileUrl = pathToFileURL(this.resourcePath).href;
 

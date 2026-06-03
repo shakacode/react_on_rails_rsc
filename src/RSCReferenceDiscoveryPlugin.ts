@@ -89,6 +89,10 @@ export function recordDiscoveredClientReferenceIfNeeded(
  *
  * While active, RSC loader output is marked non-cacheable so watch rebuilds
  * cannot reuse cached modules and silently miss files that gained `"use client"`.
+ * This trades incremental-build cache reuse for discovery correctness.
+ *
+ * The compilation state uses `Symbol.for` so duplicate package copies that run
+ * against the same compilation share one discovered-reference set.
  */
 export class RSCReferenceDiscoveryPlugin {
   private readonly filename: string;

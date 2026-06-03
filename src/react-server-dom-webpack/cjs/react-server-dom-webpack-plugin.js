@@ -293,13 +293,10 @@ class ReactFlightWebpackPlugin {
                 if (!blocks) {
                   if (!missingClientReferenceBlocksWarningEmitted) {
                     missingClientReferenceBlocksWarningEmitted = true;
-                    const chunkGroupName =
-                      chunkGroup.name || chunkGroup.id || "(unnamed)";
                     compilation.warnings.push(
                       new webpack.WebpackError(
-                        "Client reference blocks were unavailable for chunk group " +
-                          chunkGroupName +
-                          ". React Server Components client manifest entries for this chunk group were skipped."
+                        "Client reference blocks were unavailable for one or more chunk groups. " +
+                          "React Server Components client manifest entries for affected chunk groups were skipped."
                       )
                     );
                   }

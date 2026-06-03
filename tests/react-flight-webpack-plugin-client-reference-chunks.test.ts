@@ -230,7 +230,7 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     expect(manifest.filePathToModuleMetadata).toEqual({});
     expect(warnings).toHaveLength(1);
     expect(String(warnings[0])).toContain(
-      'Client reference blocks were unavailable for chunk group client-entry',
+      'Client reference blocks were unavailable for one or more chunk groups',
     );
   });
 
@@ -256,7 +256,7 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
 
     expect(warnings).toHaveLength(1);
     expect(String(warnings[0])).toContain(
-      'Client reference blocks were unavailable for chunk group client-entry',
+      'Client reference blocks were unavailable for one or more chunk groups',
     );
   });
 });

@@ -2,6 +2,16 @@
 
 All notable changes to this package will be documented in this file.
 
+## [19.0.5-rc.6] - 2026-06-04
+
+### Added
+- Added regression coverage for manifest CSS serialization on rendered client references and component-shaped client-reference export metadata.
+
+### Fixed
+- Fixed rendered client references with manifest CSS to emit stylesheet links from the request-scoped Flight manifest while preserving `react.client.reference` metadata.
+- Removed the process-global client manifest used by the earlier CSS wrapper path, avoiding cross-request manifest races.
+- Fixed Webpack client manifest CSS collection to record CSS files regardless of JS/CSS file order and avoid prefixing CSS hrefs with webpack's `publicPath: "auto"` sentinel.
+
 ## [19.0.5-rc.5] - 2026-06-03
 
 ### Changed
@@ -52,6 +62,7 @@ All notable changes to this package will be documented in this file.
 ### Changed
 - Released the first `19.0.5` release candidate.
 
+[19.0.5-rc.6]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.5...19.0.5-rc.6
 [19.0.5-rc.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.4...19.0.5-rc.5
 [19.0.5-rc.4]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.3...19.0.5-rc.4
 [19.0.5-rc.3]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.2...19.0.5-rc.3

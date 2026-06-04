@@ -1142,7 +1142,8 @@ function renderElement(request, task, type, key, ref, props) {
       case REACT_MEMO_TYPE:
         return renderElement(request, task, type.type, key, ref, props);
     }
-  type.$$typeof === CLIENT_REFERENCE_TAG$1 &&
+  null != type &&
+    type.$$typeof === CLIENT_REFERENCE_TAG$1 &&
     emitClientReferenceCSS(request, type);
   request = key;
   key = task.keyPath;

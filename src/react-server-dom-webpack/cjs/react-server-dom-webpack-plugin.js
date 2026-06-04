@@ -284,7 +284,10 @@ class ReactFlightWebpackPlugin {
               "string" === typeof compilation.outputOptions.publicPath &&
               "auto" !== compilation.outputOptions.publicPath
                 ? compilation.outputOptions.publicPath
-                : "";
+                : null;
+            cssPrefix &&
+              !cssPrefix.endsWith("/") &&
+              (cssPrefix += "/");
             var missingClientReferenceBlocksWarningEmitted = false;
             compilation.chunkGroups.forEach(function (chunkGroup) {
               let chunkResolvedClientFiles = resolvedClientFiles;
@@ -367,12 +370,13 @@ class ReactFlightWebpackPlugin {
                 try {
                   for (_iterator.s(); !(_step = _iterator.n()).done; ) {
                     const file = _step.value;
-                    if (file.endsWith(".css")) {
+                    if (file.endsWith(".css") && null !== cssPrefix) {
                       const cssUrl = cssPrefix + file;
                       -1 === cssFiles.indexOf(cssUrl) && cssFiles.push(cssUrl);
                     } else if (
-                      file.endsWith(".js") &&
+                      (file.endsWith(".js") || file.endsWith(".mjs")) &&
                       !file.endsWith(".hot-update.js") &&
+                      !file.endsWith(".hot-update.mjs") &&
                       (_this.isServer || !runtimeChunkFiles.has(file)) &&
                       !recordedJS
                     ) {

@@ -257,6 +257,7 @@ describe('RSCWebpackLoader runs under rspack', () => {
     const compiled = compileClientReferenceFixture(tmpDir);
 
     expect(compiled.useThing.$$typeof).toBe(CLIENT_REFERENCE_TAG);
+    expect(typeof compiled.useThing).toBe('function');
     expect(typeof compiled.Header).toBe('function');
     expect(typeof compiled.default).toBe('function');
   });

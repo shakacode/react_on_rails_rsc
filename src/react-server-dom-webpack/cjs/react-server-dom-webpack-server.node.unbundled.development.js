@@ -1183,7 +1183,9 @@
               type._store.validated = 1;
           }
       } else return renderFunctionComponent(request, task, key, type, props);
-      isClientReference(type) && emitClientReferenceCSS(request, type);
+      null != type &&
+        isClientReference(type) &&
+        emitClientReferenceCSS(request, type);
       ref = task.keyPath;
       null === key ? (key = ref) : null !== ref && (key = ref + "," + key);
       null !== task.debugOwner &&

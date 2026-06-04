@@ -188,7 +188,59 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
     });
   });
 
-  it('does not prefix CSS hrefs with the webpack publicPath auto sentinel', () => {
+  it('normalizes CSS hrefs when webpack publicPath omits the trailing slash', () => {
+    const metadata = emitManifestMetadata({
+      files: ['client.css', 'client.js'],
+      publicPath: '/assets',
+    });
+
+    expect(metadata).toEqual({
+      id: './ClientComponent.js',
+      chunks: ['client-chunk', 'client.js'],
+      css: ['/assets/client.css'],
+      name: '*',
+    });
+  });
+
+  it('records mjs chunks as JavaScript assets', () => {
+    const metadata = emitManifestMetadata({ files: ['client.css', 'client.mjs'] });
+
+    expect(metadata).toEqual({
+      id: './ClientComponent.js',
+      chunks: ['client-chunk', 'client.mjs'],
+      css: ['/assets/client.css'],
+      name: '*',
+    });
+  });
+
+  it('does not record mjs hot-update chunks as JavaScript assets', () => {
+    const metadata = emitManifestMetadata({
+      files: ['client.css', 'client.hot-update.mjs', 'client.mjs'],
+    });
+
+    expect(metadata).toEqual({
+      id: './ClientComponent.js',
+      chunks: ['client-chunk', 'client.mjs'],
+      css: ['/assets/client.css'],
+      name: '*',
+    });
+  });
+
+  it('records relative CSS hrefs for an explicit empty webpack publicPath', () => {
+    const metadata = emitManifestMetadata({
+      files: ['client.css', 'client.js'],
+      publicPath: '',
+    });
+
+    expect(metadata).toEqual({
+      id: './ClientComponent.js',
+      chunks: ['client-chunk', 'client.js'],
+      css: ['client.css'],
+      name: '*',
+    });
+  });
+
+  it('does not record document-relative CSS hrefs for the webpack publicPath auto sentinel', () => {
     const metadata = emitManifestMetadata({
       files: ['client.css', 'client.js'],
       publicPath: 'auto',
@@ -197,7 +249,7 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
     expect(metadata).toEqual({
       id: './ClientComponent.js',
       chunks: ['client-chunk', 'client.js'],
-      css: ['client.css'],
+      css: [],
       name: '*',
     });
   });

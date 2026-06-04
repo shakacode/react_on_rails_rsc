@@ -60,6 +60,8 @@ const webpackGlobal = globalThis as unknown as {
   __webpack_chunk_load__?: (id: string) => Promise<void>;
   __webpack_require__?: (id: string) => unknown;
 };
+let originalWebpackChunkLoad: typeof webpackGlobal.__webpack_chunk_load__;
+let originalWebpackRequire: typeof webpackGlobal.__webpack_require__;
 
 const renderToText = async (model: unknown): Promise<string> => {
   const stream = renderToPipeableStream(model, clientManifest);
@@ -71,6 +73,8 @@ const renderToText = async (model: unknown): Promise<string> => {
 
 describe('React Flight client-reference CSS metadata', () => {
   beforeEach(() => {
+    originalWebpackChunkLoad = webpackGlobal.__webpack_chunk_load__;
+    originalWebpackRequire = webpackGlobal.__webpack_require__;
     webpackGlobal.__webpack_require__ = (id: string) => {
       if (id === './Header.client.js') {
         return { Header: HeaderImplementation };
@@ -84,8 +88,8 @@ describe('React Flight client-reference CSS metadata', () => {
   });
 
   afterEach(() => {
-    delete webpackGlobal.__webpack_require__;
-    delete webpackGlobal.__webpack_chunk_load__;
+    webpackGlobal.__webpack_require__ = originalWebpackRequire;
+    webpackGlobal.__webpack_chunk_load__ = originalWebpackChunkLoad;
   });
 
   it('keeps rendered client references tagged and serializes their manifest CSS', async () => {

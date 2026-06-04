@@ -187,6 +187,7 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     expect(manifest.filePathToModuleMetadata[pathToFileURL(clientFile).href]).toEqual({
       id: './client/app/components/ErrorBoundary.tsx',
       chunks: ['client0', 'js/client0.chunk.js'],
+      css: [],
       name: '*',
     });
   });
@@ -209,6 +210,7 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     expect(manifest.filePathToModuleMetadata[pathToFileURL(clientFile).href]).toEqual({
       id: './client/app/components/ErrorBoundary.tsx',
       chunks: ['client0', 'js/client0.chunk.js'],
+      css: [],
       name: '*',
     });
   });
@@ -230,6 +232,7 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     expect(manifest.filePathToModuleMetadata[pathToFileURL(clientFile).href]).toEqual({
       id: './client/app/components/ErrorBoundary.tsx',
       chunks: ['server-bundle', 'server-bundle.js'],
+      css: [],
       name: '*',
     });
   });

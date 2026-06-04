@@ -38,6 +38,14 @@ interface RspackResult {
   outputPath?: string;
 }
 
+interface CompiledClientReferenceFixture {
+  default: { $$typeof?: symbol };
+  Header: { $$typeof?: symbol };
+  useThing: { $$typeof?: symbol };
+}
+
+const CLIENT_REFERENCE_TAG = Symbol.for('react.client.reference');
+
 const runRspack = (config: unknown, cwd: string): RspackResult => {
   const configPath = path.join(cwd, '__rspack_config__.json');
   fs.writeFileSync(configPath, JSON.stringify(config));
@@ -62,6 +70,57 @@ const runRspack = (config: unknown, cwd: string): RspackResult => {
       errors: [err.stderr || err.message],
     };
   }
+};
+
+const compileClientReferenceFixture = (cwd: string): CompiledClientReferenceFixture => {
+  const srcFile = path.join(cwd, 'Component.jsx');
+  fs.writeFileSync(
+    srcFile,
+    `'use client';\n\nexport function Header() {\n  return null;\n}\n\nexport function useThing() {\n  return null;\n}\n\nexport default function HomePage() {\n  return null;\n}\n`,
+  );
+
+  const result = runRspack(
+    {
+      mode: 'development',
+      target: 'node',
+      entry: srcFile,
+      output: {
+        path: cwd,
+        filename: 'bundle.js',
+        library: { type: 'commonjs2' },
+      },
+      devtool: false,
+      module: {
+        rules: [{ test: /\.jsx$/, use: [{ loader: DIST_LOADER }] }],
+      },
+      externals: {
+        'react-on-rails-rsc/server': 'commonjs2 react-on-rails-rsc/server',
+        'react-server-dom-webpack/server': 'commonjs2 react-server-dom-webpack/server',
+      },
+    },
+    cwd,
+  );
+
+  if (!result.ok) {
+    throw new Error(`rspack build failed:\n${(result.errors || []).join('\n')}`);
+  }
+
+  const rorServerDir = path.join(cwd, 'node_modules', 'react-on-rails-rsc');
+  fs.mkdirSync(rorServerDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(rorServerDir, 'server.js'),
+    `const tag = Symbol.for('react.client.reference');
+exports.registerClientReference = function(proxyImplementation, id, exportName) {
+  return Object.defineProperties(proxyImplementation, {
+    $$typeof: { value: tag },
+    $$id: { value: id + '#' + exportName },
+    $$async: { value: false },
+  });
+};
+`,
+  );
+
+  return require(path.join(cwd, 'bundle.js')) as CompiledClientReferenceFixture;
 };
 
 describe('RSCWebpackLoader runs under rspack', () => {
@@ -193,4 +252,23 @@ describe('RSCWebpackLoader runs under rspack', () => {
     );
     expect(loaderWarnings).toEqual([]);
   });
+
+  it('compiles the client-reference metadata fixture and preserves non-component exports', () => {
+    const compiled = compileClientReferenceFixture(tmpDir);
+
+    expect(compiled.useThing.$$typeof).toBe(CLIENT_REFERENCE_TAG);
+    expect(typeof compiled.useThing).toBe('function');
+    expect(typeof compiled.Header).toBe('function');
+    expect(typeof compiled.default).toBe('function');
+  });
+
+  it(
+    'keeps component-shaped client exports tagged as react.client.reference values',
+    () => {
+      const compiled = compileClientReferenceFixture(tmpDir);
+
+      expect(compiled.Header.$$typeof).toBe(CLIENT_REFERENCE_TAG);
+      expect(compiled.default.$$typeof).toBe(CLIENT_REFERENCE_TAG);
+    },
+  );
 });

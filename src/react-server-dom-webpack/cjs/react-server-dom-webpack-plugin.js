@@ -280,6 +280,14 @@ class ReactFlightWebpackPlugin {
                   runtimeChunkFiles.add(runtimeFile);
                 });
             });
+            var cssPrefix =
+              "string" === typeof compilation.outputOptions.publicPath &&
+              "auto" !== compilation.outputOptions.publicPath
+                ? compilation.outputOptions.publicPath
+                : null;
+            cssPrefix &&
+              !cssPrefix.endsWith("/") &&
+              (cssPrefix += "/");
             var missingClientReferenceBlocksWarningEmitted = false;
             compilation.chunkGroups.forEach(function (chunkGroup) {
               let chunkResolvedClientFiles = resolvedClientFiles;
@@ -341,27 +349,39 @@ class ReactFlightWebpackPlugin {
                     for (i = 0; i < chunks.length; i += 2)
                       module.has(chunks[i]) ||
                         id.chunks.push(chunks[i], chunks[i + 1]);
+                    null == id.css && (id.css = []);
+                    for (module = 0; module < cssFiles.length; module++)
+                      -1 === id.css.indexOf(cssFiles[module]) &&
+                        id.css.push(cssFiles[module]);
                   } else
                     filePathToModuleMetadata[module] = {
                       id,
                       chunks: chunks.slice(),
+                      css: cssFiles.slice(),
                       name: "*"
                     };
               }
-              const chunks = [];
+              const chunks = [],
+                cssFiles = [];
               chunkGroup.chunks.forEach(function (c) {
-                var _iterator = _createForOfIteratorHelper(c.files),
+                var recordedJS = !1,
+                  _iterator = _createForOfIteratorHelper(c.files),
                   _step;
                 try {
                   for (_iterator.s(); !(_step = _iterator.n()).done; ) {
                     const file = _step.value;
-                    if (
-                      file.endsWith(".js") &&
+                    if (file.endsWith(".css") && null !== cssPrefix) {
+                      const cssUrl = cssPrefix + file;
+                      -1 === cssFiles.indexOf(cssUrl) && cssFiles.push(cssUrl);
+                    } else if (
+                      (file.endsWith(".js") || file.endsWith(".mjs")) &&
                       !file.endsWith(".hot-update.js") &&
-                      (_this.isServer || !runtimeChunkFiles.has(file))
+                      !file.endsWith(".hot-update.mjs") &&
+                      (_this.isServer || !runtimeChunkFiles.has(file)) &&
+                      !recordedJS
                     ) {
                       chunks.push(c.id, file);
-                      break;
+                      recordedJS = !0;
                     }
                   }
                 } catch (err) {

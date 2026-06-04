@@ -1061,6 +1061,29 @@
       }
       return children;
     }
+    function resolveClientReferenceCSS(request, clientReference) {
+      var config = request.bundlerConfig;
+      if (!config) return null;
+      config = config.filePathToModuleMetadata || config;
+      var modulePath = clientReference.$$id,
+        resolvedModuleData = config[modulePath];
+      if (!resolvedModuleData) {
+        var idx = modulePath.lastIndexOf("#");
+        -1 !== idx &&
+          (resolvedModuleData = config[modulePath.slice(0, idx)]);
+      }
+      return resolvedModuleData ? resolvedModuleData.css : null;
+    }
+    function emitClientReferenceCSS(request, clientReference) {
+      var css = resolveClientReferenceCSS(request, clientReference);
+      if (css && 0 !== css.length)
+        for (var hints = request.hints, i = 0; i < css.length; i++) {
+          var href = css[i],
+            key = "S|" + href;
+          hints.has(key) ||
+            (hints.add(key), emitHint(request, "S", [href, "rsc-css"]));
+        }
+    }
     function renderAsyncFragment(request, task, children, getAsyncIterator) {
       if (null !== task.keyPath)
         return (
@@ -1142,6 +1165,9 @@
               type._store.validated = 1;
           }
       } else return renderFunctionComponent(request, task, key, type, props);
+      null != type &&
+        isClientReference(type) &&
+        emitClientReferenceCSS(request, type);
       ref = task.keyPath;
       null === key ? (key = ref) : null !== ref && (key = ref + "," + key);
       null !== task.debugOwner &&

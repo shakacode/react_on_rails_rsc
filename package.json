@@ -79,6 +79,8 @@
     "test:non-rsc": "jest tests --testPathIgnorePatterns=\".*\\.rsc\\.test\\..*\"",
     "build": "rm -rf dist tsconfig.tsbuildinfo && yarn run tsc",
     "prepublishOnly": "yarn run build",
+    "release": "bash scripts/release.sh",
+    "release:dry-run": "bash scripts/release.sh --dry-run",
     "build-if-needed": "test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js || (yarn run build && test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js)",
     "prepack": "yarn run build-if-needed",
     "prepare": "yarn run build-if-needed"

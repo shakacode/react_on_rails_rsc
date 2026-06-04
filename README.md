@@ -17,6 +17,12 @@ This package provides internal tooling for React Server Components integration:
 - Webpack loader for bundling server components
 - Client/server utilities for RSC rendering
 
+## Releasing
+
+Release this package from `main` using the changelog-driven workflow in
+[`docs/releasing.md`](docs/releasing.md). Run `yarn release:dry-run` before
+`yarn release`.
+
 ## Support
 
 For questions about React Server Components:

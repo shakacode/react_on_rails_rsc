@@ -281,7 +281,8 @@ class ReactFlightWebpackPlugin {
                 });
             });
             var cssPrefix =
-              "string" === typeof compilation.outputOptions.publicPath
+              "string" === typeof compilation.outputOptions.publicPath &&
+              "auto" !== compilation.outputOptions.publicPath
                 ? compilation.outputOptions.publicPath
                 : "";
             compilation.chunkGroups.forEach(function (chunkGroup) {
@@ -314,7 +315,8 @@ class ReactFlightWebpackPlugin {
               const chunks = [],
                 cssFiles = [];
               chunkGroup.chunks.forEach(function (c) {
-                var _iterator = _createForOfIteratorHelper(c.files),
+                var recordedJS = !1,
+                  _iterator = _createForOfIteratorHelper(c.files),
                   _step;
                 try {
                   for (_iterator.s(); !(_step = _iterator.n()).done; ) {
@@ -325,10 +327,11 @@ class ReactFlightWebpackPlugin {
                     } else if (
                       file.endsWith(".js") &&
                       !file.endsWith(".hot-update.js") &&
-                      (_this.isServer || !runtimeChunkFiles.has(file))
+                      (_this.isServer || !runtimeChunkFiles.has(file)) &&
+                      !recordedJS
                     ) {
                       chunks.push(c.id, file);
-                      break;
+                      recordedJS = !0;
                     }
                   }
                 } catch (err) {

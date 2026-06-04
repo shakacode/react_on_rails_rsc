@@ -1094,6 +1094,31 @@ function renderFragment(request, task, children) {
       task.implicitSlot ? [request] : request)
     : children;
 }
+function resolveClientReferenceCSS(request, clientReference) {
+  var config = request.bundlerConfig;
+  if (!config) return null;
+  config = config.filePathToModuleMetadata || config;
+  var modulePath = clientReference.$$id,
+    resolvedModuleData = config[modulePath];
+  if (!resolvedModuleData) {
+    var idx = modulePath.lastIndexOf("#");
+    -1 !== idx && (resolvedModuleData = config[modulePath.slice(0, idx)]);
+  }
+  return resolvedModuleData ? resolvedModuleData.css : null;
+}
+function renderClientReferenceWithCSS(request, task, type, key, props) {
+  var css = resolveClientReferenceCSS(request, type);
+  if (!css || 0 === css.length) return null;
+  for (var children = [], i = 0; i < css.length; i++)
+    children.push([
+      REACT_ELEMENT_TYPE,
+      "link",
+      "__rfwn_link_" + css[i],
+      { rel: "stylesheet", href: css[i], precedence: "rsc-css" }
+    ]);
+  children.push([REACT_ELEMENT_TYPE, type, key, props]);
+  return renderFragment(request, task, children);
+}
 function renderElement(request, task, type, key, ref, props) {
   if (null !== ref && void 0 !== ref)
     throw Error(
@@ -1135,6 +1160,10 @@ function renderElement(request, task, type, key, ref, props) {
       case REACT_MEMO_TYPE:
         return renderElement(request, task, type.type, key, ref, props);
     }
+  if (type.$$typeof === CLIENT_REFERENCE_TAG$1) {
+    ref = renderClientReferenceWithCSS(request, task, type, key, props);
+    if (null !== ref) return ref;
+  }
   request = key;
   key = task.keyPath;
   null === request
@@ -3028,7 +3057,6 @@ exports.registerServerReference = function (reference, id, exportName) {
   });
 };
 exports.renderToPipeableStream = function (model, webpackMap, options) {
-  globalThis.__reactFlightClientManifest = webpackMap;
   var request = new RequestInstance(
       20,
       model,

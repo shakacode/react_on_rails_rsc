@@ -2,6 +2,7 @@ type ImportManifestEntry = {
   id: string,
   // chunks is a double indexed array of chunkId / chunkFilename pairs
   chunks: Array<string>,
+  css?: Array<string>,
   name: string,
   async?: boolean,
 };

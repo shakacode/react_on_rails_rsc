@@ -438,80 +438,26 @@ async function transformClientModule(program, url, sourceMap, loader) {
 
   if (names.length === 0) {
     return '';
-  } // FOUC fix: for component-shaped exports of a 'use client' file, emit a
-  // server-side wrapper that renders
-  //   <><link rel=stylesheet precedence=rsc-css href=…/>...<RealRef {...props}/></>
-  // so React DOM emits its $RR gating script for deferred Suspense subtrees,
-  // holding the swap until the stylesheet's load event fires — the only
-  // mechanism that fully prevents flash-of-unstyled-content for a styled
-  // client component that streams in via Suspense.
-  //
-  // Non-component exports (lowercase-named) keep the original client-
-  // reference shim so they can still be passed across the server/client
-  // boundary as tagged values (hooks, stores, constants, plain utilities,
-  // etc.). Wrapping non-components would turn passing them as values into a
-  // serialization failure.
-  //
-  // CSS hrefs are looked up at runtime from
-  // globalThis.__reactFlightClientManifest, which the public render entry
-  // points (renderToPipeableStream / renderToReadableStream / prerender)
-  // populate as a side effect on entry. The lookup runs on every wrapper
-  // invocation (no closure cache) so HMR rebuilds and multi-bundle setups
-  // always read the current manifest.
-  //
-  // The manifest published on globalThis is the flat ClientManifest the
-  // server APIs receive (a Record<filePath, ImportManifestEntry>). The
-  // lookup also handles the wrapped {filePathToModuleMetadata, ...} shape
-  // that the plugin emits to disk, in case a consumer publishes that shape.
-  //
-  // Children are spread variadic into createElement(Fragment, null, …) via
-  // .apply so React doesn't warn about missing keys for the inner element.
-  //
-  // Known limitations of this loader-level wrap:
-  // - Component-shape heuristic is name-based (PascalCase). False positives
-  //   for non-component PascalCase exports (e.g. `Store`, `ThemeContext`,
-  //   `URL`) and false negatives for lowercase-named components.
-  // - Wrapped exports are no longer client-reference-shaped, so passing a
-  //   client component as a value (`<Outer Component={Inner} />`) breaks.
-  //   Fully resolving these requires moving the wrap site into the React
-  //   Flight server's serializeClientReference, which is out of scope here.
+  }
 
-
-  let newSrc = 'import {registerClientReference} from "react-on-rails-rsc/server";\n' + 'import {createElement as __rfwn_h, Fragment as __rfwn_F} from "react";\n' + 'function __rfwn_css(refUrl){' + 'var m=globalThis.__reactFlightClientManifest;' + 'if(!m)return [];' + 'var entries=m.filePathToModuleMetadata||m;' + 'var e=entries[refUrl];' + 'return (e&&e.css)||[];' + '}\n' + 'function __rfwn_wrap(ref,refUrl){' + 'return function __rfwn_wrapped(props){' + 'var __h=__rfwn_css(refUrl);' + 'if(__h.length===0)return __rfwn_h(ref,props);' + 'var c=[__rfwn_F,null];' + 'for(var i=0;i<__h.length;i++){' + 'c.push(__rfwn_h("link",{key:"__rfwn_link_"+__h[i],rel:"stylesheet",href:__h[i],precedence:"rsc-css"}));' + '}' + 'c.push(__rfwn_h(ref,props));' + 'return __rfwn_h.apply(null,c);' + '};' + '}\n'; // Component-shape: default export OR named export starting with PascalCase
-  // (uppercase letter followed by lowercase). Lowercase, UPPER_SNAKE, and
-  // single-letter names get the bare shim.
-
-  const isComponentName = n => n === 'default' || /^[A-Z][a-z]/.test(n); // Keep the default-export's private variable name in a separate namespace
-  // so a named export literally called "_default" doesn't collide.
-
-
-  const refVarFor = n => n === 'default' ? '__rfwn_default_ref__' : '__rfwn_named_ref_' + n;
+  let newSrc = 'import {registerClientReference} from "react-on-rails-rsc/server";\n';
 
   for (let i = 0; i < names.length; i++) {
     const name = names[i];
-    const errorMessage = name === 'default' ? "Attempted to call the default export of " + url + " from the server " + "but it's on the client. It's not possible to invoke a client function from " + "the server, it can only be rendered as a Component or passed to props of a " + "Client Component." : "Attempted to call " + name + "() from the server but " + name + " is on the client. " + "It's not possible to invoke a client function from the server, it can " + "only be rendered as a Component or passed to props of a Client Component.";
-    const shim = 'registerClientReference(function() { throw new Error(' + JSON.stringify(errorMessage) + '); }, ' + JSON.stringify(url) + ', ' + JSON.stringify(name) + ')';
-
-    if (!isComponentName(name)) {
-      // Non-component export: emit the bare shim, no wrapping.
-      if (name === 'default') {
-        newSrc += 'export default ' + shim + ';\n';
-      } else {
-        newSrc += 'export const ' + name + ' = ' + shim + ';\n';
-      }
-
-      continue;
-    } // Component export: bind shim to a private name, then wrap.
-
-
-    const refVar = refVarFor(name);
-    newSrc += 'const ' + refVar + ' = ' + shim + ';\n';
 
     if (name === 'default') {
-      newSrc += 'export default __rfwn_wrap(' + refVar + ', ' + JSON.stringify(url) + ');\n';
+      newSrc += 'export default ';
+      newSrc += 'registerClientReference(function() {';
+      newSrc += 'throw new Error(' + JSON.stringify("Attempted to call the default export of " + url + " from the server " + "but it's on the client. It's not possible to invoke a client function from " + "the server, it can only be rendered as a Component or passed to props of a " + "Client Component.") + ');';
     } else {
-      newSrc += 'export const ' + name + ' = __rfwn_wrap(' + refVar + ', ' + JSON.stringify(url) + ');\n';
+      newSrc += 'export const ' + name + ' = ';
+      newSrc += 'registerClientReference(function() {';
+      newSrc += 'throw new Error(' + JSON.stringify("Attempted to call " + name + "() from the server but " + name + " is on the client. " + "It's not possible to invoke a client function from the server, it can " + "only be rendered as a Component or passed to props of a Client Component.") + ');';
     }
+
+    newSrc += '},';
+    newSrc += JSON.stringify(url) + ',';
+    newSrc += JSON.stringify(name) + ');\n';
   } // TODO: Generate source maps for Client Reference functions so they can point to their
   // original locations.
 

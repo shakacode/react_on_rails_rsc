@@ -1061,6 +1061,37 @@
       }
       return children;
     }
+    function resolveClientReferenceCSS(request, clientReference) {
+      var config = request.bundlerConfig;
+      if (!config) return null;
+      config = config.filePathToModuleMetadata || config;
+      var modulePath = clientReference.$$id,
+        resolvedModuleData = config[modulePath];
+      if (!resolvedModuleData) {
+        var idx = modulePath.lastIndexOf("#");
+        -1 !== idx &&
+          (resolvedModuleData = config[modulePath.slice(0, idx)]);
+      }
+      return resolvedModuleData ? resolvedModuleData.css : null;
+    }
+    function renderClientReferenceWithCSS(request, task, type, key, props) {
+      var css = resolveClientReferenceCSS(request, type);
+      if (!css || 0 === css.length) return null;
+      for (var children = [], i = 0; i < css.length; i++)
+        children.push([
+          REACT_ELEMENT_TYPE,
+          "link",
+          "__rfwn_link_" + css[i],
+          {
+            rel: "stylesheet",
+            href: css[i],
+            precedence: "rsc-css"
+          },
+          task.debugOwner
+        ]);
+      children.push([REACT_ELEMENT_TYPE, type, key, props, task.debugOwner]);
+      return renderFragment(request, task, children);
+    }
     function renderAsyncFragment(request, task, children, getAsyncIterator) {
       if (null !== task.keyPath)
         return (
@@ -1142,6 +1173,16 @@
               type._store.validated = 1;
           }
       } else return renderFunctionComponent(request, task, key, type, props);
+      if (isClientReference(type)) {
+        var clientReferenceWithCSS = renderClientReferenceWithCSS(
+          request,
+          task,
+          type,
+          key,
+          props
+        );
+        if (null !== clientReferenceWithCSS) return clientReferenceWithCSS;
+      }
       ref = task.keyPath;
       null === key ? (key = ref) : null !== ref && (key = ref + "," + key);
       null !== task.debugOwner &&
@@ -3978,7 +4019,6 @@
       });
     };
     exports.renderToReadableStream = function (model, webpackMap, options) {
-      globalThis.__reactFlightClientManifest = webpackMap;
       var request = new RequestInstance(
         20,
         model,

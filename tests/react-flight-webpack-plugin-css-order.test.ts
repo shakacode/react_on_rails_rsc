@@ -4,6 +4,11 @@ const ReactFlightWebpackPlugin = require('../src/react-server-dom-webpack/cjs/re
 
 type AsyncHookCallback = (params: unknown, callback: (error?: Error | null) => void) => void;
 type SyncHookCallback = (...args: unknown[]) => void;
+type ClientReference = {
+  request: string;
+  userRequest: string;
+  type?: string;
+};
 
 const emitManifestMetadata = ({
   files,
@@ -28,9 +33,11 @@ const emitManifestMetadata = ({
       _normalResolver: unknown,
       _fs: unknown,
       _contextModuleFactory: unknown,
-      callback: (error: Error | null, refs?: Array<{ request: string; userRequest: string }>) => void,
+      callback: (error: Error | null, refs?: ClientReference[]) => void,
     ) => {
-      callback(null, [{ request: clientFile, userRequest: './ClientComponent.js' }]);
+      callback(null, [
+        { request: clientFile, type: 'client-reference', userRequest: './ClientComponent.js' },
+      ]);
     },
   );
 
@@ -73,11 +80,14 @@ const emitManifestMetadata = ({
   );
 
   const programCallbacks: Array<() => void> = [];
+  const clientReferenceBlocks: unknown[] = [];
   const parser = {
     state: {
       module: {
         resource: runtimeFile,
-        addBlock: jest.fn(),
+        addBlock: jest.fn((block: unknown) => {
+          clientReferenceBlocks.push(block);
+        }),
       },
     },
     hooks: {
@@ -118,6 +128,7 @@ const emitManifestMetadata = ({
     entrypoints: new Map(),
     chunkGroups: [
       {
+        getBlocks: () => clientReferenceBlocks,
         chunks: [chunk],
       },
     ],
@@ -141,6 +152,7 @@ const emitManifestMetadata = ({
   thisCompilationCallbacks[0]!(compilation, { normalModuleFactory });
   expect(programCallbacks).toHaveLength(3);
   programCallbacks.forEach((callback) => callback());
+  expect(clientReferenceBlocks).not.toHaveLength(0);
   expect(makeCallbacks).toHaveLength(1);
   makeCallbacks[0]!(compilation);
   expect(processAssetCallbacks).toHaveLength(1);

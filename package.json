@@ -1,6 +1,6 @@
 {
   "name": "react-on-rails-rsc",
-  "version": "19.0.5-rc.3",
+  "version": "19.0.5-rc.5",
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
     "./client": {
@@ -36,6 +36,10 @@
     "./WebpackLoader": {
       "types": "./dist/WebpackLoader.d.ts",
       "default": "./dist/WebpackLoader.js"
+    },
+    "./RSCReferenceDiscoveryPlugin": {
+      "types": "./dist/RSCReferenceDiscoveryPlugin.d.ts",
+      "default": "./dist/RSCReferenceDiscoveryPlugin.js"
     },
     "./RspackPlugin": {
       "types": "./dist/react-server-dom-rspack/plugin.d.ts",
@@ -75,7 +79,7 @@
     "test:non-rsc": "jest tests --testPathIgnorePatterns=\".*\\.rsc\\.test\\..*\"",
     "build": "rm -rf dist tsconfig.tsbuildinfo && yarn run tsc",
     "prepublishOnly": "yarn run build",
-    "build-if-needed": "test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js || (yarn run build && test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js)",
+    "build-if-needed": "test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js || (yarn run build && test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js)",
     "prepack": "yarn run build-if-needed",
     "prepare": "yarn run build-if-needed"
   },
@@ -93,8 +97,8 @@
     "webpack": "^5.98.0"
   },
   "peerDependencies": {
-    "react": "^19.0.3",
-    "react-dom": "^19.0.3",
+    "react": "^19.0.4",
+    "react-dom": "^19.0.4",
     "webpack": "^5.59.0"
   },
   "dependencies": {

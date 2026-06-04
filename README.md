@@ -1,4 +1,4 @@
-# @shakacode-tools/react-on-rails-rsc
+# react-on-rails-rsc
 
 This package provides React Server Components (RSC) support for the [`react-on-rails-pro`](https://github.com/shakacode/react_on_rails_pro) Ruby gem. 
 

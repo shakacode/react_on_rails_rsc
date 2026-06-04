@@ -2,11 +2,32 @@
 
 All notable changes to this package will be documented in this file.
 
-## [19.0.5-rc.3] - 2026-05-30
+## [19.0.5-rc.5] - 2026-06-03
+
+### Changed
+- Updated the vendored `react-server-dom-webpack` runtime to React 19.0.4 and aligned package peer dependencies with React 19.0.4.
+
+### Fixed
+- Replaced the `19.0.5-rc.4` runtime bundle that still reported React 19.0.3, so release candidates no longer include React Server Components runtime versions affected by CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779.
+
+## [19.0.5-rc.4] - 2026-06-02
+
+### Added
+- Added `RSCReferenceDiscoveryPlugin` and an export for emitting RSC graph-derived client reference metadata.
+- Added coverage for graph-derived client-reference chunk discovery, CSS-first chunk ordering, default client-reference excludes, and duplicate package runtime detection.
+
+### Changed
+- Updated RSC loader/client-reference discovery to derive client references from the RSC graph and reuse directive parsing helpers.
+- Refreshed the open RSC work status investigation for current issues, stale PRs, and release-order risks.
 
 ### Fixed
 - Fixed default client reference discovery to skip dependency and generated asset directories such as `node_modules`, `vendor/bundle`, and `vendor/cache`.
 - Fixed Webpack plugin runtime detection when package managers install multiple `react-on-rails-rsc` package instances for different peer dependency sets.
+- Fixed `RSCRspackPlugin` so an unset `optimization.splitChunks.chunks` preserves the Rspack/Webpack default `async` behavior while still excluding generated RSC client-reference chunks from splitChunks extraction.
+
+## [19.0.5-rc.3] - 2026-05-30
+
+### Fixed
 - Fixed `RSCRspackPlugin` so an unset `optimization.splitChunks.chunks` preserves the Rspack/Webpack default `async` behavior while still excluding generated RSC client-reference chunks from splitChunks extraction.
 
 ## [19.0.5-rc.2] - 2026-05-30
@@ -31,6 +52,8 @@ All notable changes to this package will be documented in this file.
 ### Changed
 - Released the first `19.0.5` release candidate.
 
+[19.0.5-rc.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.4...19.0.5-rc.5
+[19.0.5-rc.4]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.3...19.0.5-rc.4
 [19.0.5-rc.3]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.2...19.0.5-rc.3
 [19.0.5-rc.2]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.1...19.0.5-rc.2
 [19.0.5-rc.1]: https://github.com/shakacode/react_on_rails_rsc/releases/tag/19.0.5-rc.1

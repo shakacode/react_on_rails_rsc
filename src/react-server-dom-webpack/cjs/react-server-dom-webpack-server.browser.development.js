@@ -1051,23 +1051,15 @@
       }
       return resolvedModuleData ? resolvedModuleData.css : null;
     }
-    function renderClientReferenceWithCSS(request, task, type, key, props) {
-      var css = resolveClientReferenceCSS(request, type);
-      if (!css || 0 === css.length) return null;
-      for (var children = [], i = 0; i < css.length; i++)
-        children.push([
-          REACT_ELEMENT_TYPE,
-          "link",
-          "__rfwn_link_" + css[i],
-          {
-            rel: "stylesheet",
-            href: css[i],
-            precedence: "rsc-css"
-          },
-          task.debugOwner
-        ]);
-      children.push([REACT_ELEMENT_TYPE, type, key, props, task.debugOwner]);
-      return renderFragment(request, task, children);
+    function emitClientReferenceCSS(request, clientReference) {
+      var css = resolveClientReferenceCSS(request, clientReference);
+      if (css && 0 !== css.length)
+        for (var hints = request.hints, i = 0; i < css.length; i++) {
+          var href = css[i],
+            key = "S|" + href;
+          hints.has(key) ||
+            (hints.add(key), emitHint(request, "S", [href, "rsc-css"]));
+        }
     }
     function renderAsyncFragment(request, task, children, getAsyncIterator) {
       if (null !== task.keyPath)
@@ -1150,16 +1142,7 @@
               type._store.validated = 1;
           }
       } else return renderFunctionComponent(request, task, key, type, props);
-      if (isClientReference(type)) {
-        var clientReferenceWithCSS = renderClientReferenceWithCSS(
-          request,
-          task,
-          type,
-          key,
-          props
-        );
-        if (null !== clientReferenceWithCSS) return clientReferenceWithCSS;
-      }
+      isClientReference(type) && emitClientReferenceCSS(request, type);
       ref = task.keyPath;
       null === key ? (key = ref) : null !== ref && (key = ref + "," + key);
       null !== task.debugOwner &&

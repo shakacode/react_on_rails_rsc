@@ -8,7 +8,7 @@ All notable changes to this package will be documented in this file.
 - Added regression coverage for manifest CSS serialization on rendered client references and component-shaped client-reference export metadata.
 
 ### Fixed
-- Fixed rendered client references with manifest CSS to emit stylesheet links from the request-scoped Flight manifest while preserving `react.client.reference` metadata.
+- Fixed rendered client references with manifest CSS to emit request-scoped Flight stylesheet hints while preserving `react.client.reference` metadata and nested client-element prop shapes.
 - Removed the process-global client manifest used by the earlier CSS wrapper path, avoiding cross-request manifest races.
 - Fixed Webpack client manifest CSS collection to record CSS files regardless of JS/CSS file order and avoid prefixing CSS hrefs with webpack's `publicPath: "auto"` sentinel.
 

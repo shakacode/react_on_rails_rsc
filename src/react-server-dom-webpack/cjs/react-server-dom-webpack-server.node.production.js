@@ -1106,18 +1106,15 @@ function resolveClientReferenceCSS(request, clientReference) {
   }
   return resolvedModuleData ? resolvedModuleData.css : null;
 }
-function renderClientReferenceWithCSS(request, task, type, key, props) {
-  var css = resolveClientReferenceCSS(request, type);
-  if (!css || 0 === css.length) return null;
-  for (var children = [], i = 0; i < css.length; i++)
-    children.push([
-      REACT_ELEMENT_TYPE,
-      "link",
-      "__rfwn_link_" + css[i],
-      { rel: "stylesheet", href: css[i], precedence: "rsc-css" }
-    ]);
-  children.push([REACT_ELEMENT_TYPE, type, key, props]);
-  return renderFragment(request, task, children);
+function emitClientReferenceCSS(request, clientReference) {
+  var css = resolveClientReferenceCSS(request, clientReference);
+  if (css && 0 !== css.length)
+    for (var hints = request.hints, i = 0; i < css.length; i++) {
+      var href = css[i],
+        key = "S|" + href;
+      hints.has(key) ||
+        (hints.add(key), emitHint(request, "S", [href, "rsc-css"]));
+    }
 }
 function renderElement(request, task, type, key, ref, props) {
   if (null !== ref && void 0 !== ref)
@@ -1160,10 +1157,8 @@ function renderElement(request, task, type, key, ref, props) {
       case REACT_MEMO_TYPE:
         return renderElement(request, task, type.type, key, ref, props);
     }
-  if (type.$$typeof === CLIENT_REFERENCE_TAG$1) {
-    ref = renderClientReferenceWithCSS(request, task, type, key, props);
-    if (null !== ref) return ref;
-  }
+  type.$$typeof === CLIENT_REFERENCE_TAG$1 &&
+    emitClientReferenceCSS(request, type);
   request = key;
   key = task.keyPath;
   null === request

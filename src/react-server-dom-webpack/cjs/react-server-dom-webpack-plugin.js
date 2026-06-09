@@ -370,7 +370,12 @@ class ReactFlightWebpackPlugin {
                 try {
                   for (_iterator.s(); !(_step = _iterator.n()).done; ) {
                     const file = _step.value;
-                    if (file.endsWith(".css") && null !== cssPrefix) {
+                    if (
+                      file.endsWith(".css") &&
+                      !file.endsWith(".hot-update.css") &&
+                      null !== cssPrefix &&
+                      (_this.isServer || !runtimeChunkFiles.has(file))
+                    ) {
                       const cssUrl = cssPrefix + file;
                       -1 === cssFiles.indexOf(cssUrl) && cssFiles.push(cssUrl);
                     } else if (

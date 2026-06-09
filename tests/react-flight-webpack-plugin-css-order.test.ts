@@ -10,18 +10,31 @@ type ClientReference = {
   type?: string;
 };
 
+type ChunkDef = {
+  id: string;
+  files: string[];
+};
+
 const emitManifestMetadata = ({
   files,
   publicPath = '/assets/',
+  isServer = false,
+  chunks: chunkDefs,
+  entrypoints: entrypointDefs,
 }: {
-  files: string[];
+  files?: string[];
   publicPath?: string;
+  isServer?: boolean;
+  chunks?: ChunkDef[];
+  entrypoints?: Array<{ runtimeChunk: ChunkDef }>;
 }) => {
   const clientFile = '/app/components/ClientComponent.js';
   // The plugin matches this specific runtime resource to inject client-reference dependency blocks.
-  const runtimeFile = require.resolve('../src/react-server-dom-webpack/client.browser.js');
+  const runtimeFile = require.resolve(
+    isServer ? '../src/react-server-dom-webpack/client.node.js' : '../src/react-server-dom-webpack/client.browser.js',
+  );
   const plugin = new ReactFlightWebpackPlugin({
-    isServer: false,
+    isServer,
     clientReferences: [clientFile],
   });
 
@@ -111,13 +124,23 @@ const emitManifestMetadata = ({
   };
   const emittedAssets = new Map<string, { source(): string | Buffer }>();
   const processAssetCallbacks: Array<() => void> = [];
-  const chunk = {
-    id: 'client-chunk',
-    files: new Set(files),
-  };
+  const resolvedChunks = (chunkDefs ?? [{ id: 'client-chunk', files: files ?? [] }]).map((c) => ({
+    id: c.id,
+    files: new Set(c.files),
+  }));
   const module = {
     resource: clientFile,
   };
+  const entrypoints = new Map<string, { getRuntimeChunk: () => (typeof resolvedChunks)[0] | null }>();
+  if (entrypointDefs) {
+    for (let i = 0; i < entrypointDefs.length; i++) {
+      const runtimeChunkObj = resolvedChunks.find((c) => c.id === entrypointDefs[i]!.runtimeChunk.id) ?? {
+        id: entrypointDefs[i]!.runtimeChunk.id,
+        files: new Set(entrypointDefs[i]!.runtimeChunk.files),
+      };
+      entrypoints.set(`entry-${i}`, { getRuntimeChunk: () => runtimeChunkObj });
+    }
+  }
   const compilation = {
     dependencyFactories: new Map(),
     dependencyTemplates: new Map(),
@@ -125,11 +148,11 @@ const emitManifestMetadata = ({
     outputOptions: {
       publicPath,
     },
-    entrypoints: new Map(),
+    entrypoints,
     chunkGroups: [
       {
         getBlocks: () => clientReferenceBlocks,
-        chunks: [chunk],
+        chunks: resolvedChunks,
       },
     ],
     chunkGraph: {
@@ -158,7 +181,9 @@ const emitManifestMetadata = ({
   expect(processAssetCallbacks).toHaveLength(1);
   processAssetCallbacks[0]!();
 
-  const manifestAsset = emittedAssets.get('react-client-manifest.json');
+  const manifestAsset = emittedAssets.get(
+    isServer ? 'react-server-client-manifest.json' : 'react-client-manifest.json',
+  );
   expect(manifestAsset).toBeDefined();
   const manifestSource = manifestAsset!.source().toString();
   const manifest = JSON.parse(manifestSource);
@@ -250,6 +275,64 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
       id: './ClientComponent.js',
       chunks: ['client-chunk', 'client.js'],
       css: [],
+      name: '*',
+    });
+  });
+
+  it('does not record CSS files from runtime chunks in the client manifest', () => {
+    const runtimeChunk = { id: 'runtime', files: ['runtime.js', 'runtime.css'] };
+    const clientChunk = { id: 'client-chunk', files: ['client.js', 'client.css'] };
+    const metadata = emitManifestMetadata({
+      chunks: [runtimeChunk, clientChunk],
+      entrypoints: [{ runtimeChunk }],
+    });
+
+    expect(metadata).toEqual({
+      id: './ClientComponent.js',
+      chunks: ['client-chunk', 'client.js'],
+      css: ['/assets/client.css'],
+      name: '*',
+    });
+  });
+
+  it('still records all CSS files from a non-runtime chunk', () => {
+    const metadata = emitManifestMetadata({
+      chunks: [{ id: 'client-chunk', files: ['a.css', 'b.css', 'client.js'] }],
+    });
+
+    expect(metadata).toEqual({
+      id: './ClientComponent.js',
+      chunks: ['client-chunk', 'client.js'],
+      css: ['/assets/a.css', '/assets/b.css'],
+      name: '*',
+    });
+  });
+
+  it('still records runtime-owned CSS on the server manifest', () => {
+    const runtimeChunk = { id: 'runtime', files: ['runtime.js', 'runtime.css'] };
+    const metadata = emitManifestMetadata({
+      isServer: true,
+      chunks: [runtimeChunk],
+      entrypoints: [{ runtimeChunk }],
+    });
+
+    expect(metadata).toEqual({
+      id: './ClientComponent.js',
+      chunks: ['runtime', 'runtime.js'],
+      css: ['/assets/runtime.css'],
+      name: '*',
+    });
+  });
+
+  it('does not record hot-update CSS files', () => {
+    const metadata = emitManifestMetadata({
+      chunks: [{ id: 'client-chunk', files: ['client.hot-update.css', 'client.css', 'client.js'] }],
+    });
+
+    expect(metadata).toEqual({
+      id: './ClientComponent.js',
+      chunks: ['client-chunk', 'client.js'],
+      css: ['/assets/client.css'],
       name: '*',
     });
   });

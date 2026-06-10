@@ -11,7 +11,9 @@
  * module happens to appear in (the over-preload / overwrite class from
  * issue #19).
  *
- * Covers the verification matrix from docs/open-rsc-work-status.md:
+ * Covers the verification matrix from docs/open-rsc-work-status.md (CSS +
+ * JS chunk file ordering is covered separately by the mock-based
+ * react-flight-webpack-plugin-css-order tests):
  *   - splitChunks shared module across several chunk groups
  *   - duplicated module across chunk groups (client importing client)
  *   - runtime chunk exclusion
@@ -31,6 +33,7 @@ import {
   cleanupOutputDirs,
   entryEndingWith,
   chunkFiles,
+  chunkIds,
   type CompileResult,
 } from './helpers/compile';
 
@@ -45,13 +48,10 @@ const run = (fixture: string, options?: Parameters<typeof compile>[1]): CompileR
 
 afterAll(() => cleanupOutputDirs(created));
 
-const expectNoPluginWarnings = (result: CompileResult): void => {
-  const pluginWarnings = result.warnings.filter(
-    (w) =>
-      w.includes('Client reference blocks were unavailable') ||
-      w.includes('Client runtime at react-on-rails-rsc/client was not found'),
-  );
-  expect(pluginWarnings).toEqual([]);
+const expectNoWarnings = (result: CompileResult): void => {
+  // Wholesale assert (not a substring allowlist) so a new or reworded
+  // plugin warning cannot slip through unnoticed.
+  expect(result.warnings).toEqual([]);
 };
 
 describe('ReactFlightWebpackPlugin (real webpack)', () => {
@@ -128,7 +128,7 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       // Issue #22 risk: `chunkGroup.getBlocks()` / `block.dependencies`
       // must work as public webpack 5 APIs. If they did not, the plugin
       // would emit its "blocks were unavailable" warning and skip entries.
-      expectNoPluginWarnings(result);
+      expectNoWarnings(result);
     });
   });
 
@@ -157,8 +157,8 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       const button = entryEndingWith(result.manifest, '/Button.js');
       expect(button.id).toBe('./Button.js');
       expect(button.name).toBe('*');
-      expect(button.chunks[0]).toBe('client-Button-js');
-      expectNoPluginWarnings(result);
+      expect(chunkIds(button)).toEqual(['client-Button-js']);
+      expectNoWarnings(result);
     });
   });
 
@@ -171,7 +171,7 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
 
       const button = entryEndingWith(result.manifest, '/Button.js');
       expect(chunkFiles(button)).toEqual(['client-Button-js.chunk.mjs']);
-      expectNoPluginWarnings(result);
+      expectNoWarnings(result);
     });
   });
 
@@ -188,7 +188,7 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
         expect(files.some((f) => f.startsWith('runtime'))).toBe(false);
         expect(files).not.toContain('main.js');
       }
-      expectNoPluginWarnings(result);
+      expectNoWarnings(result);
     });
   });
 
@@ -212,7 +212,7 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       // The id must point at the concatenated module so requiring it at
       // runtime yields the hoisted exports.
       expect(button.id).toBe('./Button.js');
-      expectNoPluginWarnings(result);
+      expectNoWarnings(result);
     });
   });
 
@@ -242,7 +242,24 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       // Button is available from the entry chunk, so SettingsPage's chunk
       // group only ships SettingsPage itself.
       expect(chunkFiles(settings)).toEqual(['client-SettingsPage-js.chunk.js']);
-      expectNoPluginWarnings(result);
+      expectNoWarnings(result);
+    });
+
+    it('with a split runtime chunk, the fallback lists the already-loaded entry chunk', () => {
+      const splitRuntime = run('eager-import', {
+        chunkName: 'client-[request]',
+        optimizationExtra: { runtimeChunk: 'single' },
+      });
+      expect(splitRuntime.assets.some((a) => a.startsWith('runtime'))).toBe(true);
+
+      // With `runtimeChunk: 'single'` the entry chunk is no longer the
+      // runtime chunk, so the runtime-chunk exclusion does not filter it:
+      // Button's fallback entry records the entry chunk webpack already
+      // loaded. A redundant preload, not a correctness issue — webpack's
+      // chunk loader no-ops on installed chunks.
+      const button = entryEndingWith(splitRuntime.manifest, '/Button.js');
+      expect(chunkFiles(button)).toEqual(['main.js']);
+      expectNoWarnings(splitRuntime);
     });
   });
 
@@ -260,6 +277,7 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(chunkFiles(settings)).toEqual(['main.js']);
       expect(button.id).toBe('./Button.js');
       expect(settings.id).toBe('./SettingsPage.js');
+      expectNoWarnings(result);
     });
   });
 
@@ -275,7 +293,7 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
         prefix: '/packs/',
         crossOrigin: 'anonymous',
       });
-      expectNoPluginWarnings(result);
+      expectNoWarnings(result);
     });
   });
 });

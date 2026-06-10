@@ -2,6 +2,15 @@
 
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Added Webpack client manifest coverage for excluding runtime-chunk CSS from the client manifest, retaining runtime-chunk CSS on the server manifest, and skipping hot-update CSS.
+
+### Fixed
+- Fixed the Webpack client manifest CSS collection to exclude runtime-chunk CSS, matching the existing JS-chunk filtering, so shared runtime CSS no longer leaks into every client component's Flight stylesheet hints; the server manifest still retains runtime-chunk CSS for SSR coverage.
+- Fixed the Webpack client manifest CSS collection to skip `.hot-update.css` HMR files.
+
 ## [19.0.5-rc.6] - 2026-06-04
 
 ### Added
@@ -62,6 +71,7 @@ All notable changes to this package will be documented in this file.
 ### Changed
 - Released the first `19.0.5` release candidate.
 
+[Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.6...HEAD
 [19.0.5-rc.6]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.5...19.0.5-rc.6
 [19.0.5-rc.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.4...19.0.5-rc.5
 [19.0.5-rc.4]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.3...19.0.5-rc.4

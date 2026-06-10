@@ -237,6 +237,33 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     });
   });
 
+  it('dedupes CSS when merging a client reference recorded from several server chunk groups', () => {
+    const serverModule = { resource: clientFile };
+    const firstChunk = {
+      id: 'server-a',
+      files: new Set(['server-a.js', 'shared.css', 'a.css']),
+    };
+    const secondChunk = {
+      id: 'server-b',
+      files: new Set(['server-b.js', 'shared.css', 'b.css']),
+    };
+
+    // The server build records every chunk group; the second group merges
+    // into the existing entry, so `shared.css` must not be duplicated.
+    const { manifest } = buildManifest({
+      isServer: true,
+      chunkGroups: () => [{ chunks: [firstChunk] }, { chunks: [secondChunk] }],
+      getChunkModulesIterable: () => [serverModule],
+    });
+
+    expect(manifest.filePathToModuleMetadata[pathToFileURL(clientFile).href]).toEqual({
+      id: './client/app/components/ErrorBoundary.tsx',
+      chunks: ['server-a', 'server-a.js', 'server-b', 'server-b.js'],
+      css: ['/assets/shared.css', '/assets/a.css', '/assets/b.css'],
+      name: '*',
+    });
+  });
+
   it('warns when a client chunk group cannot expose client-reference blocks', () => {
     const clientModule = { resource: clientFile };
     const clientChunk = { id: 'client0', files: new Set(['js/client0.chunk.js']) };

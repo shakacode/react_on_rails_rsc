@@ -29,6 +29,10 @@ export interface CompileOptions {
   optimizationExtra?: Record<string, unknown>;
   /** Applies webpack.optimize.LimitChunkCountPlugin({ maxChunks }). */
   maxChunks?: number;
+  /** Additional entrypoints (name -> request) besides the default `main`. */
+  extraEntries?: Record<string, string>;
+  /** Wires css-loader + MiniCssExtractPlugin so fixtures can import CSS. */
+  withCss?: boolean;
 }
 
 export interface ModuleMetadata {
@@ -59,7 +63,21 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
   const outputPath = fs.mkdtempSync(
     path.join(os.tmpdir(), `ror-rsc-webpack-plugin-${fixture}-`),
   );
+  try {
+    return compileInto(context, outputPath, options);
+  } catch (e) {
+    // Failed compiles never reach the caller's cleanup list — remove the
+    // tmp dir here so they don't leak.
+    fs.rmSync(outputPath, { recursive: true, force: true });
+    throw e;
+  }
+};
 
+const compileInto = (
+  context: string,
+  outputPath: string,
+  options: CompileOptions,
+): CompileResult => {
   const runnerArgs = {
     context,
     outputPath,
@@ -72,6 +90,8 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     outputExtra: serializeForRunner(options.outputExtra),
     optimizationExtra: serializeForRunner(options.optimizationExtra),
     maxChunks: options.maxChunks,
+    extraEntries: options.extraEntries,
+    withCss: options.withCss,
   };
   const argsFile = path.join(outputPath, '__args__.json');
   fs.writeFileSync(argsFile, JSON.stringify(runnerArgs));
@@ -84,8 +104,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     });
   } catch (e) {
     const err = e as { stdout?: string; stderr?: string; message: string };
-    const details = err.stderr || err.stdout || err.message;
-    throw new Error(`webpack compilation failed:\n${details}`);
+    throw new Error(`webpack compilation failed:\n${formatRunnerFailure(err)}`);
   }
 
   const result = JSON.parse(resultJson) as {
@@ -95,7 +114,13 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     assets?: string[];
   };
   if (!result.ok) {
-    throw new Error(`webpack build errors:\n${(result.errors ?? []).join('\n')}`);
+    // Warnings often carry the actual hint for a failed build.
+    const warningSuffix = result.warnings?.length
+      ? `\n\nwarnings:\n${result.warnings.join('\n')}`
+      : '';
+    throw new Error(
+      `webpack build errors:\n${(result.errors ?? []).join('\n')}${warningSuffix}`,
+    );
   }
 
   const defaultFilename = (options.isServer ?? false)
@@ -145,6 +170,31 @@ export const chunkFiles = (metadata: ModuleMetadata): string[] =>
 /** Manifest chunks are encoded as [id, file, id, file, ...] — return the ids. */
 export const chunkIds = (metadata: ModuleMetadata): (string | number)[] =>
   metadata.chunks.filter((_value, index) => index % 2 === 0);
+
+/**
+ * The runner exits non-zero with a JSON failure payload on stdout; format
+ * its errors/warnings when present, falling back to the raw output.
+ */
+const formatRunnerFailure = (err: {
+  stdout?: string;
+  stderr?: string;
+  message: string;
+}): string => {
+  if (err.stdout) {
+    try {
+      const payload = JSON.parse(err.stdout) as { errors?: string[]; warnings?: string[] };
+      const sections = [`errors:\n${(payload.errors ?? []).join('\n')}`];
+      // Warnings often carry the actual hint for a failed build.
+      if (payload.warnings?.length) {
+        sections.push(`warnings:\n${payload.warnings.join('\n')}`);
+      }
+      return sections.join('\n\n');
+    } catch {
+      // stdout was not the runner's JSON payload — fall through to raw.
+    }
+  }
+  return err.stderr || err.stdout || err.message;
+};
 
 const serializeForRunner = (value: unknown): unknown => {
   if (value instanceof RegExp) {

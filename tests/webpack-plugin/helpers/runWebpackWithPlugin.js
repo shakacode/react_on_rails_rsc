@@ -29,6 +29,8 @@
  *     outputExtra?: object,         // merged into config.output
  *     optimizationExtra?: object,   // merged into config.optimization
  *     maxChunks?: number,           // applies webpack LimitChunkCountPlugin
+ *     extraEntries?: object,        // additional entrypoints: name -> request
+ *     withCss?: boolean,            // wires css-loader + MiniCssExtractPlugin
  *   }
  *
  * Success stdout:  { ok: true, assets: [...], warnings: [...] }
@@ -62,6 +64,8 @@ const {
   outputExtra,
   optimizationExtra,
   maxChunks,
+  extraEntries,
+  withCss,
 } = args;
 
 const runtimeEntry = path.resolve(
@@ -86,12 +90,24 @@ const plugins = [
 if (typeof maxChunks === 'number') {
   plugins.push(new webpack.optimize.LimitChunkCountPlugin({ maxChunks }));
 }
+let MiniCssExtractPlugin;
+if (withCss) {
+  MiniCssExtractPlugin = require('mini-css-extract-plugin');
+  plugins.push(
+    new MiniCssExtractPlugin({
+      filename: '[name].css',
+      chunkFilename: '[name].chunk.css',
+    }),
+  );
+}
 
 const config = {
   mode: 'development',
   target: isServer ? 'node' : 'web',
   context,
-  entry: [runtimeEntry, './index.js'],
+  // The runtime entry must come first in `main` so the plugin's block
+  // injection happens in the default entrypoint.
+  entry: { main: [runtimeEntry, './index.js'], ...(extraEntries || {}) },
   output: {
     path: outputPath,
     filename: '[name].js',
@@ -106,13 +122,23 @@ const config = {
     minimize: false,
     ...(revivedOptimizationExtra || {}),
   },
+  ...(withCss
+    ? {
+        module: {
+          rules: [{ test: /\.css$/, use: [MiniCssExtractPlugin.loader, 'css-loader'] }],
+        },
+      }
+    : {}),
   devtool: false,
   plugins,
 };
 
 webpack(config, (err, stats) => {
   if (err) {
-    process.stdout.write(JSON.stringify({ ok: false, errors: [String(err)] }));
+    // Keep the stack and webpack's `details` — fatal config/loader errors
+    // are unreadable from the message alone.
+    const details = [err.stack || String(err), err.details].filter(Boolean);
+    process.stdout.write(JSON.stringify({ ok: false, errors: [details.join('\n')] }));
     process.exit(1);
   }
   if (!stats) {
@@ -124,7 +150,9 @@ webpack(config, (err, stats) => {
     process.stdout.write(
       JSON.stringify({
         ok: false,
-        errors: (info.errors || []).map((e) => e.message),
+        errors: (info.errors || []).map((e) =>
+          [e.moduleName, e.message, e.details].filter(Boolean).join('\n'),
+        ),
         warnings: (info.warnings || []).map((w) => w.message),
       }),
     );

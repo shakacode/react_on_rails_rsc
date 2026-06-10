@@ -18,6 +18,8 @@
  *   - duplicated module across chunk groups (client importing client)
  *   - runtime chunk exclusion
  *   - `.mjs` chunk files
+ *   - CSS chunk files (mini-css-extract-plugin) and cssPrefix handling
+ *   - multiple entrypoints
  *   - concatenated modules
  *   - server (isServer: true) manifest generation
  * and the two risks called out in issue #22: `getBlocks()` /
@@ -175,6 +177,41 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
+  describe('CSS chunk files (mini-css-extract-plugin)', () => {
+    it("records a chunk group's CSS under `css` with the normalized publicPath prefix", () => {
+      const result = run('css-import', {
+        chunkName: 'client-[request]',
+        // No trailing slash on purpose: the plugin must normalize the
+        // cssPrefix by appending one.
+        publicPath: '/assets',
+        withCss: true,
+      });
+      expect(result.assets).toContain('client-Button-js.chunk.css');
+
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(button.css).toEqual(['/assets/client-Button-js.chunk.css']);
+      // CSS files belong in `css`, never in the JS chunk pair list.
+      expect(chunkFiles(button)).toEqual(['client-Button-js.chunk.js']);
+      expectNoWarnings(result);
+    });
+  });
+
+  describe('multiple entrypoints', () => {
+    it("does not leak another entrypoint's chunks into a client component's entry", () => {
+      const result = run('multi-entry', {
+        chunkName: 'client-[request]',
+        extraEntries: { admin: './admin.js' },
+      });
+      // Precondition: the second entrypoint was built and eagerly bundles
+      // Button into its own chunk.
+      expect(result.assets).toContain('admin.js');
+
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(chunkFiles(button)).toEqual(['client-Button-js.chunk.js']);
+      expectNoWarnings(result);
+    });
+  });
+
   describe('runtime chunk exclusion', () => {
     it('never lists the webpack runtime chunk in client manifest entries', () => {
       const result = run('client-imports-client', {
@@ -200,12 +237,14 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       });
 
       // Precondition: concatenation actually happened in Button's chunk —
-      // webpack annotates the hoisted module as "./Button.js + 1 modules".
+      // webpack annotates the hoisted module as "./Button.js + N modules"
+      // (pattern-matched so a format tweak in a webpack upgrade fails
+      // loudly here instead of silently).
       const chunkSource = fs.readFileSync(
         path.join(result.outputPath, 'client-Button-js.chunk.js'),
         'utf8',
       );
-      expect(chunkSource).toContain('./Button.js + 1 modules');
+      expect(chunkSource).toMatch(/\.\/Button\.js \+ \d+ modules/);
 
       const button = entryEndingWith(result.manifest, '/Button.js');
       expect(chunkFiles(button)).toEqual(['client-Button-js.chunk.js']);
@@ -277,6 +316,25 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(chunkFiles(settings)).toEqual(['main.js']);
       expect(button.id).toBe('./Button.js');
       expect(settings.id).toBe('./SettingsPage.js');
+      expectNoWarnings(result);
+    });
+
+    it('unions every chunk group containing the module when chunks stay split', () => {
+      const result = run('client-imports-client', {
+        isServer: true,
+        chunkName: 'client-[request]',
+      });
+
+      // Server builds record all chunk groups against the full client
+      // file set: Button's module is duplicated into SettingsPage's chunk
+      // (no splitChunks), so Button's entry unions both groups' chunks.
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(chunkFiles(button).sort()).toEqual([
+        'client-Button-js.chunk.js',
+        'client-SettingsPage-js.chunk.js',
+      ]);
+      expect(chunkFiles(settings)).toEqual(['client-SettingsPage-js.chunk.js']);
       expectNoWarnings(result);
     });
   });

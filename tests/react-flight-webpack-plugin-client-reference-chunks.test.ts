@@ -253,10 +253,14 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     });
 
     expect(manifest.filePathToModuleMetadata).toEqual({});
-    expect(warnings).toHaveLength(1);
+    expect(warnings).toHaveLength(2);
     expect(String(warnings[0])).toContain(
       'Client reference blocks were unavailable for one or more chunk groups',
     );
+    // Blockless chunk groups are also excluded from the fallback scan, so
+    // the post-fallback check must name the client file that got no entry.
+    expect(String(warnings[1])).toContain('no client manifest entry could be created');
+    expect(String(warnings[1])).toContain(clientFile);
   });
 
   it('warns only once when several client chunk groups cannot expose client-reference blocks', () => {
@@ -279,9 +283,60 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
       getChunkModulesIterable: () => [clientModule],
     });
 
-    expect(warnings).toHaveLength(1);
-    expect(String(warnings[0])).toContain(
-      'Client reference blocks were unavailable for one or more chunk groups',
+    const blockWarnings = warnings.filter((w) =>
+      String(w).includes('Client reference blocks were unavailable for one or more chunk groups'),
     );
+    expect(blockWarnings).toHaveLength(1);
+  });
+
+  it('warns with the file path when a client reference gets no manifest entry', () => {
+    const clientChunk = { id: 'client0', files: new Set(['js/client0.chunk.js']) };
+
+    const { manifest, warnings } = buildManifest({
+      isServer: false,
+      chunkGroups: (clientReferenceBlocks) => [
+        {
+          getBlocks: () => clientReferenceBlocks,
+          chunks: [clientChunk],
+        },
+      ],
+      // The client module ends up in no chunk (e.g. resource/request
+      // mismatch or tree-shaking), so neither the block matching nor the
+      // fallback can record it.
+      getChunkModulesIterable: () => [],
+    });
+
+    expect(manifest.filePathToModuleMetadata).toEqual({});
+    expect(warnings).toHaveLength(1);
+    expect(String(warnings[0])).toContain('no client manifest entry could be created');
+    expect(String(warnings[0])).toContain(clientFile);
+  });
+
+  it('fallback records only the first chunk group containing a parent-available client reference', () => {
+    const clientModule = { resource: clientFile };
+    const firstChunk = { id: 'entryA', files: new Set(['entryA.js']) };
+    const secondChunk = { id: 'entryB', files: new Set(['entryB.js']) };
+
+    // Neither group block-matches the client reference (their blocks carry
+    // no client-reference dependencies), so the entry can only come from
+    // the fallback scan. The module sits in both groups; without pruning
+    // between groups the fallback would union entryB into the entry — the
+    // over-preload behavior the block matching exists to eliminate.
+    const { manifest, warnings } = buildManifest({
+      isServer: false,
+      chunkGroups: () => [
+        { getBlocks: () => [], chunks: [firstChunk] },
+        { getBlocks: () => [], chunks: [secondChunk] },
+      ],
+      getChunkModulesIterable: () => [clientModule],
+    });
+
+    expect(warnings).toEqual([]);
+    expect(manifest.filePathToModuleMetadata[pathToFileURL(clientFile).href]).toEqual({
+      id: './client/app/components/ErrorBoundary.tsx',
+      chunks: ['entryA', 'entryA.js'],
+      css: [],
+      name: '*',
+    });
   });
 });

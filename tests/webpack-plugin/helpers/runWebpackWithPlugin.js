@@ -12,7 +12,8 @@
  * The entry always includes the real Flight client runtime
  * (src/react-server-dom-webpack/client.browser.js, or client.node.js for
  * server builds). The plugin keys its AsyncDependenciesBlock injection on
- * that exact module resource, so the runtime must be part of the bundle for
+ * that module resource (the exact path, or a copy inside a package named
+ * react-on-rails-rsc), so the runtime must be part of the bundle for
  * client-reference chunk groups to exist.
  *
  * Args shape (from compile.ts):

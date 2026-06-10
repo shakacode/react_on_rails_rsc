@@ -291,7 +291,9 @@ class ReactFlightWebpackPlugin {
             var missingClientReferenceBlocksWarningEmitted = false;
             // Records every module of `chunkGroup` whose resource is in
             // `chunkResolvedClientFiles`, listing the chunk group's own
-            // chunks (and CSS files) in the manifest entry.
+            // chunks (and CSS files) in the manifest entry. Merges into an
+            // existing manifest entry (chunks deduped by chunk id, CSS by
+            // URL) instead of overwriting it.
             var recordChunkGroup = function (
               chunkGroup,
               chunkResolvedClientFiles
@@ -381,8 +383,9 @@ class ReactFlightWebpackPlugin {
               const chunkGroupsWithBlocks = [];
               compilation.chunkGroups.forEach(function (chunkGroup) {
                 const blocks =
-                  // `getBlocks()` exists in newer webpack 5 builds; older
-                  // webpack 5 builds expose the same data via `blocksIterable`.
+                  // Prefer `getBlocks()`; fall back to the `blocksIterable`
+                  // getter for webpack-compatible bundlers or builds where
+                  // `getBlocks` is unavailable (webpack 5 proper has both).
                   "function" === typeof chunkGroup.getBlocks
                     ? chunkGroup.getBlocks()
                     : chunkGroup.blocksIterable;
@@ -409,6 +412,9 @@ class ReactFlightWebpackPlugin {
                     if (!dependencies) continue;
                     for (let i = 0; i < dependencies.length; i++) {
                       const dep = dependencies[i];
+                      // The `type` check matches dependencies created by a
+                      // duplicate copy of this plugin module (e.g. two
+                      // node_modules instances), where `instanceof` fails.
                       if (
                         (dep instanceof ClientReferenceDependency ||
                           "client-reference" === dep.type) &&
@@ -430,18 +436,51 @@ class ReactFlightWebpackPlugin {
               // that are already available in a parent chunk, e.g. a client
               // component eagerly imported by an entry) have no manifest
               // entry yet, and Flight fails at runtime on missing entries.
-              // Fall back to scanning the chunk groups for them; the
-              // runtime-chunk exclusion keeps already-loaded entry chunks
-              // out of the recorded chunk list.
+              // Fall back to scanning the chunk groups whose blocks were
+              // available. The runtime-chunk exclusion keeps the runtime
+              // chunk out of the recorded chunk list; with the default
+              // config that is the entry chunk itself, while with a split
+              // `runtimeChunk` the already-loaded entry chunk is still
+              // listed (webpack's chunk loader treats it as a no-op).
               const unrecordedClientFiles = new Set();
               resolvedClientFiles.forEach(function (file) {
                 filePathToModuleMetadata[url.pathToFileURL(file).href] ||
                   unrecordedClientFiles.add(file);
               });
-              0 < unrecordedClientFiles.size &&
-                chunkGroupsWithBlocks.forEach(function (chunkGroup) {
-                  recordChunkGroup(chunkGroup, unrecordedClientFiles);
-                });
+              if (0 < unrecordedClientFiles.size) {
+                // Prune recorded files between groups so a later group
+                // cannot union its chunks into an entry the fallback
+                // already created — the over-preload behavior the block
+                // matching above exists to eliminate.
+                for (
+                  let i = 0;
+                  i < chunkGroupsWithBlocks.length &&
+                  0 < unrecordedClientFiles.size;
+                  i++
+                ) {
+                  recordChunkGroup(
+                    chunkGroupsWithBlocks[i],
+                    unrecordedClientFiles
+                  );
+                  unrecordedClientFiles.forEach(function (file) {
+                    filePathToModuleMetadata[url.pathToFileURL(file).href] &&
+                      unrecordedClientFiles.delete(file);
+                  });
+                }
+                // Anything still unrecorded is guaranteed to crash Flight
+                // at render time; name the files at build time instead.
+                if (0 < unrecordedClientFiles.size) {
+                  const missing = Array.from(unrecordedClientFiles);
+                  compilation.warnings.push(
+                    new webpack.WebpackError(
+                      "React Server Components: no client manifest entry could be created for " +
+                        missing.length +
+                        " client reference(s). Rendering them will fail at runtime with a missing manifest entry:\n  " +
+                        missing.join("\n  ")
+                    )
+                  );
+                }
+              }
             }
             configuredCrossOriginLoading = JSON.stringify(
               configuredCrossOriginLoading,

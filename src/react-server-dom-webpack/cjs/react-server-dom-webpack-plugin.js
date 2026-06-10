@@ -289,52 +289,13 @@ class ReactFlightWebpackPlugin {
               !cssPrefix.endsWith("/") &&
               (cssPrefix += "/");
             var missingClientReferenceBlocksWarningEmitted = false;
-            compilation.chunkGroups.forEach(function (chunkGroup) {
-              let chunkResolvedClientFiles = resolvedClientFiles;
-              if (!_this.isServer) {
-                const blocks =
-                  // `getBlocks()` exists in newer webpack 5 builds; older
-                  // webpack 5 builds expose the same data via `blocksIterable`.
-                  "function" === typeof chunkGroup.getBlocks
-                    ? chunkGroup.getBlocks()
-                    : chunkGroup.blocksIterable;
-                if (!blocks) {
-                  if (!missingClientReferenceBlocksWarningEmitted) {
-                    missingClientReferenceBlocksWarningEmitted = true;
-                    compilation.warnings.push(
-                      new webpack.WebpackError(
-                        "Client reference blocks were unavailable for one or more chunk groups. " +
-                          "React Server Components client manifest entries for affected chunk groups were skipped."
-                      )
-                    );
-                  }
-                  return;
-                }
-                chunkResolvedClientFiles = new Set();
-                var _iterator = _createForOfIteratorHelper(blocks),
-                  _step;
-                try {
-                  for (_iterator.s(); !(_step = _iterator.n()).done; ) {
-                    const block = _step.value,
-                      dependencies = block && block.dependencies;
-                    if (!dependencies) continue;
-                    for (let i = 0; i < dependencies.length; i++) {
-                      const dep = dependencies[i];
-                      if (
-                        (dep instanceof ClientReferenceDependency ||
-                          "client-reference" === dep.type) &&
-                        resolvedClientFiles.has(dep.request)
-                      )
-                        chunkResolvedClientFiles.add(dep.request);
-                    }
-                  }
-                } catch (err) {
-                  _iterator.e(err);
-                } finally {
-                  _iterator.f();
-                }
-                if (0 === chunkResolvedClientFiles.size) return;
-              }
+            // Records every module of `chunkGroup` whose resource is in
+            // `chunkResolvedClientFiles`, listing the chunk group's own
+            // chunks (and CSS files) in the manifest entry.
+            var recordChunkGroup = function (
+              chunkGroup,
+              chunkResolvedClientFiles
+            ) {
               function recordModule(id, module) {
                 if (
                   chunkResolvedClientFiles.has(module.resource) &&
@@ -406,7 +367,82 @@ class ReactFlightWebpackPlugin {
                     });
                 });
               });
-            });
+            };
+            if (_this.isServer)
+              compilation.chunkGroups.forEach(function (chunkGroup) {
+                recordChunkGroup(chunkGroup, resolvedClientFiles);
+              });
+            else {
+              // Match chunk groups through the ClientReferenceDependency
+              // attached to the AsyncDependenciesBlock that created them, so
+              // each client component's manifest entry lists exactly the
+              // chunks of the one chunk group webpack created for it instead
+              // of the union of every chunk group the module appears in.
+              const chunkGroupsWithBlocks = [];
+              compilation.chunkGroups.forEach(function (chunkGroup) {
+                const blocks =
+                  // `getBlocks()` exists in newer webpack 5 builds; older
+                  // webpack 5 builds expose the same data via `blocksIterable`.
+                  "function" === typeof chunkGroup.getBlocks
+                    ? chunkGroup.getBlocks()
+                    : chunkGroup.blocksIterable;
+                if (!blocks) {
+                  if (!missingClientReferenceBlocksWarningEmitted) {
+                    missingClientReferenceBlocksWarningEmitted = true;
+                    compilation.warnings.push(
+                      new webpack.WebpackError(
+                        "Client reference blocks were unavailable for one or more chunk groups. " +
+                          "React Server Components client manifest entries for affected chunk groups were skipped."
+                      )
+                    );
+                  }
+                  return;
+                }
+                chunkGroupsWithBlocks.push(chunkGroup);
+                const chunkResolvedClientFiles = new Set();
+                var _iterator = _createForOfIteratorHelper(blocks),
+                  _step;
+                try {
+                  for (_iterator.s(); !(_step = _iterator.n()).done; ) {
+                    const block = _step.value,
+                      dependencies = block && block.dependencies;
+                    if (!dependencies) continue;
+                    for (let i = 0; i < dependencies.length; i++) {
+                      const dep = dependencies[i];
+                      if (
+                        (dep instanceof ClientReferenceDependency ||
+                          "client-reference" === dep.type) &&
+                        resolvedClientFiles.has(dep.request)
+                      )
+                        chunkResolvedClientFiles.add(dep.request);
+                    }
+                  }
+                } catch (err) {
+                  _iterator.e(err);
+                } finally {
+                  _iterator.f();
+                }
+                0 < chunkResolvedClientFiles.size &&
+                  recordChunkGroup(chunkGroup, chunkResolvedClientFiles);
+              });
+              // Client references whose block-created chunk group ended up
+              // without any chunk containing them (webpack drops modules
+              // that are already available in a parent chunk, e.g. a client
+              // component eagerly imported by an entry) have no manifest
+              // entry yet, and Flight fails at runtime on missing entries.
+              // Fall back to scanning the chunk groups for them; the
+              // runtime-chunk exclusion keeps already-loaded entry chunks
+              // out of the recorded chunk list.
+              const unrecordedClientFiles = new Set();
+              resolvedClientFiles.forEach(function (file) {
+                filePathToModuleMetadata[url.pathToFileURL(file).href] ||
+                  unrecordedClientFiles.add(file);
+              });
+              0 < unrecordedClientFiles.size &&
+                chunkGroupsWithBlocks.forEach(function (chunkGroup) {
+                  recordChunkGroup(chunkGroup, unrecordedClientFiles);
+                });
+            }
             configuredCrossOriginLoading = JSON.stringify(
               configuredCrossOriginLoading,
               null,

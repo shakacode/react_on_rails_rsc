@@ -82,6 +82,16 @@ describe('React Flight client stream error paths', () => {
     await expect(decoded).rejects.toThrow(/JSON|property name|Unexpected token/);
   });
 
+  it('keeps the parse reason when an unbundled node stream errors after malformed data', async () => {
+    const stream = new PassThrough();
+    const decoded = createFromUnbundledNodeStream(stream, emptySSRManifest);
+
+    stream.write(Buffer.from('0:{not-json}\n'));
+    stream.destroy(new Error('should not replace the parse reason'));
+
+    await expect(decoded).rejects.toThrow(/JSON|property name|Unexpected token/);
+  });
+
   it('rejects malformed unbundled node Flight payloads with the parse reason', async () => {
     await expect(unbundledNodeFlight('0:{not-json}\n')).rejects.toThrow(
       /JSON|property name|Unexpected token/,

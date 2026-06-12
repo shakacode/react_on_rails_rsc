@@ -163,6 +163,13 @@ describe('React Flight client error paths', () => {
 
   it('surfaces the server abort reason to the node Flight client', async () => {
     const cleanup = new AbortController();
+    let cleanupAborted = false;
+    const abortCleanup = () => {
+      if (!cleanupAborted) {
+        cleanup.abort();
+        cleanupAborted = true;
+      }
+    };
     const NeverResolves = async () => {
       await new Promise<void>((resolve) => {
         cleanup.signal.addEventListener('abort', () => resolve(), { once: true });
@@ -185,7 +192,7 @@ describe('React Flight client error paths', () => {
     try {
       flightStream.pipe(readable);
       flightStream.abort(new Error('server render aborted for issue 64'));
-      cleanup.abort();
+      abortCleanup();
 
       await expect(decoded).rejects.toThrow('server render aborted for issue 64');
       expect(serverErrors).toHaveLength(1);
@@ -195,7 +202,7 @@ describe('React Flight client error paths', () => {
         }),
       );
     } finally {
-      cleanup.abort();
+      abortCleanup();
     }
   });
 });

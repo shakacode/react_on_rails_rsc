@@ -1870,7 +1870,6 @@ exports.createFromNodeStream = function (
     } catch (error) {
       streamErrored = !0;
       reportGlobalError(response, error);
-      // Destroy without re-emitting the parse error already reported above.
       stream.destroy();
     }
   });

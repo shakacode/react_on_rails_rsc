@@ -48,6 +48,7 @@ const loadBrowserClient = (): { client: BrowserClient; restore: () => void } => 
   jest.isolateModules(() => {
     client = require('../src/react-server-dom-webpack/client.browser') as BrowserClient;
   });
+  // jest.isolateModules is synchronous; keep an explicit failure if that contract changes.
   if (!client) {
     throw new Error('jest.isolateModules did not populate client synchronously');
   }

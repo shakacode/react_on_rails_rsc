@@ -122,6 +122,8 @@ jobs:
           COMPAT_REACT_SERVER_DOM_WEBPACK: canary
           COMPAT_WEBPACK: '^5.0.0'
           COMPAT_RSPACK: 1.x
+          # COMPAT_TYPES_REACT / COMPAT_TYPES_REACT_DOM intentionally omitted:
+          # canary @types packages are not reliably published; stable types remain.
         run: node scripts/prepare-compatibility-install.cjs
       - name: Build package artifacts
         run: yarn build

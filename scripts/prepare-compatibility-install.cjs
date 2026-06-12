@@ -155,8 +155,9 @@ function assertWebpackSpec(spec) {
     if (version.major !== 5) {
       throw new Error(`webpack@${spec} is outside the supported webpack 5.x compatibility matrix`);
     }
-    // Broad 5.x ranges ask yarn for latest webpack 5; installed-version checks
-    // below still enforce the package peer minimum.
+    // Broad 5.x caret ranges (for example, ^5.0.0) cannot be checked against
+    // the 5.59.0 peer minimum until yarn resolves a concrete version.
+    // matchesSpec() enforces the floor after installation.
     return;
   }
 

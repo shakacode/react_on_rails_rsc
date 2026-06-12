@@ -182,7 +182,7 @@ git push origin --delete X.Y.Z
 Create it manually from the matching `CHANGELOG.md` section:
 
 ```bash
-gh release create X.Y.Z-rc.N --title "X.Y.Z-rc.N" --prerelease --notes "..."
+gh release create X.Y.Z --title "X.Y.Z" --notes "..."
 ```
 
-Omit `--prerelease` for final releases.
+For release candidates, use `X.Y.Z-rc.N` and add `--prerelease`.

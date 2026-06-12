@@ -318,10 +318,9 @@ export class RSCWebpackPlugin {
     this.isServer = options.isServer;
 
     if (options.clientReferences) {
-      this.clientReferences =
-        typeof options.clientReferences !== 'string' && Array.isArray(options.clientReferences)
-          ? options.clientReferences
-          : [options.clientReferences as ClientReferencePath];
+      this.clientReferences = Array.isArray(options.clientReferences)
+        ? options.clientReferences
+        : [options.clientReferences as ClientReferencePath];
     } else {
       this.clientReferences = [
         {
@@ -351,7 +350,6 @@ export class RSCWebpackPlugin {
   }
 
   apply(compiler: webpack.Compiler): void {
-    const _this = this;
     const flightCompiler = compiler as unknown as FlightCompiler;
     let resolvedClientReferences: ClientReferenceDependency[] | undefined;
     let clientFileNameFound = false;
@@ -362,7 +360,7 @@ export class RSCWebpackPlugin {
     flightCompiler.hooks.beforeCompile.tapAsync(PLUGIN_NAME, (params, callback) => {
       const contextResolver = flightCompiler.resolverFactory.get('context', {});
       const normalResolver = flightCompiler.resolverFactory.get('normal');
-      _this.resolveAllClientFiles(
+      this.resolveAllClientFiles(
         flightCompiler.context,
         contextResolver,
         normalResolver,
@@ -393,14 +391,14 @@ export class RSCWebpackPlugin {
       const handler = (parser: FlightParser) => {
         parser.hooks.program.tap(PLUGIN_NAME, () => {
           const module = parser.state.module;
-          if (!isReactOnRailsRSCRuntimeResource(module.resource, _this.isServer)) {
+          if (!isReactOnRailsRSCRuntimeResource(module.resource, this.isServer)) {
             return;
           }
           clientFileNameFound = true;
           if (!resolvedClientReferences) return;
           for (let i = 0; i < resolvedClientReferences.length; i++) {
             const dep = resolvedClientReferences[i]!;
-            const chunkName = _this.chunkName
+            const chunkName = this.chunkName
               .replace(/\[index\]/g, `${i}`)
               .replace(/\[request\]/g, Template.toPath(dep.userRequest));
             const block = new webpack.AsyncDependenciesBlock(
@@ -433,7 +431,7 @@ export class RSCWebpackPlugin {
             compilation.warnings.push(
               new webpack.WebpackError(
                 'Client runtime at react-on-rails-rsc/client was not found. React Server Components module map file ' +
-                  _this.clientManifestFilename +
+                  this.clientManifestFilename +
                   ' was not created.',
               ),
             );
@@ -494,7 +492,7 @@ export class RSCWebpackPlugin {
             chunkResolvedClientFiles: Set<string>,
           ): void => {
             const chunks: (string | number | null)[] = [];
-            const cssFiles: string[] = [];
+            const cssFiles = new Set<string>();
 
             const recordModule = (id: string | number | null, module: FlightModule): void => {
               if (!module.resource || !chunkResolvedClientFiles.has(module.resource)) {
@@ -522,7 +520,7 @@ export class RSCWebpackPlugin {
                 filePathToModuleMetadata[href] = {
                   id,
                   chunks: chunks.slice(),
-                  css: cssFiles.slice(),
+                  css: Array.from(cssFiles),
                   name: '*',
                 };
               }
@@ -537,15 +535,14 @@ export class RSCWebpackPlugin {
                   file.endsWith('.css') &&
                   !file.endsWith('.hot-update.css') &&
                   cssPrefix !== null &&
-                  (_this.isServer || !runtimeChunkFiles.has(file))
+                  (this.isServer || !runtimeChunkFiles.has(file))
                 ) {
-                  const cssUrl = cssPrefix + file;
-                  if (cssFiles.indexOf(cssUrl) === -1) cssFiles.push(cssUrl);
+                  cssFiles.add(cssPrefix + file);
                 } else if (
                   (file.endsWith('.js') || file.endsWith('.mjs')) &&
                   !file.endsWith('.hot-update.js') &&
                   !file.endsWith('.hot-update.mjs') &&
-                  (_this.isServer || !runtimeChunkFiles.has(file)) &&
+                  (this.isServer || !runtimeChunkFiles.has(file)) &&
                   !recordedJS
                 ) {
                   chunks.push(chunk.id, file);
@@ -567,7 +564,7 @@ export class RSCWebpackPlugin {
             }
           };
 
-          if (_this.isServer) {
+          if (this.isServer) {
             // The server bundle has no per-reference chunk groups; record
             // every chunk group that contains a client reference.
             for (const chunkGroup of compilation.chunkGroups) {
@@ -605,8 +602,7 @@ export class RSCWebpackPlugin {
               for (const block of blocks) {
                 const dependencies = block && block.dependencies;
                 if (!dependencies) continue;
-                for (let i = 0; i < dependencies.length; i++) {
-                  const dep = dependencies[i]!;
+                for (const dep of dependencies) {
                   // The `type` check matches dependencies created by a
                   // duplicate copy of this plugin module (e.g. two
                   // node_modules instances), where `instanceof` fails.
@@ -683,7 +679,7 @@ export class RSCWebpackPlugin {
           }
 
           compilation.emitAsset(
-            _this.clientManifestFilename,
+            this.clientManifestFilename,
             new webpack.sources.RawSource(JSON.stringify(manifest, null, 2), false),
           );
         },
@@ -772,8 +768,8 @@ export class RSCWebpackPlugin {
       (err, result) => {
         if (err) return callback(err);
         const flattened: ClientReferenceDependency[] = [];
-        for (let i = 0; i < (result || []).length; i++) {
-          flattened.push(...result![i]!);
+        for (const deps of result || []) {
+          flattened.push(...deps);
         }
         callback(null, flattened);
       },

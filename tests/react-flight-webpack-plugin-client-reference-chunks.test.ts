@@ -21,17 +21,20 @@ const buildManifest = ({
   isServer,
   chunkGroups,
   getChunkModulesIterable,
+  clientFiles = [clientFile],
 }: {
   isServer: boolean;
   chunkGroups: (clientReferenceBlocks: unknown[]) => unknown[];
   getChunkModulesIterable: (chunk: Chunk) => unknown[];
+  /** Client references to resolve. Defaults to the single shared `clientFile`. */
+  clientFiles?: string[];
 }) => {
   const runtimeFile = require.resolve(
     isServer ? '../src/react-server-dom-webpack/client.node.js' : '../src/react-server-dom-webpack/client.browser.js',
   );
   const plugin = new ReactFlightWebpackPlugin({
     isServer,
-    clientReferences: [clientFile],
+    clientReferences: clientFiles,
   });
 
   plugin.resolveAllClientFiles = jest.fn(
@@ -43,9 +46,14 @@ const buildManifest = ({
       _contextModuleFactory: unknown,
       callback: (error: Error | null, refs?: ClientReference[]) => void,
     ) => {
-      callback(null, [
-        { request: clientFile, type: 'client-reference', userRequest: './ErrorBoundary.tsx' },
-      ]);
+      callback(
+        null,
+        clientFiles.map((request) => ({
+          request,
+          type: 'client-reference',
+          userRequest: '.' + request,
+        })),
+      );
     },
   );
 
@@ -129,7 +137,10 @@ const buildManifest = ({
     chunkGroups: chunkGroups(clientReferenceBlocks),
     chunkGraph: {
       getChunkModulesIterable: jest.fn(getChunkModulesIterable),
-      getModuleId: jest.fn(() => './client/app/components/ErrorBoundary.tsx'),
+      // Derive the module id from the resource so multi-file scenarios get
+      // distinct ids. For the default `clientFile` this still yields
+      // './client/app/components/ErrorBoundary.tsx'.
+      getModuleId: jest.fn((module: { resource?: string }) => './client' + (module.resource ?? '')),
     },
     hooks: {
       processAssets: {
@@ -362,6 +373,48 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     expect(manifest.filePathToModuleMetadata[pathToFileURL(clientFile).href]).toEqual({
       id: './client/app/components/ErrorBoundary.tsx',
       chunks: ['entryA', 'entryA.js'],
+      css: [],
+      name: '*',
+    });
+  });
+
+  it('fallback advances past the first group to record references that live only in a later group', () => {
+    // Two client references, each parent-available in a DIFFERENT chunk
+    // group, so neither block-matches and each can only be recorded by the
+    // fallback. fileA lives only in group A, fileB only in group B. The
+    // fallback must keep scanning after group A (where it records fileA and
+    // prunes it) into group B to record fileB — a single-pass fallback that
+    // only looked at the first group would drop fileB and warn.
+    const fileA = clientFile;
+    const fileB = '/app/components/Other.tsx';
+    const moduleA = { resource: fileA };
+    const moduleB = { resource: fileB };
+    const groupAChunk = { id: 'groupA', files: new Set(['groupA.js']) };
+    const groupBChunk = { id: 'groupB', files: new Set(['groupB.js']) };
+
+    const { manifest, warnings } = buildManifest({
+      isServer: false,
+      clientFiles: [fileA, fileB],
+      chunkGroups: () => [
+        { getBlocks: () => [], chunks: [groupAChunk] },
+        { getBlocks: () => [], chunks: [groupBChunk] },
+      ],
+      // Each group exposes only its own client module.
+      getChunkModulesIterable: (chunk) =>
+        (chunk as { id: string }).id === 'groupA' ? [moduleA] : [moduleB],
+    });
+
+    expect(warnings).toEqual([]);
+    expect(manifest.filePathToModuleMetadata[pathToFileURL(fileA).href]).toEqual({
+      id: './client/app/components/ErrorBoundary.tsx',
+      chunks: ['groupA', 'groupA.js'],
+      css: [],
+      name: '*',
+    });
+    // fileB is recorded only if the fallback advanced to the second group.
+    expect(manifest.filePathToModuleMetadata[pathToFileURL(fileB).href]).toEqual({
+      id: './client/app/components/Other.tsx',
+      chunks: ['groupB', 'groupB.js'],
       css: [],
       name: '*',
     });

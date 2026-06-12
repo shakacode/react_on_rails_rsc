@@ -302,6 +302,31 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
+  describe('CSS on a client component reached only via the fallback', () => {
+    it("collects the entry chunk group's CSS for an eagerly-imported component", () => {
+      // Button is eagerly imported by the entry, so its injected async
+      // chunk group is empty and it is recorded only by the fallback scan.
+      // Button imports CSS, so the fallback's recordChunkGroup must collect
+      // the extracted CSS file from the entry chunk group (the CSS branch on
+      // the fallback path, untested by the block-matched css-import case).
+      // `runtimeChunk: 'single'` splits the runtime out so the entry chunk
+      // (which carries Button's CSS) is no longer the runtime chunk and is
+      // therefore not removed by the runtime-chunk exclusion.
+      const result = run('eager-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: { runtimeChunk: 'single' },
+      });
+      expect(result.assets).toContain('main.css');
+
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(button.css).toEqual(['/assets/main.css']);
+      expect(chunkFiles(button)).toEqual(['main.js']);
+      expectNoWarnings(result);
+    });
+  });
+
   describe('server build (isServer: true)', () => {
     it('emits server manifest entries from the single merged server bundle', () => {
       const result = run('client-imports-client', {
@@ -351,6 +376,28 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
         prefix: '/packs/',
         crossOrigin: 'anonymous',
       });
+      expectNoWarnings(result);
+    });
+
+    it("passes 'use-credentials' crossOriginLoading through unchanged", () => {
+      const result = run('client-imports-client', {
+        chunkName: 'client-[request]',
+        crossOriginLoading: 'use-credentials',
+      });
+
+      expect(result.manifest.moduleLoading.crossOrigin).toBe('use-credentials');
+      expectNoWarnings(result);
+    });
+
+    it('records a null crossOrigin when crossOriginLoading is disabled', () => {
+      const result = run('client-imports-client', {
+        chunkName: 'client-[request]',
+        crossOriginLoading: false,
+      });
+
+      // `output.crossOriginLoading: false` is not a string, so the plugin
+      // normalizes it to null rather than coercing to 'anonymous'.
+      expect(result.manifest.moduleLoading.crossOrigin).toBeNull();
       expectNoWarnings(result);
     });
   });

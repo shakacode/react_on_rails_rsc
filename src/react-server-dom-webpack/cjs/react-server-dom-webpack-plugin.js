@@ -467,8 +467,15 @@ class ReactFlightWebpackPlugin {
                       unrecordedClientFiles.delete(file);
                   });
                 }
-                // Anything still unrecorded is guaranteed to crash Flight
-                // at render time; name the files at build time instead.
+                // Anything still unrecorded has no manifest entry and will
+                // crash Flight if it gets rendered ("Could not find the
+                // module in React Client Manifest"). Surface the files at
+                // build time as a warning — consistent with the other
+                // manifest warnings above (including the fatal "client
+                // runtime not found" case) and with upstream
+                // ReactFlightWebpackPlugin, which warns rather than failing
+                // the build. A client reference that is never rendered will
+                // not crash, so this stays a warning, not a hard error.
                 if (0 < unrecordedClientFiles.size) {
                   const missing = Array.from(unrecordedClientFiles);
                   compilation.warnings.push(

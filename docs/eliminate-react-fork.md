@@ -199,8 +199,10 @@ every changed line in the server builds belongs to #2/#3/#4.
 The vendored 19.0.4-based runtime predates the 2026 DoS fixes and sits inside the published vulnerable
 ranges of:
 
-- **CVE-2026-23869** (DoS, patched in 19.0.5 / 19.1.6 / 19.2.5, published 2026-04-08)
-- **CVE-2026-23870** (DoS, patched in 19.0.6 / 19.1.7 / 19.2.6, published 2026-05-06)
+- **CVE-2026-23869** (DoS, patched in 19.0.5 / 19.1.6 / 19.2.5, published 2026-04-08 —
+  [GHSA-479c-33wc-g2pg](https://github.com/facebook/react/security/advisories/GHSA-479c-33wc-g2pg))
+- **CVE-2026-23870** (DoS, patched in 19.0.6 / 19.1.7 / 19.2.6, published 2026-05-06 —
+  [GHSA-rv78-f8rc-xrxh](https://github.com/facebook/react/security/advisories/GHSA-rv78-f8rc-xrxh))
 
 Verified by marker grep: the reply-decode hardening present in stock 19.0.7 (`_formData.data.get`
 wrapping, "initialized stream chunk" guard) is absent from the vendored server builds. Stock npm
@@ -226,7 +228,9 @@ a `Proxy` whose property getter — invoked by the stock runtime's client-refere
 (`config[modulePath]`, with `#`-suffix fallback) during serialization, i.e. inside the active request —
 calls `ReactDOM.preinit(...)` for each `css` entry of the resolved module before returning the
 metadata. This is request-scoped, preserves client-reference prop shapes (unlike the abandoned
-loader-wrapper approach from PR #35), and needs zero React changes. The existing
+loader-wrapper approach from PR #35), and needs zero React changes. Duplicate `preinit` calls for the
+same href (e.g. the same client module referenced from two Suspense boundaries) are idempotent:
+`emitHint` deduplicates on the `"S|" + href` key. The existing
 `tests/react-flight-client-reference-css.rsc.test.ts` suite must pass against the new implementation.
 
 If the proxy prototype fails (e.g. lookup happens outside the request context, or hint ordering
@@ -244,7 +248,8 @@ Upstream's benchmark ([facebook/react#35776](https://github.com/facebook/react/p
 | 18.8 KB | 0.495 ms | 0.078 ms | 84% |
 | 191.7 KB | 4.761 ms | 0.772 ms | 84% |
 
-Absolute cost of accepting stock 19.2.7 parsing: under ~5 ms per ~200 KB payload parse. This is
+Absolute cost of accepting stock 19.2.7 parsing: under ~5 ms per ~200 KB payload parse (cost scales
+roughly linearly with payload size — extrapolating, ~47 ms reviver vs ~8 ms walk at 2 MB). This is
 acceptable as a temporary regression because the patch is already on upstream `main` and in 19.3
 canaries; it returns automatically with the 19.3 stable bump. If a downstream app proves this
 unacceptable before 19.3, that triggers the Option 4 fallback instead.
@@ -300,10 +305,13 @@ Diffed vendored (~19.0.4) vs stock 19.2.7 built files:
    design above); keep `tests/react-flight-client-reference-css.rsc.test.ts` green. **Gate: if the
    prototype fails, stop and take the Option 4 fallback.**
 4. Replace the `./server` export map with per-condition re-export shims of
-   `react-server-dom-webpack/server.*`; decide the unbundled question (verify downstream plain-Node
-   `./server` usage — UNKNOWN above).
+   `react-server-dom-webpack/server.*`; resolve the unbundled question (verify downstream plain-Node
+   `./server` usage — UNKNOWN above). **Gate: if any downstream consumer is found that requires the
+   removed unbundled semantics and cannot migrate to the webpack-flavored build, stop and take the
+   Option 4 fallback.** (A plain-Node consumer silently resolving to the webpack flavor fails at
+   runtime, not compile time, so this must be verified — not assumed — before merge.)
 5. Bump `react`/`react-dom` peerDependencies to `^19.2.7` (stock 19.2.7 peers on `^19.2.7`).
-   Consumer-visible: apps must be on React 19.2.x. Changelog entry required.
+   Consumer-visible: apps must be on React ≥19.2.7. Changelog entry required.
 6. Verify bound-server-action decoding (delta #3) and run the full suite (`yarn build` + `yarn test`)
    plus a downstream smoke test (react_on_rails / pro dummy app: hydration, server actions,
    deferred-Suspense CSS on slow network).

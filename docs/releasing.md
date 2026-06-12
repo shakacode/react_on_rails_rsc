@@ -12,7 +12,12 @@ Tags in this repository do not use a `v` prefix. For example, use
 - Prereleases such as `X.Y.Z-rc.N` publish to the npm `next` dist-tag only.
 - Do not use or restore an npm `rc` dist-tag for this package. If `rc` appears,
   treat it as stale release metadata and have a maintainer remove it after
-  confirming no downstream automation depends on it.
+  confirming no downstream automation depends on it:
+
+  ```bash
+  npm dist-tag rm react-on-rails-rsc rc
+  ```
+
 - The npm `latest` dist-tag moves only on final releases from `main`, after the
   downstream React on Rails release gate has accepted the candidate.
 
@@ -120,12 +125,20 @@ the exact target version, including any `-rc.N` prerelease suffix.
    ```
 
 5. `CHANGELOG.md` contains the matching `## [X.Y.Z] - YYYY-MM-DD` section and
-   the GitHub release notes were created from that section.
+   the GitHub release notes were created from that section:
+
+   ```bash
+   grep -F "## [X.Y.Z] - " CHANGELOG.md
+   ```
+
 6. The registry artifact metadata is consistent with the release:
 
    ```bash
    npm view react-on-rails-rsc@X.Y.Z dist
    ```
+
+   Confirm the tarball URL points at the public npm registry and that the
+   `shasum`, `integrity`, and unpacked metadata match the npm package version.
 
 Reference pages:
 
@@ -158,7 +171,7 @@ git push origin --delete X.Y.Z
 
 **GitHub release failed after npm publish:**
 
-Create it manually from the changelog notes:
+Create it manually from the matching `CHANGELOG.md` section:
 
 ```bash
 gh release create X.Y.Z --title "X.Y.Z" --notes "..."

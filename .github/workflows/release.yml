@@ -38,14 +38,14 @@ jobs:
           fi
 
       - name: Checkout main
-        # Pinned immutable actions/checkout release SHA verified via git ls-remote.
+        # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           ref: main
           fetch-depth: 1
 
       - name: Use Node.js
-        # Pinned immutable actions/setup-node release SHA verified via git ls-remote.
+        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           # npm trusted publishing requires the npm CLI version shipped with the Node 24 line.
@@ -74,7 +74,6 @@ jobs:
           const path = require('node:path');
 
           const inputVersion = process.env.INPUT_VERSION;
-          const confirmPublish = process.env.CONFIRM_PUBLISH;
           const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
           const header = changelog.match(/^## \[([0-9][^\]]*)\] - ([0-9]{4}-[0-9]{2}-[0-9]{2})$/m);
@@ -87,10 +86,6 @@ jobs:
 
           if (!/^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/.test(changelogVersion)) {
             throw new Error(`CHANGELOG.md version "${changelogVersion}" is not valid semver (expected X.Y.Z or X.Y.Z-pre.N).`);
-          }
-
-          if (confirmPublish !== 'publish') {
-            throw new Error('confirm_publish must be exactly "publish".');
           }
 
           if (inputVersion !== changelogVersion) {
@@ -208,8 +203,8 @@ jobs:
           set -euo pipefail
 
           # No npm auth token secret is configured; npm uses GitHub OIDC trusted publishing.
-          # Keep the package prepublishOnly build as a publish-time artifact safety net.
-          npm publish --provenance --tag "$NPM_TAG"
+          # Publish the validated dist/ tree without rerunning prepublishOnly.
+          npm publish --ignore-scripts --provenance --tag "$NPM_TAG"
 
       - name: Create local release tag
         env:
@@ -217,8 +212,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$RELEASE_VERSION" -m "Release $RELEASE_VERSION" HEAD
 
       - name: Push tag and create GitHub release

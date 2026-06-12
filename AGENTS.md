@@ -23,6 +23,11 @@ here. Source lives in `src/`, tests in `tests/`, build output in `dist/`.
 - When the user wants a local pre-PR verification loop, use `.agents/skills/verify/SKILL.md` (`$verify`); when they want to reproduce CI job selection locally, use `.agents/skills/run-ci/SKILL.md` (`$run-ci`)
 - When the user wants to manually verify a bug-fix PR by reproducing the failure before the fix and confirming it is gone after (with captured evidence, optionally posted to the PR and issue), use `.agents/skills/verify-pr-fix/SKILL.md`; a short invocation is `$verify-pr-fix` or "manually verify this fix"
 - When the user wants to update the changelog or cut a release, use `.agents/skills/update-changelog/SKILL.md`
+- When the user wants release artifact verification, use `.agents/skills/verify-release/SKILL.md` (`$verify-release`); it runs `yarn verify:artifacts` / `scripts/verify-release.sh`.
+- When the user wants package-level end-to-end verification, use `.agents/skills/run-e2e/SKILL.md` (`$run-e2e`); it runs `scripts/e2e/run.sh`.
+- When the user wants downstream React on Rails verification, use `.agents/skills/downstream-e2e/SKILL.md` (`$downstream-e2e`); this is a documented stub until `scripts/e2e/downstream.sh` lands.
+- When the user wants to upgrade the vendored React Server DOM runtime, use `.agents/skills/react-upgrade/SKILL.md` (`$react-upgrade`) and never hand-edit `src/react-server-dom-webpack/`.
+- When the user wants to refresh the open RSC work status or live backlog map, use `.agents/skills/triage/SKILL.md` (`$triage`) and report unverifiable facts as `UNKNOWN`.
 - Default simplify model: `claude-opus-4-8`
 
 > Note: `.agents/skills/stress-test/SKILL.md` was copied from the React on Rails repo and is still
@@ -71,6 +76,9 @@ NODE_CONDITIONS=react-server yarn jest tests/path/to/file.rsc.test.ts
 
 # Dry-run a release (no publish/tag/push) to validate the changelog-driven release
 yarn release:dry-run
+
+# Verify the packed npm artifact, exports, runtime peer policy, publint, and attw
+yarn verify:artifacts
 ```
 
 There is no separate `type-check`, `lint`, or `format` npm script. `yarn build` runs `tsc`, which is
@@ -192,6 +200,9 @@ For small, focused PRs (roughly 5 files changed or fewer and one clear purpose):
 - Run local validation before committing: `yarn build` (tsc typecheck) and `yarn test` (or the targeted
   `yarn jest <path>` covering the changed surface; use `NODE_CONDITIONS=react-server` for `.rsc.test.` files).
 - Use `yarn` for all dependency and script operations — never `npm` or `pnpm`.
+- Exception: `npm pack` and `npm pack --dry-run` are permitted for release
+  artifact verification because `yarn pack` produces a different tarball and is
+  not an equivalent npm publish preview.
 - Ensure all files end with a newline.
 - Keep the diff focused on the assigned issue/PR/batch; run validation for the changed surface.
 - When adding or broadening a repo-wide CI, release, review, or merge gate, add a new-gate rollout note

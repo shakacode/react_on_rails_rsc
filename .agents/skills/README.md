@@ -29,6 +29,11 @@ high-risk maintainer-gated) lives in `AGENTS.md` and `.agents/workflows/pr-proce
 | `address-review`, `adversarial-pr-review`, `post-merge-audit`, `evaluate-issue` | Portable — generic GitHub review/triage flows, no repo-tooling assumptions |
 | `autoreview` | Adapted — validation commands and risk classes retargeted to yarn/jest |
 | `verify`, `run-ci` | Adapted — local verification / CI-reproduction retargeted to `yarn test` + `yarn build` |
+| `verify-release` | Adapted — runs `yarn verify:artifacts` / `scripts/verify-release.sh` from #61/#77 |
+| `run-e2e` | Adapted — runs `scripts/e2e/run.sh` with `RSC_E2E_BUNDLER=webpack|rspack|both` |
+| `downstream-e2e` | Stub — documents the intended downstream e2e wrapper and blocks on #59 |
+| `react-upgrade` | Adapted — current `scripts/react-upgrade/upgrade.js` React fork cherry-pick flow |
+| `triage` | Manual stub — refreshes `docs/open-rsc-work-status.md` from live `gh` state and reports `UNKNOWN` for unverifiable facts |
 | `verify-pr-fix` | Adapted — before/after reproduction reframed around jest + plugin output |
 | `update-changelog` | Adapted — Keep-a-Changelog format + `scripts/release.sh` release flow |
 | `stress-test` | **Not adapted** — still Rails/Pro/node-renderer-specific; reference only until rewritten for this package |

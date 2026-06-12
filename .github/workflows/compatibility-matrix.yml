@@ -116,7 +116,7 @@ jobs:
           COMPAT_REACT: canary
           COMPAT_REACT_DOM: canary
           COMPAT_REACT_SERVER_DOM_WEBPACK: canary
-          COMPAT_WEBPACK: ^5.0.0
+          COMPAT_WEBPACK: '^5.0.0'
           COMPAT_RSPACK: 1.x
         run: node scripts/prepare-compatibility-install.cjs
       - name: Build package artifacts

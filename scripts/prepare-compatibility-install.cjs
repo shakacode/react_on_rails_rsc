@@ -3,7 +3,6 @@
 
 const { spawnSync } = require('child_process');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const rootDir = path.resolve(__dirname, '..');
@@ -50,12 +49,7 @@ try {
 
     fs.writeFileSync(packageJsonPath, `${JSON.stringify(nextPackageJson, null, 2)}\n`);
 
-    run('yarn', ['install', '--pure-lockfile', '--non-interactive'], {
-      ...env,
-      YARN_CACHE_FOLDER:
-        env.YARN_CACHE_FOLDER ||
-        path.join(env.RUNNER_TEMP || os.tmpdir(), 'react-on-rails-rsc-yarn-compat-cache'),
-    });
+    run('yarn', ['install', '--pure-lockfile', '--non-interactive']);
   }
 } finally {
   fs.writeFileSync(packageJsonPath, originalPackageJson);
@@ -77,7 +71,7 @@ const installed = Object.fromEntries(
 
 for (const [packageName, spec] of Object.entries(packageSpecs)) {
   const actualVersion = installed[packageName];
-  if (!matchesSpec(actualVersion, spec)) {
+  if (!matchesSpec(packageName, actualVersion, spec)) {
     throw new Error(
       `${packageName} installed ${actualVersion}, which does not satisfy requested compatibility spec ${spec}`
     );
@@ -156,7 +150,13 @@ function assertReactSpec(packageName, spec) {
 }
 
 function assertWebpackSpec(spec) {
-  if (spec.startsWith('^')) return;
+  if (spec.startsWith('^')) {
+    const version = parseVersion(stripSimpleRangePrefix(spec));
+    if (version.major !== 5) {
+      throw new Error(`webpack@${spec} is outside the supported webpack 5.x compatibility matrix`);
+    }
+    return;
+  }
 
   const version = parseVersion(stripSimpleRangePrefix(spec));
   if (version.major !== 5 || compareVersions(version, { major: 5, minor: 59, patch: 0 }) < 0) {
@@ -173,7 +173,7 @@ function assertRspackSpec(spec) {
   }
 }
 
-function matchesSpec(actualVersion, spec) {
+function matchesSpec(packageName, actualVersion, spec) {
   if (isCanarySpec(spec)) return actualVersion.includes('canary');
   if (spec === '1.x') {
     return parseVersion(actualVersion).major === 1;
@@ -182,7 +182,7 @@ function matchesSpec(actualVersion, spec) {
   if (spec.startsWith('^')) {
     const expected = parseVersion(stripSimpleRangePrefix(spec));
     const actual = parseVersion(actualVersion);
-    const effective = spec === '^5.0.0' ? { major: 5, minor: 59, patch: 0 } : expected;
+    const effective = packageName === 'webpack' ? { major: 5, minor: 59, patch: 0 } : expected;
     return actual.major === effective.major && compareVersions(actual, effective) >= 0;
   }
 

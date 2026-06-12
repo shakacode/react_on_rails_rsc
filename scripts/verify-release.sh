@@ -19,12 +19,18 @@ log() {
   printf '\n[verify-release] %s\n' "$*"
 }
 
+NODE_MAJOR="$(node -p "Number(process.versions.node.split('.')[0])")"
+if (( NODE_MAJOR < 20 )); then
+  printf 'verify-release requires Node.js 20 or newer for import.meta.resolve export checks. Found %s.\n' "$(node -p "process.versions.node")" >&2
+  exit 1
+fi
+
 log "Building distributable files"
 yarn run build
 
 log "Packing npm artifact"
 PACK_JSON="$TMP_DIR/npm-pack.json"
-npm pack --json --ignore-scripts --pack-destination "$TMP_DIR" > "$PACK_JSON"
+npm pack --json --pack-destination "$TMP_DIR" > "$PACK_JSON"
 TARBALL="$(
   node - "$PACK_JSON" "$TMP_DIR" <<'NODE'
 const fs = require('fs');
@@ -267,12 +273,12 @@ log "Verifying embedded React runtime version policy"
 node "$TMP_DIR/verify-runtime-version.cjs" "$PACKAGE_DIR"
 
 log "Running publint"
-yarn publint "$TARBALL"
+yarn run publint "$TARBALL"
 
 log "Running Are The Types Wrong"
 # Keep the Node 16 profile to catch legacy Node resolver regressions; this
 # package still supports consumers on older bundler/runtime stacks.
-yarn attw "$TARBALL" \
+yarn run attw "$TARBALL" \
   --profile node16 \
   --ignore-rules cjs-only-exports-default \
   --format table \

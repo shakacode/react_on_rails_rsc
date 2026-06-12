@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Ported the webpack RSC plugin from the vendored built JavaScript artifact (`src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js`) to first-class TypeScript source at `src/webpack/RSCWebpackPlugin.ts`, preserving full behavior parity (server manifest emission, CSS/JS chunk scanning, runtime-chunk filtering, dependency-type chunk-group manifest construction with eager-import fallback, duplicate-package runtime detection, and hot-update CSS exclusion). The `./WebpackPlugin`, `./WebpackLoader`, and `./RSCReferenceDiscoveryPlugin` exports are unchanged; the vendored plugin file remains in the package but is no longer used by any export path. ([#75])
+- Ported the webpack RSC plugin from the vendored built JavaScript artifact (`src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js`) to first-class TypeScript source at `src/webpack/RSCWebpackPlugin.ts`, preserving full behavior parity (server manifest emission, CSS/JS chunk scanning, runtime-chunk filtering, dependency-type chunk-group manifest construction with eager-import fallback, duplicate-package runtime detection, and hot-update CSS exclusion). The `./WebpackPlugin`, `./WebpackLoader`, and `./RSCReferenceDiscoveryPlugin` exports are unchanged; the vendored plugin file remains in the package but is no longer used by any export path. ([#87])
 
 ## [19.0.5-rc.7] - 2026-06-09
 
@@ -85,4 +85,4 @@ All notable changes to this package will be documented in this file.
 [19.0.5-rc.1]: https://github.com/shakacode/react_on_rails_rsc/releases/tag/19.0.5-rc.1
 
 [#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52
-[#75]: https://github.com/shakacode/react_on_rails_rsc/pull/75
+[#87]: https://github.com/shakacode/react_on_rails_rsc/pull/87

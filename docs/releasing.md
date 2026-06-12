@@ -14,12 +14,22 @@ Tags in this repository do not use a `v` prefix. For example, use
   treat it as stale release metadata and have a maintainer remove it after
   confirming no downstream automation depends on it:
 
-  ```bash
-  npm dist-tag rm react-on-rails-rsc rc
-  ```
+	  ```bash
+	  npm dist-tag rm react-on-rails-rsc rc
+	  ```
+
+	  If removal was premature, restore the previous stale value explicitly:
+
+	  ```bash
+	  npm dist-tag add react-on-rails-rsc@X.Y.Z-rc.N rc
+	  ```
 
 - The npm `latest` dist-tag moves only on final releases from `main`, after the
-  downstream React on Rails release gate has accepted the candidate.
+  downstream React on Rails release gate has accepted the candidate. That gate
+  is the rollout PR in
+  [shakacode/react_on_rails](https://github.com/shakacode/react_on_rails) that
+  pins `react-on-rails-rsc@X.Y.Z-rc.N` and confirms the downstream app release
+  path is ready.
 
 ## Prerequisites
 
@@ -112,15 +122,18 @@ the exact target version, including any `-rc.N` prerelease suffix.
    confirm `latest` points at the new final version only after the downstream
    gate has passed.
 
-3. The unprefixed git tag exists on origin:
+3. The unprefixed git tag exists on origin and points at the expected release
+   commit:
 
    ```bash
-   git ls-remote --tags origin refs/tags/X.Y.Z
+   git ls-remote --tags origin refs/tags/X.Y.Z refs/tags/X.Y.Z^{}
    ```
 
    Expected: a `refs/tags/X.Y.Z` line. Annotated tags also show a separate
-   dereferenced `refs/tags/X.Y.Z^{}` line with the release commit SHA. Empty
-   output means the tag is absent and the parity check failed.
+   dereferenced `refs/tags/X.Y.Z^{}` line with the release commit SHA. Cross-check
+   the dereferenced SHA against the expected release commit and the GitHub
+   release target. Empty output means the tag is absent and the parity check
+   failed.
 
 4. The GitHub release exists and matches the same unprefixed tag:
 

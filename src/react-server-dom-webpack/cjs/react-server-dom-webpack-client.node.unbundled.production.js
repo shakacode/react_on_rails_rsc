@@ -1659,8 +1659,11 @@ exports.createFromNodeStream = function (
     options && "string" === typeof options.nonce ? options.nonce : void 0,
     void 0
   );
+  var streamErrored = !1;
   stream.on("data", function (chunk) {
-    if ("string" === typeof chunk) {
+    if (streamErrored) return;
+    try {
+      if ("string" === typeof chunk) {
       for (
         var i = 0,
           rowState = response._rowState,
@@ -1825,17 +1828,22 @@ exports.createFromNodeStream = function (
           break;
         }
       }
-      response._rowState = chunkLength;
-      response._rowID = rowID;
-      response._rowTag = i;
-      response._rowLength = rowState;
+        response._rowState = chunkLength;
+        response._rowID = rowID;
+        response._rowTag = i;
+        response._rowLength = rowState;
+      }
+    } catch (error) {
+      streamErrored = !0;
+      reportGlobalError(response, error);
     }
   });
   stream.on("error", function (error) {
+    streamErrored = !0;
     reportGlobalError(response, error);
   });
   stream.on("end", function () {
-    reportGlobalError(response, Error("Connection closed."));
+    streamErrored || reportGlobalError(response, Error("Connection closed."));
   });
   return getChunk(response, 0);
 };

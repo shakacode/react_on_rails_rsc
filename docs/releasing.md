@@ -158,9 +158,16 @@ the exact target version, including any `-rc.N` prerelease suffix.
 5. `CHANGELOG.md` contains the matching `## [X.Y.Z] - YYYY-MM-DD` section and
    the GitHub release notes were created from that section:
 
+   For a final release:
+
    ```bash
    grep -F "## [X.Y.Z] - " CHANGELOG.md
-   # For a prerelease: grep -F "## [X.Y.Z-rc.N] - " CHANGELOG.md
+   ```
+
+   For a prerelease:
+
+   ```bash
+   grep -F "## [X.Y.Z-rc.N] - " CHANGELOG.md
    ```
 
 6. The registry artifact metadata is consistent with the release:
@@ -173,16 +180,6 @@ the exact target version, including any `-rc.N` prerelease suffix.
    and `integrity` are present. If a local tarball was created with `npm pack`
    for release evidence, compare its hash to the registry metadata.
 
-7. For final releases only, confirm `latest` points at the final version after
-   the downstream React on Rails rollout PR is merged to `main` and the
-   promotion command below has run:
-
-   ```bash
-   npm view react-on-rails-rsc dist-tags --json
-   ```
-
-   Confirm `latest` points at `X.Y.Z` and no other unexpected tags changed.
-
 ### Promote latest after a final release
 
 After checklist items 1-6 pass for a final release and the downstream React on
@@ -192,8 +189,13 @@ Rails rollout PR is merged to `main`, promote `latest` once:
 npm dist-tag add react-on-rails-rsc@X.Y.Z latest
 ```
 
-Then run checklist item 7 to confirm the tag state. Do not run this command
-during a prerelease cycle.
+Then confirm `latest` points at `X.Y.Z` and no other unexpected tags changed:
+
+```bash
+npm view react-on-rails-rsc dist-tags --json
+```
+
+Do not run the `dist-tag add` command during a prerelease cycle.
 
 Reference pages:
 
@@ -230,8 +232,10 @@ Create it manually from the matching `CHANGELOG.md` section:
 
 ```bash
 # Final release
+# Create /tmp/release-notes.md from the matching CHANGELOG.md section first.
 gh release create X.Y.Z --title "X.Y.Z" --target <release-commit-sha> --notes-file /tmp/release-notes.md
 
 # Release candidate
+# Create /tmp/release-notes.md from the matching CHANGELOG.md section first.
 gh release create X.Y.Z-rc.N --title "X.Y.Z-rc.N" --prerelease --target <release-commit-sha> --notes-file /tmp/release-notes.md
 ```

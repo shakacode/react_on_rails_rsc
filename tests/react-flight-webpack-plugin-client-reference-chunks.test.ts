@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'url';
 
-const ReactFlightWebpackPlugin = require('../src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js');
+const { RSCWebpackPlugin: ReactFlightWebpackPlugin } = require('../src/webpack/RSCWebpackPlugin');
 
 type AsyncHookCallback = (params: unknown, callback: (error?: Error | null) => void) => void;
 type SyncHookCallback = (...args: unknown[]) => void;

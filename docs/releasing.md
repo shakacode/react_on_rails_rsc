@@ -180,10 +180,17 @@ the exact target version, including any `-rc.N` prerelease suffix.
    and `integrity` are present. If a local tarball was created with `npm pack`
    for release evidence, compare its hash to the registry metadata.
 
-### Promote latest after a final release
+#### Promote latest after a final release
 
 After checklist items 1-6 pass for a final release and the downstream React on
-Rails rollout PR is merged to `main`, promote `latest` once:
+Rails rollout PR is merged to `main`, first confirm the current dist-tag state:
+
+```bash
+npm view react-on-rails-rsc dist-tags --json
+```
+
+Verify `next` points at the expected release candidate and `latest` still points
+at the previous final release. Then promote `latest` once:
 
 ```bash
 npm dist-tag add react-on-rails-rsc@X.Y.Z latest

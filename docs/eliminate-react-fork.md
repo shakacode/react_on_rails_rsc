@@ -1,8 +1,8 @@
 # Eliminating the React Fork Repository
 
-**Issue:** [#31](https://github.com/shakacode/react_on_rails_rsc/issues/31)
-**Status:** Plan approved, implementation pending
-**Date:** 2026-04-17
+**Issue:** [#31](https://github.com/shakacode/react_on_rails_rsc/issues/31), [#55](https://github.com/shakacode/react_on_rails_rsc/issues/55) (Option 5 spike)
+**Status:** Option 5 (stock npm runtime) selected — GO, pending the #60 migration gates. Option 4 (patch files) is the documented fallback.
+**Date:** 2026-04-17 (Options 1–4), 2026-06-12 (Option 5 spike)
 
 ## Background
 
@@ -159,13 +159,192 @@ facebook/react (upstream, not forked)         shakacode/react_on_rails_rsc
 
 **Verdict:** Best option. Fully eliminates the fork. Patches become first-class, reviewable artifacts in this repo.
 
+### Option 5: Stock npm Runtime (Selected — GO)
+
+**Spike:** [#55](https://github.com/shakacode/react_on_rails_rsc/issues/55) (2026-06-12). Depend on
+**stock `react-server-dom-webpack` from npm** (currently 19.2.7) instead of vendoring any custom-built
+runtime. The webpack/rspack plugin and loaders are owned in-repo (#56), so the only question is whether
+the *runtime* deltas in `src/react-server-dom-webpack/` still justify a custom build. This is the
+Next.js model: unmodified upstream runtime + bundler plugins owned by the framework.
+
+**Decision: GO**, gated on the #60 migration checklist below. Everything in this section was verified
+against local clones/tarballs on 2026-06-12 (facebook/react clone, `abanoubghadban/react` fork
+branches, and npm tarballs for 19.0.4 / 19.0.7 / 19.2.7 / 19.3.0-canary-dbc37501-20260612). Anything
+not directly verified is marked UNKNOWN.
+
+#### Premise check: stable upstream versions exist
+
+`npm view react-server-dom-webpack versions` confirms stable lines 19.0.0–19.0.7, 19.1.0–19.1.8, and
+19.2.0–19.2.7 (19.0.7 / 19.1.8 / 19.2.7 all published 2026-06-01). The canary-only constraint that
+originally justified vendoring is gone.
+
+#### Complete delta inventory: vendored runtime vs stock npm 19.0.4
+
+The vendored build (`src/react-server-dom-webpack/`, package version 19.0.4) was diffed file-by-file
+against the stock `react-server-dom-webpack@19.0.4` npm tarball. The *entire* real delta is:
+
+| # | Delta | Where | Status upstream |
+|---|-------|-------|-----------------|
+| 1 | JSON-walk parsing perf patch (`parseModel`/`reviveModel` instead of `JSON.parse` reviver) | All `cjs/*client*` builds (~97 changed lines each); landed via [#33](https://github.com/shakacode/react_on_rails_rsc/pull/33) | **Upstreamed**: [facebook/react#35776](https://github.com/facebook/react/pull/35776), commit `f247ebaf44317ac6648b62f99ceaed1e4fc4dc01` (2026-02-19). **Not** in 19.2.7 (verified: 19.2.7 client still uses `JSON.parse(model, response._fromJSON)`); **is** in 19.3 canaries (verified in `19.3.0-canary-dbc37501-20260612`) → ships in 19.3 stable. |
+| 2 | FOUC fix: `emitClientReferenceCSS`/`resolveClientReferenceCSS` emit Flight `"S"` stylesheet hints (`rsc-css` precedence) per client reference with manifest `css` entries | All `cjs/*server*` builds (~24 lines each); current form is the **in-repo rewrite** (commits `dc4dfb4`, `867634f`, `8781f08`, PR [#49](https://github.com/shakacode/react_on_rails_rsc/pull/49)) — it no longer matches the fork branch (`fix/3211-rsc-css-deferred-suspense` @ `980eda222` still has the older loader-wrapper + `globalThis` approach that #48/#49 dropped for cross-request races and prop-shape changes) | **Not upstream** anywhere: no markers in 19.2.7, 19.3 canary, or `facebook/react` main source (grepped `packages/react-server*`). |
+| 3 | `loadServerReference` bound-args check: vendored keeps `null !== metaData`, stock uses `metaData instanceof Promise` (deliberate divergence, PR [#48](https://github.com/shakacode/react_on_rails_rsc/pull/48) "preserve bound server action decoding for React thenables") | `cjs/*server*` builds (1 line) | Upstream (19.0.4 → main) uses `instanceof Promise`. Low risk: `ReactPromise` chains `Object.create(Promise.prototype)` in all three builds compared, so Flight thenables pass `instanceof Promise`. Verify bound server actions in the #60 smoke test. |
+| 4 | `[RSC-REPLACE]` branding: `rendererPackageName: "react-on-rails-rsc"` (dev builds), `index.js` error text, `node-register` require path | Cosmetic | n/a — dropped with the vendored runtime; devtools will report `react-server-dom-webpack`. |
+| 5 | The 5 webpack-plugin patches (`plugin.js`, `esm/` node loader) | Build tooling, not runtime | Moot once #56 (in-repo plugin/loader extraction) lands. |
+
+There are **no other** runtime deltas — every changed line in the client builds belongs to #1/#4 and
+every changed line in the server builds belongs to #2/#3/#4.
+
+#### Security: vendoring is currently *behind* stock npm
+
+The vendored 19.0.4-based runtime predates the 2026 DoS fixes and sits inside the published vulnerable
+ranges of:
+
+- **CVE-2026-23869** (DoS, patched in 19.0.5 / 19.1.6 / 19.2.5, published 2026-04-08)
+- **CVE-2026-23870** (DoS, patched in 19.0.6 / 19.1.7 / 19.2.6, published 2026-05-06)
+
+Verified by marker grep: the reply-decode hardening present in stock 19.0.7 (`_formData.data.get`
+wrapping, "initialized stream chunk" guard) is absent from the vendored server builds. Stock npm
+turns every future React security release into a version bump instead of a fork rebuild — this is the
+strongest single argument for GO. (Tracked for immediate remediation independently of #60.)
+
+#### FOUC fix without patching React (feasible)
+
+The current FOUC mechanism is server-side only, and the client half is already stock behavior:
+
+- Stock 19.2.7 **client** natively consumes `"S"` hints (`case "S"` → `preinitStyle`), so no client
+  change is needed.
+- Stock 19.2.7 **server** exposes the exact emission primitive the patch uses: `preinitStyle(href,
+  precedence, options)` resolves the current request via `resolveRequest()` (request-scoped through
+  `currentRequest`/AsyncLocalStorage) and calls `emitHint(request, "S", [href, precedence])` with the
+  same `"S|" + href` dedupe key as the vendored `emitClientReferenceCSS`. Calling
+  `ReactDOM.preinit(href, { as: 'style', precedence: 'rsc-css' })` during a Flight render therefore
+  produces wire-identical hints.
+
+Proposed wrapper-layer design (to prototype in #60): `src/server.node.ts` already owns the
+`filePathToModuleMetadata` object it passes to `renderToPipeableStream` as the `webpackMap`. Wrap it in
+a `Proxy` whose property getter — invoked by the stock runtime's client-reference metadata lookup
+(`config[modulePath]`, with `#`-suffix fallback) during serialization, i.e. inside the active request —
+calls `ReactDOM.preinit(...)` for each `css` entry of the resolved module before returning the
+metadata. This is request-scoped, preserves client-reference prop shapes (unlike the abandoned
+loader-wrapper approach from PR #35), and needs zero React changes. The existing
+`tests/react-flight-client-reference-css.rsc.test.ts` suite must pass against the new implementation.
+
+If the proxy prototype fails (e.g. lookup happens outside the request context, or hint ordering
+regresses the `$RR` gating), fall back to Option 4 below.
+
+#### JSON-walk perf patch: accept temporary loss until 19.3
+
+Upstream's benchmark ([facebook/react#35776](https://github.com/facebook/react/pull/35776)) reports
+~72–78% faster chunk deserialization. A local micro-benchmark replicating the structural difference
+(reviver vs walk on Flight-shaped payloads, Node v24.8.0, 2026-06-12) reproduces it:
+
+| Payload | Reviver (stock 19.2.7) | Walk (vendored / 19.3) | Speedup |
+|---------|------------------------|------------------------|---------|
+| 1.9 KB | 0.053 ms | 0.008 ms | 85% |
+| 18.8 KB | 0.495 ms | 0.078 ms | 84% |
+| 191.7 KB | 4.761 ms | 0.772 ms | 84% |
+
+Absolute cost of accepting stock 19.2.7 parsing: under ~5 ms per ~200 KB payload parse. This is
+acceptable as a temporary regression because the patch is already on upstream `main` and in 19.3
+canaries; it returns automatically with the 19.3 stable bump. If a downstream app proves this
+unacceptable before 19.3, that triggers the Option 4 fallback instead.
+
+#### Exports/conditions parity (11 export paths)
+
+| `react-on-rails-rsc` export | Backing today | Backing with stock npm | Parity |
+|---|---|---|---|
+| `./client` (node) | wrapper → vendored `client.node` | wrapper → `react-server-dom-webpack/client.node` | ✓ `createFromNodeStream(stream, {moduleMap, serverModuleMap, moduleLoading}, options)` byte-identical resolution logic |
+| `./client` (browser/default), `./client.browser` | wrapper → vendored `client.browser` | wrapper → `react-server-dom-webpack/client.browser` | ✓ 19.2.7 exports a superset (`createFromFetch`, `createFromReadableStream`, `createServerReference`, `createTemporaryReferenceSet`, `encodeReply` + new `registerServerReference`) |
+| `./client.node` | wrapper → vendored `client.node` | wrapper → stock `client.node` | ✓ |
+| `./server.node` | wrapper → vendored `server.node` | wrapper → stock `server.node` + wrapper-layer FOUC hints | ✓ `renderToPipeableStream(model, webpackMap, options)` unchanged; 19.2.7 adds `prerender`, `prerenderToNodeStream`, `renderToReadableStream`, `decodeReplyFromAsyncIterable` |
+| `./server` (conditional map) | re-exposes vendored condition map incl. `react-server`, `workerd`, `deno`, `edge-light`, `browser`, node `webpack`/`default` split | per-condition re-export shims of `react-server-dom-webpack/server.*` | ✓ with one caveat: stock ≥19.2.4 **removed the `*.unbundled` variants** and the node `webpack`/`default` split (upstream `378973b387b6a6f287e451dd0356099180684c3c`, [facebook/react#35290](https://github.com/facebook/react/pull/35290), 2025-12-05 — moved to private `react-server-dom-unbundled`). See below. |
+| `./WebpackPlugin`, `./WebpackLoader`, `./RSCReferenceDiscoveryPlugin`, `./RspackPlugin`, `./RspackLoader` | in-repo TS (loader currently delegates to vendored `esm/` transform) | in-repo TS only (#56) | ✓ no stock-runtime dependency; loader-emitted code imports `react-on-rails-rsc/server` (`registerClientReference`/`registerServerReference`), which the re-export shims provide |
+| `.` (types) | in-repo `dist/types` | unchanged | ✓ |
+
+**Unbundled caveat:** today a plain-Node (no `webpack` resolve condition) `require('react-on-rails-rsc/server')`
+resolves to `server.node.unbundled.js` (module loading via `import(specifier)`); with stock ≥19.2.4 it
+would resolve to the webpack-flavored `server.node.js` (module loading via `__webpack_require__`).
+Webpack-bundled consumers are unaffected (webpack sets the `webpack` condition, and the loader-emitted
+imports are resolved at bundle time). Whether any downstream consumer (e.g. the react_on_rails_pro node
+renderer) plain-Node-requires `react-on-rails-rsc/server` *and* exercises server-reference loading
+through the unbundled path is **UNKNOWN** — verify in #60 before dropping the unbundled entries. Note
+`registerClientReference`/`registerServerReference` themselves do not touch webpack globals, so plain
+registration keeps working either way.
+
+#### Webpack globals contract and SSR manifest formats (unchanged)
+
+Diffed vendored (~19.0.4) vs stock 19.2.7 built files:
+
+- `client.node`: identical call sites — `__webpack_require__(id)`, `__webpack_chunk_load__(chunkId)`,
+  `__webpack_require__(metadata[0])`.
+- `server.node`: identical — `__webpack_require__` only in server-reference (server action)
+  preload/require.
+- `resolveClientReference` (SSR consumer-manifest lookup) is **byte-identical** between stock 19.0.4
+  and stock 19.2.7, and matches the vendored build.
+- Client-manifest lookup on the server (`config[$$id]`, `#`-suffix fallback, `{id, chunks, name,
+  async}` entry shape) unchanged.
+- Import metadata wire format (`[id, chunks, name, async?]`) unchanged.
+
+`src/client.node.ts` (`createSSRManifest`: `{moduleLoading, moduleMap}`) and `src/server.node.ts`
+(passes `filePathToModuleMetadata` as the webpackMap) need no contract changes.
+
+#### Migration checklist for #60
+
+1. Add `react-server-dom-webpack@^19.2.7` as a dependency; delete `src/react-server-dom-webpack/`
+   (after #56 has moved the plugin/loader in-repo and `WebpackLoader.ts` no longer imports the vendored
+   `esm/` transform).
+2. Repoint wrapper imports (`src/client.browser.ts`, `src/client.node.ts`, `src/server.node.ts`) from
+   `./react-server-dom-webpack/*` to `react-server-dom-webpack/*` (stock conditional exports cover
+   every entry used).
+3. Re-implement the FOUC stylesheet hints in the wrapper layer (manifest-`Proxy` + `ReactDOM.preinit`
+   design above); keep `tests/react-flight-client-reference-css.rsc.test.ts` green. **Gate: if the
+   prototype fails, stop and take the Option 4 fallback.**
+4. Replace the `./server` export map with per-condition re-export shims of
+   `react-server-dom-webpack/server.*`; decide the unbundled question (verify downstream plain-Node
+   `./server` usage — UNKNOWN above).
+5. Bump `react`/`react-dom` peerDependencies to `^19.2.7` (stock 19.2.7 peers on `^19.2.7`).
+   Consumer-visible: apps must be on React 19.2.x. Changelog entry required.
+6. Verify bound-server-action decoding (delta #3) and run the full suite (`yarn build` + `yarn test`)
+   plus a downstream smoke test (react_on_rails / pro dummy app: hydration, server actions,
+   deferred-Suspense CSS on slow network).
+7. Confirm devtools/`rendererPackageName` reporting change (`react-server-dom-webpack` instead of
+   `react-on-rails-rsc`) is acceptable; update any docs/tests that assert the branding.
+8. On React 19.3 stable: bump and confirm the JSON-walk perf patch is included (re-run the parse
+   benchmark if desired).
+9. Archive `abanoubghadban/react` and delete `scripts/react-upgrade/` fork tooling.
+
+#### Fallback criteria (Option 4, 2-patch corpus)
+
+Take the Option 4 patch-file rebuild — with a corpus of at most **2 runtime patches** (FOUC fix;
+JSON-walk only until 19.3) applied to vanilla `facebook/react` — if **any** of these hold:
+
+- The wrapper-layer FOUC prototype (checklist step 3) cannot reproduce the `$RR` gated-swap behavior
+  (hints missing, mis-ordered, or not request-scoped) and the existing CSS test suite cannot be made
+  to pass without patching React.
+- A downstream app demonstrates that stock 19.2.7 reviver parsing is an unacceptable regression
+  before React 19.3 stable ships.
+- The unbundled `./server` verification (checklist step 4) finds a real consumer that requires the
+  removed `*.unbundled` runtime semantics that cannot be migrated to the webpack-flavored build.
+- Upstream stable falls back behind on a security fix we need faster than a release cycle (unlikely —
+  the current situation is the reverse).
+
+Option 4 remains fully specified below (Decision section history) and the fork branches
+(`rsc-patches/v19.0.3` @ `2c29304508`) remain available to export patches from until the migration is
+complete and verified.
+
 ## Decision
 
-**We are going with Option 4 (patch files).**
+**Superseded 2026-06-12 by Option 5 (stock npm runtime) — see above; GO, gated on the #60 checklist,
+with Option 4 as the explicit fallback.**
 
-## Implementation Plan
+Original decision (2026-04-17): **We are going with Option 4 (patch files).**
 
-Implementation will begin in a follow-up issue after the currently open PRs are merged (#29, #21, #20, #11).
+## Implementation Plan (Option 4 — now the fallback path)
+
+The steps below implement Option 4 and apply **only if** an Option 5 fallback criterion (above) is
+triggered. The active migration plan is the #60 checklist in the Option 5 section.
+
+Original note: implementation will begin in a follow-up issue after the currently open PRs are merged (#29, #21, #20, #11).
 
 High-level steps:
 

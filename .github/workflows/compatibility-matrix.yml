@@ -83,11 +83,11 @@ jobs:
         run: node scripts/prepare-compatibility-install.cjs
       - name: Build package artifacts
         env:
-          NODE_OPTIONS: ${{ matrix.node-options }}
+          NODE_OPTIONS: ${{ matrix.node-options || '' }}
         run: yarn build
       - name: Run unit and integration tests
         env:
-          NODE_OPTIONS: ${{ matrix.node-options }}
+          NODE_OPTIONS: ${{ matrix.node-options || '' }}
         run: yarn test
       - name: Record matrix result
         if: always()
@@ -95,7 +95,7 @@ jobs:
           {
             echo "### Test command"
             echo
-            echo "- Command: \`yarn test\`"
+            echo "- Command: \`yarn build && yarn test\`"
             echo "- Result: \`${{ job.status }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 

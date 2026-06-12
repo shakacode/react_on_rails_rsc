@@ -14,6 +14,7 @@ const packageJson = JSON.parse(originalPackageJson);
 const env = process.env;
 const label = env.COMPAT_LABEL || 'compatibility matrix leg';
 const skipInstall = env.COMPAT_SKIP_INSTALL === '1';
+const WEBPACK_PEER_MIN = { major: 5, minor: 59, patch: 0 };
 
 const packageSpecs = compactObject({
   react: env.COMPAT_REACT,
@@ -154,12 +155,16 @@ function assertWebpackSpec(spec) {
     if (version.major !== 5) {
       throw new Error(`webpack@${spec} is outside the supported webpack 5.x compatibility matrix`);
     }
+    // Broad 5.x ranges ask yarn for latest webpack 5; installed-version checks
+    // below still enforce the package peer minimum.
     return;
   }
 
   const version = parseVersion(stripSimpleRangePrefix(spec));
-  if (version.major !== 5 || compareVersions(version, { major: 5, minor: 59, patch: 0 }) < 0) {
-    throw new Error(`webpack@${spec} is below the supported peer minimum 5.59.0`);
+  if (version.major !== 5 || compareVersions(version, WEBPACK_PEER_MIN) < 0) {
+    throw new Error(
+      `webpack@${spec} is below the supported peer minimum ${formatVersion(WEBPACK_PEER_MIN)}`
+    );
   }
 }
 
@@ -174,14 +179,19 @@ function assertRspackSpec(spec) {
 
 function matchesSpec(packageName, actualVersion, spec) {
   if (isCanarySpec(spec)) return actualVersion.includes('canary');
-  if (spec === '1.x') {
+  if (spec === '^1' || spec === '1.x') {
     return parseVersion(actualVersion).major === 1;
   }
 
   if (spec.startsWith('^')) {
     const expected = parseVersion(stripSimpleRangePrefix(spec));
     const actual = parseVersion(actualVersion);
-    const effective = packageName === 'webpack' ? { major: 5, minor: 59, patch: 0 } : expected;
+    // Webpack's peer minimum is 5.59.0; enforce it even when the requested
+    // range is wider, such as ^5.0.0.
+    const effective =
+      packageName === 'webpack' && compareVersions(expected, WEBPACK_PEER_MIN) < 0
+        ? WEBPACK_PEER_MIN
+        : expected;
     return actual.major === effective.major && compareVersions(actual, effective) >= 0;
   }
 
@@ -221,6 +231,10 @@ function parseVersion(version) {
 
 function compareVersions(a, b) {
   return a.major - b.major || a.minor - b.minor || a.patch - b.patch;
+}
+
+function formatVersion(version) {
+  return `${version.major}.${version.minor}.${version.patch}`;
 }
 
 function assertGitPathClean(relativePath) {

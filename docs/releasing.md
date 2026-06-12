@@ -87,8 +87,8 @@ The script will:
 #### Release Artifact Parity Checklist
 
 After every release, verify artifact parity and record the results in the
-release evidence. Replace `X.Y.Z` with the exact target version, including any
-`-rc.N` prerelease suffix.
+GitHub release description or a linked issue/PR comment. Replace `X.Y.Z` with
+the exact target version, including any `-rc.N` prerelease suffix.
 
 1. The npm package version exists:
 
@@ -121,10 +121,10 @@ release evidence. Replace `X.Y.Z` with the exact target version, including any
 
 5. `CHANGELOG.md` contains the matching `## [X.Y.Z] - YYYY-MM-DD` section and
    the GitHub release notes were created from that section.
-6. The packaged artifact is consistent with the release:
+6. The registry artifact metadata is consistent with the release:
 
    ```bash
-   npm pack react-on-rails-rsc@X.Y.Z --dry-run
+   npm view react-on-rails-rsc@X.Y.Z dist
    ```
 
 Reference pages:
@@ -153,7 +153,7 @@ Delete the local and remote tag, fix the issue, then rerun:
 
 ```bash
 git tag -d X.Y.Z
-git push origin :X.Y.Z
+git push origin --delete X.Y.Z
 ```
 
 **GitHub release failed after npm publish:**

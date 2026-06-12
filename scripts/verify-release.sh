@@ -94,7 +94,18 @@ function collectTargets(value, exportPath, conditionPath = []) {
     return;
   }
 
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
+  if (value === null) {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectTargets(item, exportPath, conditionPath);
+    }
+    return;
+  }
+
+  if (typeof value === 'object') {
     for (const [condition, nestedValue] of Object.entries(value)) {
       collectTargets(nestedValue, exportPath, conditionPath.concat(condition));
     }
@@ -206,9 +217,21 @@ const fs = require('fs');
 const path = require('path');
 
 const packageDir = process.argv[2];
-const rootPackage = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
 const runtimePackagePath = path.join(packageDir, 'dist/react-server-dom-webpack/package.json');
-const runtimePackage = JSON.parse(fs.readFileSync(runtimePackagePath, 'utf8'));
+
+function readFileSafe(filePath, context) {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    throw new Error(
+      `verify-runtime-version: cannot read ${filePath} (${context}); has the vendored runtime layout changed?\n` +
+      `  ${error.message}`
+    );
+  }
+}
+
+const rootPackage = JSON.parse(readFileSafe(path.join(packageDir, 'package.json'), 'root package.json'));
+const runtimePackage = JSON.parse(readFileSafe(runtimePackagePath, 'runtime package.json'));
 const runtimeVersion = runtimePackage.version;
 const expectedPeerRange = `^${runtimeVersion}`;
 
@@ -223,12 +246,12 @@ assertEqual(rootPackage.peerDependencies?.['react-dom'], expectedPeerRange, 'roo
 assertEqual(runtimePackage.peerDependencies?.react, expectedPeerRange, 'runtime peerDependencies.react');
 assertEqual(runtimePackage.peerDependencies?.['react-dom'], expectedPeerRange, 'runtime peerDependencies.react-dom');
 
-const runtimeDevelopmentBundle = fs.readFileSync(
+const runtimeDevelopmentBundle = readFileSafe(
   path.join(
     packageDir,
     'dist/react-server-dom-webpack/cjs/react-server-dom-webpack-client.browser.development.js'
   ),
-  'utf8'
+  'development bundle'
 );
 
 for (const marker of [`version: "${runtimeVersion}"`, `reconcilerVersion: "${runtimeVersion}"`]) {

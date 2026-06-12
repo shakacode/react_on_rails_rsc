@@ -7,6 +7,9 @@ All notable changes to this package will be documented in this file.
 ### Changed
 - Ported the webpack RSC plugin from the vendored built JavaScript artifact (`src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js`) to first-class TypeScript source at `src/webpack/RSCWebpackPlugin.ts`, preserving full behavior parity (server manifest emission, CSS/JS chunk scanning, runtime-chunk filtering, dependency-type chunk-group manifest construction with eager-import fallback, duplicate-package runtime detection, and hot-update CSS exclusion). The `./WebpackPlugin`, `./WebpackLoader`, and `./RSCReferenceDiscoveryPlugin` exports are unchanged; the vendored plugin file remains in the package but is no longer used by any export path. ([#87])
 
+### Fixed
+- Updated the vendored `react-server-dom-webpack` runtime from the React 19.0.4 security level to 19.0.7, applying the upstream React Server Components reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh) while preserving the in-repo Flight CSS hint behavior. Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime (both are shipped together in this package); pairing with a pre-19.0.5 `react-server-dom-webpack` on the other side silently drops nested `FormData` entries. ([#86])
+
 ## [19.0.5-rc.7] - 2026-06-09
 
 ### Added
@@ -85,4 +88,5 @@ All notable changes to this package will be documented in this file.
 [19.0.5-rc.1]: https://github.com/shakacode/react_on_rails_rsc/releases/tag/19.0.5-rc.1
 
 [#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52
+[#86]: https://github.com/shakacode/react_on_rails_rsc/pull/86
 [#87]: https://github.com/shakacode/react_on_rails_rsc/pull/87

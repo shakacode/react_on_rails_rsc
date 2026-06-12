@@ -25,10 +25,13 @@ Tags in this repository do not use a `v` prefix. For example, use
     npm dist-tag rm react-on-rails-rsc rc
     ```
 
-    If removal was premature, restore the previous stale value explicitly:
+    If removal was premature, restore the previous version as an emergency
+    rollback only, then remove `rc` again as soon as the emergency is resolved:
 
     ```bash
-    npm dist-tag add react-on-rails-rsc@X.Y.Z-rc.N rc
+    npm dist-tag add react-on-rails-rsc@X.Y.Z-rc.N rc  # emergency rollback only
+    # Resolve the issue, then:
+    npm dist-tag rm react-on-rails-rsc rc
     ```
 
 - The npm `latest` dist-tag moves only on final releases from `main`, after the
@@ -170,20 +173,27 @@ the exact target version, including any `-rc.N` prerelease suffix.
    and `integrity` are present. If a local tarball was created with `npm pack`
    for release evidence, compare its hash to the registry metadata.
 
-7. For final releases only, after the downstream React on Rails rollout PR is
-   merged to `main`, promote `latest` to the final version, then confirm it
-   took effect:
+7. For final releases only, confirm `latest` points at the final version after
+   the downstream React on Rails rollout PR is merged to `main` and the
+   promotion command below has run:
 
    ```bash
-   # Action: promote latest (run once, after the downstream gate is merged)
-   npm dist-tag add react-on-rails-rsc@X.Y.Z latest
-
-   # Verify: confirm latest now points at the correct version
    npm view react-on-rails-rsc dist-tags --json
    ```
 
    Confirm `latest` points at `X.Y.Z` and no other unexpected tags changed.
-   Do not run the `dist-tag add` line during a prerelease cycle.
+
+### Promote latest after a final release
+
+After checklist items 1-6 pass for a final release and the downstream React on
+Rails rollout PR is merged to `main`, promote `latest` once:
+
+```bash
+npm dist-tag add react-on-rails-rsc@X.Y.Z latest
+```
+
+Then run checklist item 7 to confirm the tag state. Do not run this command
+during a prerelease cycle.
 
 Reference pages:
 
@@ -220,8 +230,8 @@ Create it manually from the matching `CHANGELOG.md` section:
 
 ```bash
 # Final release
-gh release create X.Y.Z --title "X.Y.Z" --target <release-commit-sha> --notes "..."
+gh release create X.Y.Z --title "X.Y.Z" --target <release-commit-sha> --notes-file /tmp/release-notes.md
 
 # Release candidate
-gh release create X.Y.Z-rc.N --title "X.Y.Z-rc.N" --prerelease --target <release-commit-sha> --notes "..."
+gh release create X.Y.Z-rc.N --title "X.Y.Z-rc.N" --prerelease --target <release-commit-sha> --notes-file /tmp/release-notes.md
 ```

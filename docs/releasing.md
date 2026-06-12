@@ -4,8 +4,43 @@ This project uses a changelog-driven release workflow. The target version is
 read from `CHANGELOG.md`; do not pass a version to the release script. Update
 the changelog first, merge that change to `main`, then run the release script.
 
-Tags in this repository do not use a `v` prefix. For example, the rc.6 tag is
-`19.0.5-rc.6`, not `v19.0.5-rc.6`.
+Tags in this repository do not use a `v` prefix. For example, use
+`X.Y.Z-rc.N`, not `vX.Y.Z-rc.N`.
+
+## Dist-tag Policy
+
+- Prereleases such as `X.Y.Z-rc.N` publish to the npm `next` dist-tag only.
+- Do not use the npm `rc` dist-tag for this package. If `rc` appears,
+  treat it as stale release metadata and have a maintainer remove it after
+  confirming no downstream automation depends on it. First, record the current
+  state so you can restore if needed:
+
+    ```bash
+    npm view react-on-rails-rsc dist-tags --json
+    ```
+
+    Then remove the stale tag:
+
+    ```bash
+    npm dist-tag rm react-on-rails-rsc rc
+    ```
+
+    If removal was premature, restore the previous version as an emergency
+    rollback only, then remove `rc` again as soon as the emergency is resolved:
+
+    ```bash
+    npm dist-tag add react-on-rails-rsc@X.Y.Z-rc.N rc  # emergency rollback only
+    # Resolve the issue, then:
+    npm dist-tag rm react-on-rails-rsc rc
+    ```
+
+- The npm `latest` dist-tag moves only on final releases from `main`, after the
+  downstream React on Rails release gate has accepted the candidate. That gate
+  is the rollout PR in
+  [shakacode/react_on_rails](https://github.com/shakacode/react_on_rails) that
+  pins `react-on-rails-rsc@X.Y.Z-rc.N` and confirms the downstream app release
+  path is ready. `latest` must not advance until that rollout PR is merged to
+  `main` in `react_on_rails`.
 
 ## Prerequisites
 
@@ -30,13 +65,13 @@ For a release candidate or explicit version, update `CHANGELOG.md` so the first
 release header after the intro is the target version:
 
 ```markdown
-## [19.0.5-rc.6] - 2026-06-04
+## [X.Y.Z-rc.N] - YYYY-MM-DD
 ```
 
 The changelog compare links at the bottom should also use unprefixed tags:
 
 ```markdown
-[19.0.5-rc.6]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.5...19.0.5-rc.6
+[X.Y.Z-rc.N]: https://github.com/shakacode/react_on_rails_rsc/compare/PREVIOUS-TAG...X.Y.Z-rc.N
 ```
 
 Review and merge the changelog/version PR before publishing.
@@ -52,6 +87,11 @@ yarn release:dry-run
 The dry run verifies the release version, npm/GitHub auth where available,
 package publish state, tests, build, and `npm pack --dry-run`.
 
+Use this dry run as the local fallback whenever you need to validate release
+readiness without publishing. In dry-run mode, missing npm or GitHub auth is a
+warning instead of a release blocker, and no npm publish, git tag, tag push, or
+GitHub release is created.
+
 ### 3. Publish
 
 ```bash
@@ -63,27 +103,111 @@ The script will:
 1. Read the target version from the first `## [X.Y.Z]` header in `CHANGELOG.md`.
 2. Verify that `package.json` is not ahead of the changelog version.
 3. Stop if the release tag already exists or the npm version is already published.
-4. Publish prereleases such as `19.0.5-rc.6` with the npm `next` dist-tag.
+4. Publish prereleases such as `X.Y.Z-rc.N` with the npm `next` dist-tag.
 5. Run `yarn test`, `yarn run build`, and `npm pack --dry-run`.
 6. Run `release-it` to commit any needed version bump, tag, and publish to npm.
 7. Create a GitHub release from the matching `CHANGELOG.md` section.
 
 ### 4. Verify
 
-- npm: https://www.npmjs.com/package/react-on-rails-rsc
-- GitHub releases: https://github.com/shakacode/react_on_rails_rsc/releases
+#### Release Artifact Parity Checklist
 
-For an rc release, confirm npm uses the `next` dist-tag:
+After every release, verify artifact parity and record the results in the
+GitHub release description or a linked issue/PR comment. Replace `X.Y.Z` with
+the exact target version, including any `-rc.N` prerelease suffix.
+
+1. The npm package version exists:
+
+   ```bash
+   npm view react-on-rails-rsc@X.Y.Z version
+   ```
+
+2. The npm dist-tags match the policy above:
+
+   ```bash
+   npm view react-on-rails-rsc dist-tags --json
+   ```
+
+   For a prerelease, confirm the version is on `next`, `rc` is absent, and
+   `latest` still points at the most recent final release. For a final release,
+   confirm `latest` points at the new final version only after the downstream
+   gate has passed.
+
+3. The unprefixed git tag exists on origin and points at the expected release
+   commit:
+
+   ```bash
+   git ls-remote --tags origin refs/tags/X.Y.Z refs/tags/X.Y.Z^{}
+   ```
+
+   Expected: a `refs/tags/X.Y.Z` line. Annotated tags also show a separate
+   dereferenced `refs/tags/X.Y.Z^{}` line with the release commit SHA. Cross-check
+   the dereferenced SHA against the expected release commit and the GitHub
+   release target. Empty output means the tag is absent and the parity check
+   failed.
+
+4. The GitHub release exists and matches the same unprefixed tag:
+
+   ```bash
+   gh release view X.Y.Z
+   ```
+
+   Confirm the output shows the correct tag (`X.Y.Z`), release candidates are
+   marked as prereleases, and published releases are not drafts.
+
+5. `CHANGELOG.md` contains the matching `## [X.Y.Z] - YYYY-MM-DD` section and
+   the GitHub release notes were created from that section:
+
+   For a final release:
+
+   ```bash
+   grep -F "## [X.Y.Z] - " CHANGELOG.md
+   ```
+
+   For a prerelease:
+
+   ```bash
+   grep -F "## [X.Y.Z-rc.N] - " CHANGELOG.md
+   ```
+
+6. The registry artifact metadata is consistent with the release:
+
+   ```bash
+   npm view react-on-rails-rsc@X.Y.Z dist
+   ```
+
+   Confirm the tarball URL is under `registry.npmjs.org`, and that `shasum`
+   and `integrity` are present. If a local tarball was created with `npm pack`
+   for release evidence, compare its hash to the registry metadata.
+
+#### Promote latest after a final release
+
+After checklist items 1-6 pass for a final release and the downstream React on
+Rails rollout PR is merged to `main`, first confirm the current dist-tag state:
 
 ```bash
 npm view react-on-rails-rsc dist-tags --json
 ```
 
-## Current rc.6 Follow-Up
+Verify `next` points at the expected release candidate and `latest` still points
+at the previous final release. Then promote `latest` once:
 
-After `19.0.5-rc.6` is published, update the downstream
-`shakacode/react_on_rails` rollout PR to depend on `react-on-rails-rsc@19.0.5-rc.6`
-directly and remove the temporary `19.0.5-rc.5` patch package entry.
+```bash
+npm dist-tag add react-on-rails-rsc@X.Y.Z latest
+```
+
+Then confirm `latest` points at `X.Y.Z` and no other unexpected tags changed:
+
+```bash
+npm view react-on-rails-rsc dist-tags --json
+```
+
+Do not run the `dist-tag add` command during a prerelease cycle.
+
+Reference pages:
+
+- npm: https://www.npmjs.com/package/react-on-rails-rsc
+- GitHub releases: https://github.com/shakacode/react_on_rails_rsc/releases
 
 ## Troubleshooting
 
@@ -105,14 +229,20 @@ release.
 Delete the local and remote tag, fix the issue, then rerun:
 
 ```bash
-git tag -d 19.0.5-rc.6
-git push origin :19.0.5-rc.6
+git tag -d X.Y.Z
+git push origin --delete X.Y.Z
 ```
 
 **GitHub release failed after npm publish:**
 
-Create it manually from the changelog notes:
+Create it manually from the matching `CHANGELOG.md` section:
 
 ```bash
-gh release create 19.0.5-rc.6 --title "19.0.5-rc.6" --prerelease --notes "..."
+# Final release
+# Create /tmp/release-notes.md from the matching CHANGELOG.md section first.
+gh release create X.Y.Z --title "X.Y.Z" --target <release-commit-sha> --notes-file /tmp/release-notes.md
+
+# Release candidate
+# Create /tmp/release-notes.md from the matching CHANGELOG.md section first.
+gh release create X.Y.Z-rc.N --title "X.Y.Z-rc.N" --prerelease --target <release-commit-sha> --notes-file /tmp/release-notes.md
 ```

@@ -65,6 +65,9 @@ export class ClientReferenceDependency extends ModuleDependency {
     super(request);
   }
 
+  // webpack 5.59 typings model Dependency.type as a readonly property, while
+  // current webpack exposes the runtime surface as an accessor.
+  // @ts-ignore Keep the accessor shape for current webpack while supporting the peer minimum.
   override get type(): string {
     return 'client-reference';
   }

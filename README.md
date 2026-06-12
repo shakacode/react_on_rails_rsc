@@ -23,6 +23,18 @@ Release this package from `main` using the changelog-driven workflow in
 [`docs/releasing.md`](docs/releasing.md). Run `yarn release:dry-run` before
 `yarn release`.
 
+## Compatibility Policy
+
+The package peer dependencies are the current source of truth for supported
+React and webpack ranges. CI also runs a focused compatibility matrix covering
+React 19.0.4 and 19.2.x, Node.js 20 and 22, webpack 5.59.0 and latest 5.x, and
+rspack latest 1.x. A weekly React canary job is signal-only and is allowed to
+fail while upstream canary APIs move.
+
+A formal versioning policy is tracked in
+[#70](https://github.com/shakacode/react_on_rails_rsc/issues/70); no merged
+`docs/versioning.md` exists in this branch yet.
+
 ## Support
 
 For questions about React Server Components:

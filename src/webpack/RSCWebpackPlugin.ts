@@ -65,6 +65,10 @@ export class ClientReferenceDependency extends ModuleDependency {
     super(request);
   }
 
+  // webpack 5.59 typings model Dependency.type as a readonly property, while
+  // current webpack exposes the runtime surface as an accessor.
+  // @ts-ignore: @ts-expect-error cannot be used here. The error only appears
+  // against 5.59 typings; current webpack typings accept the accessor override.
   override get type(): string {
     return 'client-reference';
   }

@@ -116,6 +116,15 @@ describe('React Flight client stream error paths', () => {
     await expect(decoded).rejects.toThrow('upstream Flight stream aborted for issue 64');
   });
 
+  it('propagates unbundled node stream abort reasons instead of hanging', async () => {
+    const stream = new PassThrough();
+    const decoded = createFromUnbundledNodeStream(stream, emptySSRManifest);
+
+    stream.destroy(new Error('unbundled Flight stream aborted for issue 64'));
+
+    await expect(decoded).rejects.toThrow('unbundled Flight stream aborted for issue 64');
+  });
+
   it('propagates readable-stream abort reasons instead of hanging', async () => {
     const { client, restore } = loadBrowserClient();
     try {

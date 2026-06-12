@@ -95,7 +95,7 @@ const decodeElementType = async (
     throw new Error('React lazy _payload is no longer a Promise; update decodeElementType.');
   }
 
-  return type._payload!;
+  return type._payload;
 };
 
 describe('React Flight client error paths', () => {
@@ -185,6 +185,7 @@ describe('React Flight client error paths', () => {
     try {
       flightStream.pipe(readable);
       flightStream.abort(new Error('server render aborted for issue 64'));
+      cleanup.abort();
 
       await expect(decoded).rejects.toThrow('server render aborted for issue 64');
       expect(serverErrors).toHaveLength(1);

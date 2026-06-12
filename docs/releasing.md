@@ -118,11 +118,17 @@ the exact target version, including any `-rc.N` prerelease suffix.
    git ls-remote --tags origin refs/tags/X.Y.Z
    ```
 
+   Expected: one line with a commit SHA and `refs/tags/X.Y.Z`. Empty output
+   means the tag is absent and the parity check failed.
+
 4. The GitHub release exists and matches the same unprefixed tag:
 
    ```bash
    gh release view X.Y.Z
    ```
+
+   Confirm the output shows the correct tag (`X.Y.Z`), release candidates are
+   marked as prereleases, and published releases are not drafts.
 
 5. `CHANGELOG.md` contains the matching `## [X.Y.Z] - YYYY-MM-DD` section and
    the GitHub release notes were created from that section:
@@ -137,8 +143,9 @@ the exact target version, including any `-rc.N` prerelease suffix.
    npm view react-on-rails-rsc@X.Y.Z dist
    ```
 
-   Confirm the tarball URL points at the public npm registry and that the
-   `shasum`, `integrity`, and unpacked metadata match the npm package version.
+   Confirm the tarball URL is under `registry.npmjs.org`, and that `shasum`
+   and `integrity` are present and match local `npm pack --dry-run` evidence
+   when that evidence was captured.
 
 Reference pages:
 

@@ -29,23 +29,23 @@ jobs:
       url: https://www.npmjs.com/package/react-on-rails-rsc
     steps:
       - name: Checkout main
-        # actions/checkout@v5
+        # Pinned immutable actions/checkout release SHA verified via git ls-remote.
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           ref: main
           fetch-depth: 0
 
       - name: Use Node.js
-        # actions/setup-node@v4
+        # Pinned immutable actions/setup-node release SHA verified via git ls-remote.
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          # Node 24 supplies the npm version required for trusted publishing/OIDC;
-          # this workflow still runs the full test suite before publishing.
+          # npm trusted publishing requires the npm CLI version shipped with the Node 24 line.
+          # The package runtime support matrix remains tested separately before publishing.
           # Do not enable dependency caching in the release publish job.
           node-version: '24.x'
           registry-url: https://registry.npmjs.org
 
-      - name: Enable Yarn Classic
+      - name: Enable package manager
         run: corepack enable
 
       - name: Install dependencies
@@ -177,7 +177,11 @@ jobs:
       - name: Publish to npm with provenance
         env:
           NPM_TAG: ${{ steps.metadata.outputs.npm_tag }}
-        run: npm publish --provenance --access public --tag "$NPM_TAG"
+        run: |
+          set -euo pipefail
+
+          # No npm auth token secret is configured; npm uses GitHub OIDC trusted publishing.
+          npm publish --provenance --access public --tag "$NPM_TAG"
 
       - name: Create local release tag
         env:
@@ -215,6 +219,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version
+          for attempt in 1 2 3 4 5; do
+            if npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version; then
+              break
+            fi
+
+            if [[ "$attempt" == "5" ]]; then
+              echo "Published package ${PACKAGE_NAME}@${RELEASE_VERSION} was not visible after retries." >&2
+              exit 1
+            fi
+
+            sleep 10
+          done
+
           npm view "$PACKAGE_NAME" dist-tags --json
           gh release view "$RELEASE_VERSION"

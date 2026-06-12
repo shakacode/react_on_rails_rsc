@@ -44,24 +44,31 @@ const loadBrowserClient = (): { client: BrowserClient; restore: () => void } => 
 
   webpackGlobal.__webpack_require__ = fakeWebpackRequire;
 
+  const restoreWebpackRequire = () => {
+    if (originalWebpackRequire) {
+      webpackGlobal.__webpack_require__ = originalWebpackRequire;
+    } else {
+      Reflect.deleteProperty(webpackGlobal, '__webpack_require__');
+    }
+  };
+
   let client: BrowserClient | undefined;
-  jest.isolateModules(() => {
-    client = require('../src/react-server-dom-webpack/client.browser') as BrowserClient;
-  });
-  // jest.isolateModules is synchronous; keep an explicit failure if that contract changes.
-  if (!client) {
-    throw new Error('jest.isolateModules did not populate client synchronously');
+  try {
+    jest.isolateModules(() => {
+      client = require('../src/react-server-dom-webpack/client.browser') as BrowserClient;
+    });
+    // jest.isolateModules is synchronous; keep an explicit failure if that contract changes.
+    if (!client) {
+      throw new Error('jest.isolateModules did not populate client synchronously');
+    }
+  } catch (error) {
+    restoreWebpackRequire();
+    throw error;
   }
 
   return {
     client,
-    restore: () => {
-      if (originalWebpackRequire) {
-        webpackGlobal.__webpack_require__ = originalWebpackRequire;
-      } else {
-        Reflect.deleteProperty(webpackGlobal, '__webpack_require__');
-      }
-    },
+    restore: restoreWebpackRequire,
   };
 };
 

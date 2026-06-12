@@ -31,6 +31,9 @@
  *     maxChunks?: number,           // applies webpack LimitChunkCountPlugin
  *     extraEntries?: object,        // additional entrypoints: name -> request
  *     withCss?: boolean,            // wires css-loader + MiniCssExtractPlugin
+ *     exposeClientRuntime?: boolean, // append helpers/exposeClientRuntime.js
+ *                                    // to `main` so `output.library` exports
+ *                                    // the bundled Flight node client
  *   }
  *
  * Success stdout:  { ok: true, assets: [...], warnings: [...] }
@@ -66,6 +69,7 @@ const {
   maxChunks,
   extraEntries,
   withCss,
+  exposeClientRuntime,
 } = args;
 
 const runtimeEntry = path.resolve(
@@ -101,13 +105,20 @@ if (withCss) {
   );
 }
 
+// The runtime entry must come first in `main` so the plugin's block
+// injection happens in the default entrypoint. With `output.library`,
+// webpack exports the LAST entry module, so the optional runtime re-export
+// goes at the end.
+const mainEntry = [runtimeEntry, './index.js'];
+if (exposeClientRuntime) {
+  mainEntry.push(path.resolve(__dirname, 'exposeClientRuntime.js'));
+}
+
 const config = {
   mode: 'development',
   target: isServer ? 'node' : 'web',
   context,
-  // The runtime entry must come first in `main` so the plugin's block
-  // injection happens in the default entrypoint.
-  entry: { main: [runtimeEntry, './index.js'], ...(extraEntries || {}) },
+  entry: { main: mainEntry, ...(extraEntries || {}) },
   output: {
     path: outputPath,
     filename: '[name].js',

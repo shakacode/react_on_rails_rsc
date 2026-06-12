@@ -33,6 +33,12 @@ export interface CompileOptions {
   extraEntries?: Record<string, string>;
   /** Wires css-loader + MiniCssExtractPlugin so fixtures can import CSS. */
   withCss?: boolean;
+  /**
+   * Appends a re-export of the Flight node client to `main` so a build with
+   * `output.library` exposes `createFromNodeStream` from inside the bundle's
+   * own webpack runtime (for end-to-end decode tests).
+   */
+  exposeClientRuntime?: boolean;
 }
 
 export interface ModuleMetadata {
@@ -92,6 +98,7 @@ const compileInto = (
     maxChunks: options.maxChunks,
     extraEntries: options.extraEntries,
     withCss: options.withCss,
+    exposeClientRuntime: options.exposeClientRuntime,
   };
   const argsFile = path.join(outputPath, '__args__.json');
   fs.writeFileSync(argsFile, JSON.stringify(runnerArgs));

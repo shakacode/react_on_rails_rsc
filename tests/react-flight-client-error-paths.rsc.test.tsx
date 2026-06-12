@@ -82,6 +82,8 @@ const decodeElementType = async (
   )) as React.ReactElement;
 
   expect(React.isValidElement(decoded)).toBe(true);
+  // This intentionally probes React's current lazy payload shape so the missing
+  // client-reference error is asserted before React attempts to resolve it.
   const type = decoded.type as { $$typeof?: symbol; _payload?: Promise<unknown> };
   expect(type.$$typeof).toBe(Symbol.for('react.lazy'));
   expect(type._payload).toBeDefined();

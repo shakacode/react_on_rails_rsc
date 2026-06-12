@@ -1839,8 +1839,8 @@ exports.createFromNodeStream = function (
     }
   });
   stream.on("error", function (error) {
-    streamErrored = !0;
-    reportGlobalError(response, error);
+    streamErrored ||
+      ((streamErrored = !0), reportGlobalError(response, error));
   });
   stream.on("end", function () {
     streamErrored || reportGlobalError(response, Error("Connection closed."));

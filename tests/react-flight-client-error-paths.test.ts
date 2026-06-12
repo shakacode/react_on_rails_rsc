@@ -88,6 +88,10 @@ describe('React Flight client stream error paths', () => {
     await expect(nodeFlight('0:"unterminated')).rejects.toThrow('Connection closed.');
   });
 
+  it('rejects truncated unbundled node Flight payloads with the connection-close reason', async () => {
+    await expect(unbundledNodeFlight('0:"unterminated')).rejects.toThrow('Connection closed.');
+  });
+
   it('rejects truncated readable-stream Flight payloads with the connection-close reason', async () => {
     const { client, restore } = loadBrowserClient();
     try {

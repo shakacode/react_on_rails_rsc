@@ -44,8 +44,9 @@ else
   yarn build
 
   echo "==> Packing tarball into $WORK_DIR"
-  npm pack --pack-destination "$WORK_DIR" >/dev/null
-  TARBALL="$(ls "$WORK_DIR"/react-on-rails-rsc-*.tgz | head -1)"
+  # npm pack prints the tarball filename as the last stdout line.
+  TARBALL="$WORK_DIR/$(npm pack --pack-destination "$WORK_DIR" | tail -1)"
+  test -f "$TARBALL"
   echo "    $TARBALL"
 
   echo "==> Creating consumer project at $PROJECT_DIR"

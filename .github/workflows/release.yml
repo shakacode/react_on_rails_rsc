@@ -24,6 +24,7 @@ jobs:
   release:
     name: Publish to npm
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment:
       name: release
       url: https://www.npmjs.com/package/react-on-rails-rsc
@@ -31,11 +32,14 @@ jobs:
       - name: Checkout main
         uses: actions/checkout@v5
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
+          # Node 24 supplies the npm version required for trusted publishing/OIDC;
+          # this workflow still runs the full test suite before publishing.
           node-version: '24.x'
           registry-url: https://registry.npmjs.org
 
@@ -140,15 +144,14 @@ jobs:
 
           # npm view exits non-zero with E404 when the version does not exist.
           # Any other non-zero exit (network error, auth failure, etc.) should fail the release.
-          if npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >/tmp/npm-version.json 2>/tmp/npm-view.err; then
+          if npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >/tmp/npm-view.out 2>&1; then
             echo "${PACKAGE_NAME}@${RELEASE_VERSION} is already published." >&2
-            cat /tmp/npm-version.json >&2
+            cat /tmp/npm-view.out >&2
             exit 1
           fi
 
-          if ! grep -q 'E404' /tmp/npm-version.json /tmp/npm-view.err; then
-            cat /tmp/npm-view.err >&2
-            cat /tmp/npm-version.json >&2
+          if ! grep -q 'E404' /tmp/npm-view.out; then
+            cat /tmp/npm-view.out >&2
             exit 1
           fi
 

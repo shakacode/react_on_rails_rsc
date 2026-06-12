@@ -112,7 +112,7 @@ react-on-rails-rsc/
 
 **Verdict:** A cheap ergonomic improvement worth doing regardless. Does not eliminate the fork though — just hides it better.
 
-### Option 4: Patch Files (Selected)
+### Option 4: Patch Files (Superseded — Fallback Only)
 
 Store `[RSC-PATCH]` commits as `.patch` files in this repo. Build from vanilla `facebook/react` (no fork needed).
 
@@ -207,7 +207,9 @@ ranges of:
 Verified by marker grep: the reply-decode hardening present in stock 19.0.7 (`_formData.data.get`
 wrapping, "initialized stream chunk" guard) is absent from the vendored server builds. Stock npm
 turns every future React security release into a version bump instead of a fork rebuild — this is the
-strongest single argument for GO. (Tracked for immediate remediation independently of #60.)
+strongest single argument for GO. (Flagged to the maintainer in the #55 spike report for remediation
+independently of #60 — either an interim vendored rebuild at the 19.0.7 security level or an expedited
+#60 migration.)
 
 #### FOUC fix without patching React (feasible)
 
@@ -240,7 +242,12 @@ regresses the `$RR` gating), fall back to Option 4 below.
 
 Upstream's benchmark ([facebook/react#35776](https://github.com/facebook/react/pull/35776)) reports
 ~72–78% faster chunk deserialization. A local micro-benchmark replicating the structural difference
-(reviver vs walk on Flight-shaped payloads, Node v24.8.0, 2026-06-12) reproduces it:
+(reviver vs walk on Flight-shaped payloads, Node v24.8.0, 2026-06-12) reproduces it. Methodology, for
+re-running after a React bump: synthetic Flight-shaped JSON (`["$","tag",key,{props}]` element trees
+with `$`-prefixed reference strings, 10/100/1000 rows), 50 warmup iterations, then 2000 timed
+iterations (300 for the 1000-row payload) of (a) `JSON.parse` with a reviver that short-circuits
+non-`$` strings vs (b) bare `JSON.parse` followed by a recursive `reviveModel` walk — mirroring
+`initializeModelChunk` in stock 19.2.7 vs upstream `f247ebaf4` respectively:
 
 | Payload | Reviver (stock 19.2.7) | Walk (vendored / 19.3) | Speedup |
 |---------|------------------------|------------------------|---------|
@@ -311,7 +318,11 @@ Diffed vendored (~19.0.4) vs stock 19.2.7 built files:
    Option 4 fallback.** (A plain-Node consumer silently resolving to the webpack flavor fails at
    runtime, not compile time, so this must be verified — not assumed — before merge.)
 5. Bump `react`/`react-dom` peerDependencies to `^19.2.7` (stock 19.2.7 peers on `^19.2.7`).
-   Consumer-visible: apps must be on React ≥19.2.7. Changelog entry required.
+   Consumer-visible: apps must be on React ≥19.2.7 — a breaking change for consumers on React
+   19.0.x/19.1.x. Version the release accordingly: this package's version tracks the bundled runtime
+   line (currently 19.0.5-rc.x), so the migration release should move to the 19.2.x line, which both
+   signals the new React floor and satisfies semver for the dropped peer range. Changelog entry
+   required.
 6. Verify bound-server-action decoding (delta #3) and run the full suite (`yarn build` + `yarn test`)
    plus a downstream smoke test (react_on_rails / pro dummy app: hydration, server actions,
    deferred-Suspense CSS on slow network).
@@ -320,6 +331,10 @@ Diffed vendored (~19.0.4) vs stock 19.2.7 built files:
 8. On React 19.3 stable: bump and confirm the JSON-walk perf patch is included (re-run the parse
    benchmark if desired).
 9. Archive `abanoubghadban/react` and delete `scripts/react-upgrade/` fork tooling.
+   **Prerequisite:** all Option 4 fallback criteria (below) have been ruled out, the step 6 smoke
+   test is green, and the fork branches (`rsc-patches/*`) are confirmed no longer needed as a patch
+   source. Archiving keeps the repo readable on GitHub but treat this as the point of no return for
+   the cherry-pick workflow.
 
 #### Fallback criteria (Option 4, 2-patch corpus)
 

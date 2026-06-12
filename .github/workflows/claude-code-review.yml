@@ -22,7 +22,22 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Detect Claude review workflow changes
+        id: claude-workflow-changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          changed_files="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename')"
+          if printf '%s\n' "$changed_files" | grep -Fx '.github/workflows/claude-code-review.yml'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Claude Code Review
+        if: steps.claude-workflow-changes.outputs.changed != 'true'
         id: claude-review
         uses: anthropics/claude-code-action@0cb4f3e5e764d2e00407d29b6bf0aa9df0976d88 # v1
         with:

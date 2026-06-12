@@ -89,6 +89,7 @@ const decodeElementType = async (
   if (!('_payload' in type)) {
     throw new Error('React lazy shape changed; update decodeElementType to match the new internals.');
   }
+  // Awaiting the private lazy payload triggers the chunk-load rejection path.
   expect(type._payload).toBeDefined();
 
   return type._payload!;
@@ -149,8 +150,11 @@ describe('React Flight client error paths', () => {
   });
 
   it('surfaces the server abort reason to the node Flight client', async () => {
+    const cleanup = new AbortController();
     const NeverResolves = async () => {
-      await new Promise(() => {});
+      await new Promise<void>((resolve) => {
+        cleanup.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
       return React.createElement('span', null, 'unreachable');
     };
     const serverErrors: unknown[] = [];
@@ -166,15 +170,19 @@ describe('React Flight client error paths', () => {
     const readable = new PassThrough();
     const decoded = createFromNodeStream(readable, emptySSRManifest);
 
-    flightStream.pipe(readable);
-    flightStream.abort(new Error('server render aborted for issue 64'));
+    try {
+      flightStream.pipe(readable);
+      flightStream.abort(new Error('server render aborted for issue 64'));
 
-    await expect(decoded).rejects.toThrow('server render aborted for issue 64');
-    expect(serverErrors).toHaveLength(1);
-    expect(serverErrors[0]).toEqual(
-      expect.objectContaining({
-        message: 'server render aborted for issue 64',
-      }),
-    );
+      await expect(decoded).rejects.toThrow('server render aborted for issue 64');
+      expect(serverErrors).toHaveLength(1);
+      expect(serverErrors[0]).toEqual(
+        expect.objectContaining({
+          message: 'server render aborted for issue 64',
+        }),
+      );
+    } finally {
+      cleanup.abort();
+    }
   });
 });

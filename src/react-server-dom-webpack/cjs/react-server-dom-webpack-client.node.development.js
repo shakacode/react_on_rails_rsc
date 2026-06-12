@@ -2781,11 +2781,11 @@
               break;
             }
           }
-            response._rowState = chunkLength;
-            response._rowID = rowID;
-            response._rowTag = i;
-            response._rowLength = rowState;
-          }
+          response._rowState = chunkLength;
+          response._rowID = rowID;
+          response._rowTag = i;
+          response._rowLength = rowState;
+        }
         } catch (error) {
           streamErrored = !0;
           reportGlobalError(response, error);

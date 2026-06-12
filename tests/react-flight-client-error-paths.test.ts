@@ -42,10 +42,12 @@ const loadBrowserClient = (): { client: BrowserClient; restore: () => void } => 
     { u: (chunkId: string) => `${chunkId}.js` },
   );
 
-  jest.resetModules();
   webpackGlobal.__webpack_require__ = fakeWebpackRequire;
 
-  const client = require('../src/react-server-dom-webpack/client.browser') as BrowserClient;
+  let client!: BrowserClient;
+  jest.isolateModules(() => {
+    client = require('../src/react-server-dom-webpack/client.browser') as BrowserClient;
+  });
 
   return {
     client,
@@ -55,7 +57,6 @@ const loadBrowserClient = (): { client: BrowserClient; restore: () => void } => 
       } else {
         Reflect.deleteProperty(webpackGlobal, '__webpack_require__');
       }
-      jest.resetModules();
     },
   };
 };

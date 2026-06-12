@@ -12,16 +12,17 @@ Tags in this repository do not use a `v` prefix. For example, use
 - Prereleases such as `X.Y.Z-rc.N` publish to the npm `next` dist-tag only.
 - Do not use the npm `rc` dist-tag for this package. If `rc` appears,
   treat it as stale release metadata and have a maintainer remove it after
-  confirming no downstream automation depends on it:
-
-    ```bash
-    npm dist-tag rm react-on-rails-rsc rc
-    ```
-
-    Before removing, record the current state so you can restore if needed:
+  confirming no downstream automation depends on it. First, record the current
+  state so you can restore if needed:
 
     ```bash
     npm view react-on-rails-rsc dist-tags --json
+    ```
+
+    Then remove the stale tag:
+
+    ```bash
+    npm dist-tag rm react-on-rails-rsc rc
     ```
 
     If removal was premature, restore the previous stale value explicitly:
@@ -155,9 +156,9 @@ the exact target version, including any `-rc.N` prerelease suffix.
    the GitHub release notes were created from that section:
 
    ```bash
-   # Replace X.Y.Z with the actual version before running.
-   # Example: grep -F "## [19.0.5] - " CHANGELOG.md
-   grep -F "## [X.Y.Z] - " CHANGELOG.md
+   # Replace with the actual version, for example:
+   grep -F "## [19.0.5] - " CHANGELOG.md
+   # For a prerelease: grep -F "## [19.0.5-rc.8] - " CHANGELOG.md
    ```
 
 6. The registry artifact metadata is consistent with the release:
@@ -169,6 +170,14 @@ the exact target version, including any `-rc.N` prerelease suffix.
    Confirm the tarball URL is under `registry.npmjs.org`, and that `shasum`
    and `integrity` are present. If a local tarball was created with `npm pack`
    for release evidence, compare its hash to the registry metadata.
+
+7. For final releases only, after the downstream React on Rails rollout PR is
+   merged to `main`, confirm `latest` points at the final version:
+
+   ```bash
+   npm dist-tag add react-on-rails-rsc@X.Y.Z latest
+   npm view react-on-rails-rsc dist-tags --json
+   ```
 
 Reference pages:
 

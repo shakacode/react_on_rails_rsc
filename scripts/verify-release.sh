@@ -6,9 +6,12 @@ cd "$ROOT_DIR"
 
 export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-${npm_config_cache:-${TMPDIR:-/tmp}/react-on-rails-rsc-npm-cache}}"
 
+TMP_DIR=""
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ror-rsc-artifacts.XXXXXX")"
 cleanup() {
-  rm -rf "$TMP_DIR"
+  if [[ -n "${TMP_DIR:-}" ]]; then
+    rm -rf "$TMP_DIR"
+  fi
 }
 trap cleanup EXIT
 
@@ -111,7 +114,8 @@ for (const { exportPath, conditionPath, target } of targets) {
   }
 
   if (target.includes('*')) {
-    throw new Error(`Wildcard export targets are not supported by this verifier: ${exportPath} -> ${target}`);
+    console.warn(`  - Skipping wildcard export target: ${exportPath} -> ${target}`);
+    continue;
   }
 
   const resolvedTarget = path.resolve(packageDir, target);

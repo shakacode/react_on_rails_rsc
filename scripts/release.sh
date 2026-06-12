@@ -290,15 +290,14 @@ preflight_checks() {
 
 run_tests() {
   if [[ "$SKIP_TESTS" == true ]]; then
-    log_warn "Skipping tests, build, and npm pack checks (--skip-tests)."
+    log_warn "Skipping tests and artifact verification (--skip-tests)."
     return
   fi
 
   echo ""
-  log_info "Running tests, build, and npm pack dry run..."
+  log_info "Running tests and artifact verification..."
   yarn test
-  yarn run build
-  npm pack --dry-run
+  yarn run verify:artifacts
 
   if ! git diff --quiet || ! git diff --cached --quiet; then
     log_error "Tests/build changed tracked files. Commit or revert those changes before releasing."
@@ -306,7 +305,7 @@ run_tests() {
     exit 1
   fi
 
-  log_info "Tests, build, and npm pack dry run passed."
+  log_info "Tests and artifact verification passed."
 }
 
 show_summary_and_confirm() {

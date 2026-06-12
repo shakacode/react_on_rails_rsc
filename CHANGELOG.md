@@ -2,6 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Updated the vendored `react-server-dom-webpack` runtime from the React 19.0.4 security level to 19.0.7, applying the upstream React Server Components reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh) while preserving the in-repo Flight CSS hint behavior. ([#86])
+
 ## [19.0.5-rc.7] - 2026-06-09
 
 ### Added
@@ -80,3 +85,4 @@ All notable changes to this package will be documented in this file.
 [19.0.5-rc.1]: https://github.com/shakacode/react_on_rails_rsc/releases/tag/19.0.5-rc.1
 
 [#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52
+[#86]: https://github.com/shakacode/react_on_rails_rsc/pull/86

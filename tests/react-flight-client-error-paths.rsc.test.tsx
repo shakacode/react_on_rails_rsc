@@ -91,6 +91,9 @@ const decodeElementType = async (
   }
   // Awaiting the private lazy payload triggers the chunk-load rejection path.
   expect(type._payload).toBeDefined();
+  if (!(type._payload instanceof Promise)) {
+    throw new Error('React lazy _payload is no longer a Promise; update decodeElementType.');
+  }
 
   return type._payload!;
 };
@@ -109,8 +112,17 @@ describe('React Flight client error paths', () => {
   });
 
   afterEach(() => {
-    webpackGlobal.__webpack_chunk_load__ = originalWebpackChunkLoad;
-    webpackGlobal.__webpack_require__ = originalWebpackRequire;
+    if (originalWebpackChunkLoad !== undefined) {
+      webpackGlobal.__webpack_chunk_load__ = originalWebpackChunkLoad;
+    } else {
+      Reflect.deleteProperty(webpackGlobal, '__webpack_chunk_load__');
+    }
+
+    if (originalWebpackRequire !== undefined) {
+      webpackGlobal.__webpack_require__ = originalWebpackRequire;
+    } else {
+      Reflect.deleteProperty(webpackGlobal, '__webpack_require__');
+    }
   });
 
   it('rejects a missing client reference with the missing module id', async () => {

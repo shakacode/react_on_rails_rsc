@@ -1836,6 +1836,7 @@ exports.createFromNodeStream = function (
     } catch (error) {
       streamErrored = !0;
       reportGlobalError(response, error);
+      stream.destroy();
     }
   });
   stream.on("error", function (error) {

@@ -66,7 +66,6 @@ jobs:
         id: metadata
         env:
           INPUT_VERSION: ${{ inputs.version }}
-          CONFIRM_PUBLISH: ${{ inputs.confirm_publish }}
         run: |
           node <<'NODE'
           const fs = require('node:fs');
@@ -185,11 +184,11 @@ jobs:
           set -euo pipefail
 
           yarn test
+          yarn build
 
           if node -e "process.exit(require('./package.json').scripts['verify:artifacts'] ? 0 : 1)"; then
             yarn verify:artifacts
           else
-            yarn run build
             npm pack --dry-run
           fi
 
@@ -204,7 +203,7 @@ jobs:
 
           # No npm auth token secret is configured; npm uses GitHub OIDC trusted publishing.
           # Publish the validated dist/ tree without rerunning prepublishOnly.
-          npm publish --ignore-scripts --provenance --tag "$NPM_TAG"
+          npm publish --ignore-scripts --provenance --access public --tag "$NPM_TAG"
 
       - name: Create local release tag
         env:

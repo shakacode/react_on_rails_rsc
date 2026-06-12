@@ -143,8 +143,9 @@ jobs:
             exit 1
           fi
 
-          if ! grep -q 'E404' /tmp/npm-view.err; then
+          if ! grep -q 'E404' /tmp/npm-version.json /tmp/npm-view.err; then
             cat /tmp/npm-view.err >&2
+            cat /tmp/npm-version.json >&2
             exit 1
           fi
 

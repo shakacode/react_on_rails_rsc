@@ -44,10 +44,13 @@ const loadBrowserClient = (): { client: BrowserClient; restore: () => void } => 
 
   webpackGlobal.__webpack_require__ = fakeWebpackRequire;
 
-  let client!: BrowserClient;
+  let client: BrowserClient | undefined;
   jest.isolateModules(() => {
     client = require('../src/react-server-dom-webpack/client.browser') as BrowserClient;
   });
+  if (!client) {
+    throw new Error('jest.isolateModules did not populate client synchronously');
+  }
 
   return {
     client,

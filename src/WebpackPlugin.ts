@@ -3,15 +3,7 @@ import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from "./clientReferences";
-import RSCWebpackPluginLib = require("./react-server-dom-webpack/plugin");
-
-type ReactFlightWebpackPlugin = {
-  apply(compiler: Compiler): void;
-};
-
-type ReactFlightWebpackPluginConstructor = {
-  new (options: unknown): ReactFlightWebpackPlugin;
-};
+import { RSCWebpackPlugin as RSCFlightWebpackPlugin } from "./webpack/RSCWebpackPlugin";
 
 type ClientReferenceSearchPath = {
   directory: string,
@@ -31,7 +23,7 @@ export type Options = {
 };
 
 export class RSCWebpackPlugin {
-  private plugin: ReactFlightWebpackPlugin;
+  private plugin: RSCFlightWebpackPlugin;
 
   constructor(options: Options) {
     const normalizedOptions =
@@ -48,7 +40,7 @@ export class RSCWebpackPlugin {
             ],
           }
         : options;
-    this.plugin = new (RSCWebpackPluginLib as ReactFlightWebpackPluginConstructor)(normalizedOptions);
+    this.plugin = new RSCFlightWebpackPlugin(normalizedOptions);
   }
 
   apply(compiler: Compiler) {

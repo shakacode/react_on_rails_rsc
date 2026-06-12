@@ -77,11 +77,12 @@
     "test": "yarn test:rsc && yarn test:non-rsc",
     "test:rsc": "NODE_CONDITIONS=react-server jest tests/*.rsc.test.*",
     "test:non-rsc": "jest tests --testPathIgnorePatterns=\".*\\.rsc\\.test\\..*\"",
+    "test:e2e": "bash scripts/e2e/run.sh",
     "build": "rm -rf dist tsconfig.tsbuildinfo && yarn run tsc",
     "prepublishOnly": "yarn run build",
     "release": "bash scripts/release.sh",
     "release:dry-run": "bash scripts/release.sh --dry-run",
-    "build-if-needed": "test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js || (yarn run build && test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js)",
+    "build-if-needed": "test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js -a -f dist/webpack/RSCWebpackPlugin.js || (yarn run build && test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js -a -f dist/webpack/RSCWebpackPlugin.js)",
     "prepack": "yarn run build-if-needed",
     "prepare": "yarn run build-if-needed"
   },

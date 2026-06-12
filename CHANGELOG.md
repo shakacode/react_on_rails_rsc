@@ -2,6 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
+## [19.0.5-rc.8] - 2026-06-12
+
+### Fixed
+- Fixed Webpack client manifest generation to bind each client component to the chunk group created by its client-reference dependency, avoiding cross-reference chunk over-preloads while preserving entries for eager-imported client references. ([#54])
+
 ## [19.0.5-rc.7] - 2026-06-09
 
 ### Added
@@ -71,6 +76,7 @@ All notable changes to this package will be documented in this file.
 ### Changed
 - Released the first `19.0.5` release candidate.
 
+[19.0.5-rc.8]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.7...19.0.5-rc.8
 [19.0.5-rc.7]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.6...19.0.5-rc.7
 [19.0.5-rc.6]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.5...19.0.5-rc.6
 [19.0.5-rc.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.4...19.0.5-rc.5
@@ -80,3 +86,4 @@ All notable changes to this package will be documented in this file.
 [19.0.5-rc.1]: https://github.com/shakacode/react_on_rails_rsc/releases/tag/19.0.5-rc.1
 
 [#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52
+[#54]: https://github.com/shakacode/react_on_rails_rsc/pull/54

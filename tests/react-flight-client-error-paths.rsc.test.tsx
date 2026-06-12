@@ -86,6 +86,9 @@ const decodeElementType = async (
   // client-reference error is asserted before React attempts to resolve it.
   const type = decoded.type as { $$typeof?: symbol; _payload?: Promise<unknown> };
   expect(type.$$typeof).toBe(Symbol.for('react.lazy'));
+  if (!('_payload' in type)) {
+    throw new Error('React lazy shape changed; update decodeElementType to match the new internals.');
+  }
   expect(type._payload).toBeDefined();
 
   return type._payload!;

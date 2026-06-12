@@ -2796,7 +2796,9 @@
           ((streamErrored = !0), reportGlobalError(response, error));
       });
       stream.on("end", function () {
-        streamErrored || reportGlobalError(response, Error("Connection closed."));
+        streamErrored ||
+          ((streamErrored = !0),
+          reportGlobalError(response, Error("Connection closed.")));
       });
       return getChunk(response, 0);
     };

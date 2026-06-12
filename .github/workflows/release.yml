@@ -37,6 +37,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24.x'
+          registry-url: https://registry.npmjs.org
 
       - name: Enable Yarn Classic
         run: corepack enable
@@ -137,6 +138,8 @@ jobs:
             exit 1
           fi
 
+          # npm view exits non-zero with E404 when the version does not exist.
+          # Any other non-zero exit (network error, auth failure, etc.) should fail the release.
           if npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >/tmp/npm-version.json 2>/tmp/npm-view.err; then
             echo "${PACKAGE_NAME}@${RELEASE_VERSION} is already published." >&2
             cat /tmp/npm-version.json >&2
@@ -165,6 +168,11 @@ jobs:
           git diff --quiet
           git diff --cached --quiet
 
+      - name: Publish to npm with provenance
+        env:
+          NPM_TAG: ${{ steps.metadata.outputs.npm_tag }}
+        run: npm publish --provenance --access public --tag "$NPM_TAG"
+
       - name: Create local release tag
         env:
           RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
@@ -174,11 +182,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$RELEASE_VERSION" -m "Release $RELEASE_VERSION" "$GITHUB_SHA"
-
-      - name: Publish to npm with provenance
-        env:
-          NPM_TAG: ${{ steps.metadata.outputs.npm_tag }}
-        run: npm publish --provenance --access public --tag "$NPM_TAG"
 
       - name: Push tag and create GitHub release
         env:

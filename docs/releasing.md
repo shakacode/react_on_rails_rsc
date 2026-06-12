@@ -196,12 +196,17 @@ git tag -d X.Y.Z
 git push origin --delete X.Y.Z
 ```
 
-**GitHub release failed after npm publish:**
+**npm publish succeeded but the tag push or GitHub release failed:**
 
-Create it manually from the changelog notes:
+Do not rerun the release workflow for the same version. The duplicate-publish
+guard will stop it, and publishing the package has already completed. Create the
+missing unprefixed tag from the release commit, push it, then create the GitHub
+release from the matching changelog notes:
 
 ```bash
-gh release create X.Y.Z --title "X.Y.Z" --notes "..."
+git tag -a X.Y.Z -m "Release X.Y.Z" <release-commit-sha>
+git push origin X.Y.Z
+gh release create X.Y.Z --title "X.Y.Z" --notes-file /path/to/release-notes.md
 ```
 
 Add `--prerelease` for prerelease versions such as `X.Y.Z-rc.N`.

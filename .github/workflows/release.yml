@@ -184,11 +184,11 @@ jobs:
           set -euo pipefail
 
           yarn test
-          yarn build
 
           if node -e "process.exit(require('./package.json').scripts['verify:artifacts'] ? 0 : 1)"; then
             yarn verify:artifacts
           else
+            yarn build
             npm pack --dry-run
           fi
 
@@ -203,6 +203,7 @@ jobs:
 
           # No npm auth token secret is configured; npm uses GitHub OIDC trusted publishing.
           # Publish the validated dist/ tree without rerunning prepublishOnly.
+          # If prepublishOnly grows beyond the build already covered above, update this job first.
           npm publish --ignore-scripts --provenance --access public --tag "$NPM_TAG"
 
       - name: Create local release tag

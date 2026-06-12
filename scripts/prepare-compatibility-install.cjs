@@ -94,11 +94,10 @@ function compactObject(object) {
   );
 }
 
-function run(command, args, childEnv) {
+function run(command, args) {
   console.log(`[compat] Running ${command} ${args.join(' ')}`);
   const result = spawnSync(command, args, {
     cwd: rootDir,
-    env: childEnv,
     stdio: 'inherit',
   });
 
@@ -165,7 +164,7 @@ function assertWebpackSpec(spec) {
 }
 
 function assertRspackSpec(spec) {
-  if (spec === '^1.0.0' || spec === '^1' || spec === '1.x') return;
+  if (spec === '^1' || spec === '1.x') return;
 
   const version = parseVersion(stripSimpleRangePrefix(spec));
   if (version.major !== 1) {

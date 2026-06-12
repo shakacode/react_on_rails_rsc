@@ -21,6 +21,7 @@ jobs:
     if: github.event_name != 'schedule'
     name: ${{ matrix.label }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -61,10 +62,10 @@ jobs:
             rspack-version: '1.x'
 
     steps:
-      # Pinned immutable actions/checkout release SHA verified via git ls-remote.
+      # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       - name: Use Node.js
-        # Pinned immutable actions/setup-node release SHA verified via git ls-remote.
+        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node-version }}
@@ -81,6 +82,8 @@ jobs:
           COMPAT_RSPACK: ${{ matrix.rspack-version }}
         run: node scripts/prepare-compatibility-install.cjs
       - name: Build package artifacts
+        env:
+          NODE_OPTIONS: ${{ matrix.node-options }}
         run: yarn build
       - name: Run unit and integration tests
         env:
@@ -100,12 +103,13 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: React canary signal
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     continue-on-error: true
     steps:
-      # Pinned immutable actions/checkout release SHA verified via git ls-remote.
+      # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       - name: Use Node.js
-        # Pinned immutable actions/setup-node release SHA verified via git ls-remote.
+        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22.x'

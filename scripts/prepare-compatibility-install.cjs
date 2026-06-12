@@ -61,6 +61,13 @@ try {
   fs.writeFileSync(packageJsonPath, originalPackageJson);
 }
 
+if (skipInstall) {
+  assertGitPathClean('package.json');
+  assertGitPathClean('yarn.lock');
+  console.log(`[compat] ${label}: requested specs validated; skipping install and installed-version checks`);
+  process.exit(0);
+}
+
 const installed = Object.fromEntries(
   Object.entries(packageSpecs).map(([packageName, spec]) => [
     packageName,
@@ -121,7 +128,11 @@ function readInstalledVersion(packageName, spec) {
 
 function validateRequestedSpecs(specs) {
   for (const [packageName, spec] of Object.entries(specs)) {
-    if (packageName === 'react' || packageName === 'react-dom') {
+    if (
+      packageName === 'react' ||
+      packageName === 'react-dom' ||
+      packageName === 'react-server-dom-webpack'
+    ) {
       assertReactSpec(packageName, spec);
     }
 
@@ -164,9 +175,14 @@ function assertRspackSpec(spec) {
 
 function matchesSpec(actualVersion, spec) {
   if (isCanarySpec(spec)) return actualVersion.includes('canary');
-  if (spec === '^5.0.0') return parseVersion(actualVersion).major === 5;
-  if (spec === '^1.0.0' || spec === '^1' || spec === '1.x') {
+  if (spec === '1.x') {
     return parseVersion(actualVersion).major === 1;
+  }
+
+  if (spec.startsWith('^')) {
+    const expected = parseVersion(stripSimpleRangePrefix(spec));
+    const actual = parseVersion(actualVersion);
+    return actual.major === expected.major && compareVersions(actual, expected) >= 0;
   }
 
   if (spec.startsWith('~')) {

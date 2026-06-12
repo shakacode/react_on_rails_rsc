@@ -61,11 +61,14 @@ jobs:
             rspack-version: '1.x'
 
     steps:
-      - uses: actions/checkout@v5
+      # actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       - name: Use Node.js
-        uses: actions/setup-node@v4
+        # actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node-version }}
+          cache: yarn
       - name: Install matrix packages without changing yarn.lock
         env:
           COMPAT_LABEL: ${{ matrix.label }}
@@ -98,11 +101,14 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v5
+      # actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       - name: Use Node.js
-        uses: actions/setup-node@v4
+        # actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22.x'
+          cache: yarn
       - name: Install canary packages without changing yarn.lock
         env:
           COMPAT_LABEL: React canary / webpack latest 5.x / rspack latest 1.x / Node 22

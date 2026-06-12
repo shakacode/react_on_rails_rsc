@@ -163,7 +163,7 @@ jobs:
           npm_exit=0
           npm --silent view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >"$NPM_VIEW_OUTPUT" 2>&1 || npm_exit=$?
 
-          if [[ "$npm_exit" == "0" ]]; then
+          if [[ "$npm_exit" -eq 0 ]]; then
             echo "${PACKAGE_NAME}@${RELEASE_VERSION} is already published." >&2
             cat "$NPM_VIEW_OUTPUT" >&2
             exit 1
@@ -209,7 +209,7 @@ jobs:
 
           # No npm auth token secret is configured; npm uses GitHub OIDC trusted publishing.
           # Keep the package prepublishOnly build as a publish-time artifact safety net.
-          npm publish --provenance --access public --tag "$NPM_TAG"
+          npm publish --provenance --tag "$NPM_TAG"
 
       - name: Create local release tag
         env:
@@ -252,7 +252,7 @@ jobs:
               break
             fi
 
-            if [[ "$attempt" == "12" ]]; then
+            if [[ "$attempt" -eq 12 ]]; then
               echo "Published package ${PACKAGE_NAME}@${RELEASE_VERSION} was not visible after retries." >&2
               exit 1
             fi

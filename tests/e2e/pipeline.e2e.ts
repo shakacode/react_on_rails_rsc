@@ -118,6 +118,15 @@ const runNode = <T>(args: string[]): T => {
 const readJson = <T>(...segments: string[]): T =>
   JSON.parse(fs.readFileSync(path.join(...segments), 'utf8')) as T;
 
+// The intended React fork version — the runtime everywhere in the packed
+// dist must report exactly this (devtools registration + embedded strings).
+const INTENDED_FORK_VERSION = readJson<{ version: string }>(
+  REPO_ROOT,
+  'src',
+  'react-server-dom-webpack',
+  'package.json',
+).version;
+
 const componentUrl = (file: string): string =>
   pathToFileURL(path.join(PROJECT_REAL, 'src', 'components', file)).href;
 
@@ -362,17 +371,11 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       // The runtime's embedded version string (captured from the devtools
       // hook registration) must match the intended fork version — catches
       // stale runtime builds like the rc.4 "still reports 19.0.3" incident.
-      const intendedVersion = readJson<{ version: string }>(
-        REPO_ROOT,
-        'src',
-        'react-server-dom-webpack',
-        'package.json',
-      ).version;
       const flightRenderer = result.devtoolsRenderers.find(
         (renderer) => renderer.rendererPackageName === 'react-on-rails-rsc',
       );
       expect(flightRenderer).toBeDefined();
-      expect(flightRenderer!.version).toBe(intendedVersion);
+      expect(flightRenderer!.version).toBe(INTENDED_FORK_VERSION);
 
       // And react-dom in the client bundle is the consumer-installed copy.
       const reactDomVersion = readJson<{ version: string }>(
@@ -392,13 +395,6 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
 
 describe('installed tarball version integrity', () => {
   it('ships the intended React fork version in the packed runtime', () => {
-    const intendedVersion = readJson<{ version: string }>(
-      REPO_ROOT,
-      'src',
-      'react-server-dom-webpack',
-      'package.json',
-    ).version;
-
     // The runtime package.json inside the installed dist…
     const installedRuntimeVersion = readJson<{ version: string }>(
       INSTALLED_PKG,
@@ -406,7 +402,7 @@ describe('installed tarball version integrity', () => {
       'react-server-dom-webpack',
       'package.json',
     ).version;
-    expect(installedRuntimeVersion).toBe(intendedVersion);
+    expect(installedRuntimeVersion).toBe(INTENDED_FORK_VERSION);
 
     // …and every version string embedded in the installed runtime sources.
     const cjsDir = path.join(INSTALLED_PKG, 'dist', 'react-server-dom-webpack', 'cjs');
@@ -424,7 +420,7 @@ describe('installed tarball version integrity', () => {
     expect(Object.keys(embedded).length).toBeGreaterThan(0);
     for (const [file, versions] of Object.entries(embedded)) {
       for (const version of versions) {
-        expect({ file, version }).toEqual({ file, version: intendedVersion });
+        expect({ file, version }).toEqual({ file, version: INTENDED_FORK_VERSION });
       }
     }
 

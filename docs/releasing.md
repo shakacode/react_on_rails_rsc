@@ -156,9 +156,8 @@ the exact target version, including any `-rc.N` prerelease suffix.
    the GitHub release notes were created from that section:
 
    ```bash
-   # Replace with the actual version, for example:
-   grep -F "## [19.0.5] - " CHANGELOG.md
-   # For a prerelease: grep -F "## [19.0.5-rc.8] - " CHANGELOG.md
+   grep -F "## [X.Y.Z] - " CHANGELOG.md
+   # For a prerelease: grep -F "## [X.Y.Z-rc.N] - " CHANGELOG.md
    ```
 
 6. The registry artifact metadata is consistent with the release:
@@ -172,12 +171,19 @@ the exact target version, including any `-rc.N` prerelease suffix.
    for release evidence, compare its hash to the registry metadata.
 
 7. For final releases only, after the downstream React on Rails rollout PR is
-   merged to `main`, confirm `latest` points at the final version:
+   merged to `main`, promote `latest` to the final version, then confirm it
+   took effect:
 
    ```bash
+   # Action: promote latest (run once, after the downstream gate is merged)
    npm dist-tag add react-on-rails-rsc@X.Y.Z latest
+
+   # Verify: confirm latest now points at the correct version
    npm view react-on-rails-rsc dist-tags --json
    ```
+
+   Confirm `latest` points at `X.Y.Z` and no other unexpected tags changed.
+   Do not run the `dist-tag add` line during a prerelease cycle.
 
 Reference pages:
 

@@ -32,8 +32,7 @@ rspack latest 1.x. A weekly React canary job is signal-only and is allowed to
 fail while upstream canary APIs move.
 
 A formal versioning policy is tracked in
-[#70](https://github.com/shakacode/react_on_rails_rsc/issues/70); no merged
-`docs/versioning.md` exists in this branch yet.
+[#70](https://github.com/shakacode/react_on_rails_rsc/issues/70).
 
 ## Support
 

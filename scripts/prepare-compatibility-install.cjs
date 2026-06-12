@@ -50,7 +50,7 @@ try {
 
     fs.writeFileSync(packageJsonPath, `${JSON.stringify(nextPackageJson, null, 2)}\n`);
 
-    run('yarn', ['install', '--pure-lockfile', '--non-interactive', '--ignore-scripts'], {
+    run('yarn', ['install', '--pure-lockfile', '--non-interactive'], {
       ...env,
       YARN_CACHE_FOLDER:
         env.YARN_CACHE_FOLDER ||
@@ -136,9 +136,9 @@ function validateRequestedSpecs(specs) {
 }
 
 function assertReactSpec(packageName, spec) {
-  if (isCanarySpec(spec) || spec === '~19.2.0') return;
+  if (isCanarySpec(spec)) return;
 
-  const version = parseVersion(spec);
+  const version = parseVersion(stripSimpleRangePrefix(spec));
   if (version.major !== 19 || (version.minor === 0 && version.patch < 4)) {
     throw new Error(`${packageName}@${spec} is outside the supported React compatibility matrix`);
   }
@@ -147,7 +147,7 @@ function assertReactSpec(packageName, spec) {
 function assertWebpackSpec(spec) {
   if (spec === '^5.0.0') return;
 
-  const version = parseVersion(spec);
+  const version = parseVersion(stripSimpleRangePrefix(spec));
   if (version.major !== 5 || compareVersions(version, { major: 5, minor: 59, patch: 0 }) < 0) {
     throw new Error(`webpack@${spec} is below the supported peer minimum 5.59.0`);
   }
@@ -156,7 +156,7 @@ function assertWebpackSpec(spec) {
 function assertRspackSpec(spec) {
   if (spec === '^1.0.0' || spec === '^1' || spec === '1.x') return;
 
-  const version = parseVersion(spec);
+  const version = parseVersion(stripSimpleRangePrefix(spec));
   if (version.major !== 1) {
     throw new Error(`@rspack/core@${spec} is outside the supported rspack 1.x compatibility matrix`);
   }
@@ -186,6 +186,10 @@ function isCanarySpec(spec) {
   return spec === 'canary' || spec.includes('-canary');
 }
 
+function stripSimpleRangePrefix(spec) {
+  return spec.replace(/^[~^]/, '');
+}
+
 function parseVersion(version) {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
   if (!match) {
@@ -204,21 +208,16 @@ function compareVersions(a, b) {
 }
 
 function assertGitPathClean(relativePath) {
-  const targetPath = path.join(rootDir, relativePath);
-  if (!fs.existsSync(targetPath)) {
-    return;
-  }
-
-  const result = spawnSync('git', ['diff', '--quiet', '--', relativePath], {
+  const result = spawnSync('git', ['status', '--porcelain', '--', relativePath], {
     cwd: rootDir,
-    stdio: 'inherit',
+    stdio: 'pipe',
   });
 
   if (result.error) {
     throw result.error;
   }
 
-  if (result.status !== 0) {
+  if ((result.stdout || '').toString().trim() !== '') {
     throw new Error(`${relativePath} changed during compatibility install`);
   }
 }
@@ -242,7 +241,7 @@ function writeSummary(runLabel, requestedSpecs, installedVersions) {
       '| --- | --- | --- |',
       ...rows,
       '',
-      '- Install mode: `yarn install --pure-lockfile --non-interactive --ignore-scripts`',
+      '- Install mode: `yarn install --pure-lockfile --non-interactive`',
       '- `package.json` was restored after install.',
       '- `git diff -- yarn.lock` remained clean after matrix prep.',
       '',

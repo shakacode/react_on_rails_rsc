@@ -18,6 +18,12 @@ Tags in this repository do not use a `v` prefix. For example, use
     npm dist-tag rm react-on-rails-rsc rc
     ```
 
+    Before removing, record the current state so you can restore if needed:
+
+    ```bash
+    npm view react-on-rails-rsc dist-tags --json
+    ```
+
     If removal was premature, restore the previous stale value explicitly:
 
     ```bash
@@ -29,7 +35,8 @@ Tags in this repository do not use a `v` prefix. For example, use
   is the rollout PR in
   [shakacode/react_on_rails](https://github.com/shakacode/react_on_rails) that
   pins `react-on-rails-rsc@X.Y.Z-rc.N` and confirms the downstream app release
-  path is ready.
+  path is ready. `latest` must not advance until that rollout PR is merged to
+  `main` in `react_on_rails`.
 
 ## Prerequisites
 
@@ -149,6 +156,7 @@ the exact target version, including any `-rc.N` prerelease suffix.
 
    ```bash
    # Replace X.Y.Z with the actual version before running.
+   # Example: grep -F "## [19.0.5] - " CHANGELOG.md
    grep -F "## [X.Y.Z] - " CHANGELOG.md
    ```
 
@@ -197,8 +205,8 @@ Create it manually from the matching `CHANGELOG.md` section:
 
 ```bash
 # Final release
-gh release create X.Y.Z --title "X.Y.Z" --notes "..."
+gh release create X.Y.Z --title "X.Y.Z" --target <release-commit-sha> --notes "..."
 
 # Release candidate
-gh release create X.Y.Z-rc.N --title "X.Y.Z-rc.N" --prerelease --notes "..."
+gh release create X.Y.Z-rc.N --title "X.Y.Z-rc.N" --prerelease --target <release-commit-sha> --notes "..."
 ```

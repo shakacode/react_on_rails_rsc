@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           ref: main
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Use Node.js
         # Pinned immutable actions/setup-node release SHA verified via git ls-remote.
@@ -208,6 +208,7 @@ jobs:
           set -euo pipefail
 
           # No npm auth token secret is configured; npm uses GitHub OIDC trusted publishing.
+          # Keep the package prepublishOnly build as a publish-time artifact safety net.
           npm publish --provenance --access public --tag "$NPM_TAG"
 
       - name: Create local release tag
@@ -246,17 +247,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          for attempt in 1 2 3 4 5; do
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
             if npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version; then
               break
             fi
 
-            if [[ "$attempt" == "5" ]]; then
+            if [[ "$attempt" == "12" ]]; then
               echo "Published package ${PACKAGE_NAME}@${RELEASE_VERSION} was not visible after retries." >&2
               exit 1
             fi
 
-            sleep 10
+            sleep 15
           done
 
           npm view "$PACKAGE_NAME" dist-tags --json

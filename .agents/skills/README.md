@@ -9,6 +9,11 @@ models the skills point to.
 Invoke a skill with its `$name` (e.g. `$pr-batch`, `$plan-pr-batch`, `$adversarial-pr-review`) or the
 matching Claude Code slash command.
 
+For the maintainer-facing guide to choosing and running these skills, see
+[`internal/contributor-info/agent-pr-batch-skills.md`](../../internal/contributor-info/agent-pr-batch-skills.md).
+For the workflow adoption and retargeting checklist, see
+[`internal/contributor-info/agent-workflow-adoption.md`](../../internal/contributor-info/agent-workflow-adoption.md).
+
 ## Adaptation status
 
 The originals assume a Ruby/Rails monorepo (rspec, rubocop, rake, shakapacker, a Pro tier, a

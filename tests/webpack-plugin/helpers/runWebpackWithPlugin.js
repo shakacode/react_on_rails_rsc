@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Child-process runner that compiles a fixture with real webpack +
- * ReactFlightWebpackPlugin (the fork in src/react-server-dom-webpack).
+ * RSCWebpackPlugin (the TypeScript plugin built to dist/webpack).
  *
  * Called from tests/webpack-plugin/helpers/compile.ts. Reads an args JSON
  * file, runs webpack, writes result JSON to stdout. Mirrors the pattern of
@@ -46,7 +46,19 @@ const fs = require('fs');
 const path = require('path');
 const webpack = require('webpack');
 
-const ReactFlightWebpackPlugin = require('../../../src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js');
+const pluginDistPath = path.resolve(__dirname, '../../../dist/webpack/RSCWebpackPlugin.js');
+if (!fs.existsSync(pluginDistPath)) {
+  process.stdout.write(
+    JSON.stringify({
+      ok: false,
+      errors: [
+        `Missing ${path.relative(path.resolve(__dirname, '../../..'), pluginDistPath)}. Run \`yarn build\` first.`,
+      ],
+    }),
+  );
+  process.exit(1);
+}
+const { RSCWebpackPlugin: ReactFlightWebpackPlugin } = require(pluginDistPath);
 
 const argsFile = process.argv[2];
 if (!argsFile) {

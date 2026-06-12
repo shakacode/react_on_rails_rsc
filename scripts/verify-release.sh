@@ -247,8 +247,46 @@ function assertEqual(actual, expected, label) {
   }
 }
 
-assertEqual(rootPackage.peerDependencies?.react, expectedPeerRange, 'root peerDependencies.react');
-assertEqual(rootPackage.peerDependencies?.['react-dom'], expectedPeerRange, 'root peerDependencies.react-dom');
+function parseVersion(version, label) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) {
+    throw new Error(`${label} expected X.Y.Z, got ${version}`);
+  }
+
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+  };
+}
+
+function compareVersions(a, b) {
+  return a.major - b.major || a.minor - b.minor || a.patch - b.patch;
+}
+
+function assertCaretRangeIncludesVersion(range, version, label) {
+  const match = /^\^(\d+\.\d+\.\d+)$/.exec(range || '');
+  if (!match) {
+    throw new Error(`${label} expected a caret X.Y.Z range that includes ${version}, got ${range}`);
+  }
+
+  const minimum = parseVersion(match[1], label);
+  const target = parseVersion(version, 'runtime version');
+  if (minimum.major !== target.major || compareVersions(minimum, target) > 0) {
+    throw new Error(`${label} ${range} does not include vendored runtime ${version}`);
+  }
+}
+
+assertCaretRangeIncludesVersion(
+  rootPackage.peerDependencies?.react,
+  runtimeVersion,
+  'root peerDependencies.react'
+);
+assertCaretRangeIncludesVersion(
+  rootPackage.peerDependencies?.['react-dom'],
+  runtimeVersion,
+  'root peerDependencies.react-dom'
+);
 assertEqual(runtimePackage.peerDependencies?.react, expectedPeerRange, 'runtime peerDependencies.react');
 assertEqual(runtimePackage.peerDependencies?.['react-dom'], expectedPeerRange, 'runtime peerDependencies.react-dom');
 
@@ -266,7 +304,9 @@ for (const marker of [`version: "${runtimeVersion}"`, `reconcilerVersion: "${run
   }
 }
 
-console.log(`  - Runtime version ${runtimeVersion} matches peer policy ${expectedPeerRange}`);
+console.log(
+  `  - Runtime version ${runtimeVersion} is included by root peers and matches runtime peer policy ${expectedPeerRange}`
+);
 NODE
 
 log "Verifying embedded React runtime version policy"

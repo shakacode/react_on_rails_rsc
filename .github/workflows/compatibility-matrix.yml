@@ -61,10 +61,10 @@ jobs:
             rspack-version: '1.x'
 
     steps:
-      # actions/checkout@v5
+      # Pinned immutable actions/checkout release SHA verified via git ls-remote.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       - name: Use Node.js
-        # actions/setup-node@v4
+        # Pinned immutable actions/setup-node release SHA verified via git ls-remote.
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node-version }}
@@ -74,6 +74,7 @@ jobs:
           COMPAT_LABEL: ${{ matrix.label }}
           COMPAT_REACT: ${{ matrix.react-version }}
           COMPAT_REACT_DOM: ${{ matrix.react-dom-version }}
+          COMPAT_REACT_SERVER_DOM_WEBPACK: ${{ matrix.react-version }}
           COMPAT_TYPES_REACT: ${{ matrix.types-react-version }}
           COMPAT_TYPES_REACT_DOM: ${{ matrix.types-react-dom-version }}
           COMPAT_WEBPACK: ${{ matrix.webpack-version }}
@@ -101,10 +102,10 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      # actions/checkout@v5
+      # Pinned immutable actions/checkout release SHA verified via git ls-remote.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       - name: Use Node.js
-        # actions/setup-node@v4
+        # Pinned immutable actions/setup-node release SHA verified via git ls-remote.
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22.x'

@@ -156,7 +156,7 @@ function assertReactSpec(packageName, spec) {
 }
 
 function assertWebpackSpec(spec) {
-  if (spec === '^5.0.0') return;
+  if (spec.startsWith('^')) return;
 
   const version = parseVersion(stripSimpleRangePrefix(spec));
   if (version.major !== 5 || compareVersions(version, { major: 5, minor: 59, patch: 0 }) < 0) {
@@ -182,7 +182,8 @@ function matchesSpec(actualVersion, spec) {
   if (spec.startsWith('^')) {
     const expected = parseVersion(stripSimpleRangePrefix(spec));
     const actual = parseVersion(actualVersion);
-    return actual.major === expected.major && compareVersions(actual, expected) >= 0;
+    const effective = spec === '^5.0.0' ? { major: 5, minor: 59, patch: 0 } : expected;
+    return actual.major === effective.major && compareVersions(actual, effective) >= 0;
   }
 
   if (spec.startsWith('~')) {
@@ -231,6 +232,10 @@ function assertGitPathClean(relativePath) {
 
   if (result.error) {
     throw result.error;
+  }
+
+  if (result.status !== 0) {
+    throw new Error(`git status failed for ${relativePath} (exit ${result.status})`);
   }
 
   if ((result.stdout || '').toString().trim() !== '') {

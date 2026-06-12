@@ -52,6 +52,12 @@ else
   echo "==> Creating consumer project at $PROJECT_DIR"
   rm -rf "$PROJECT_DIR"
   mkdir -p "$PROJECT_DIR"
+  # Pin the consumer's bundler/react deps to the exact versions the repo's
+  # yarn.lock resolved so the CI job cannot drift when a compatible-range
+  # release of webpack/rspack/react ships (the suite asserts exact chunk
+  # names and current bundler behavior). jsdom is not a repo dependency and
+  # is pinned explicitly.
+  exact_version() { node -p "require('$1/package.json').version"; }
   cat >"$PROJECT_DIR/package.json" <<EOF
 {
   "name": "ror-rsc-e2e-consumer",
@@ -59,13 +65,13 @@ else
   "version": "0.0.0",
   "dependencies": {
     "react-on-rails-rsc": "file:$TARBALL",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "webpack": "^5.98.0",
-    "@rspack/core": "^1.0.0",
-    "css-loader": "^7.1.4",
-    "mini-css-extract-plugin": "^2.10.2",
-    "jsdom": "^26.0.0"
+    "react": "$(exact_version react)",
+    "react-dom": "$(exact_version react-dom)",
+    "webpack": "$(exact_version webpack)",
+    "@rspack/core": "$(exact_version @rspack/core)",
+    "css-loader": "$(exact_version css-loader)",
+    "mini-css-extract-plugin": "$(exact_version mini-css-extract-plugin)",
+    "jsdom": "26.1.0"
   }
 }
 EOF

@@ -357,7 +357,7 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
             `/assets/${base('NestedLabel.js')}.chunk.css`,
             `/assets/${base('ThemeSection.js')}.chunk.css`,
           ];
-      expect([...result.stylesheetLinks].sort()).toEqual(expectedLinks);
+      expect([...result.stylesheetLinks].sort()).toEqual([...expectedLinks].sort());
 
       // The runtime's embedded version string (captured from the devtools
       // hook registration) must match the intended fork version — catches

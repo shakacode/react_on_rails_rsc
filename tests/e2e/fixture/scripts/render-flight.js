@@ -20,7 +20,9 @@ const { pathToFileURL } = require('url');
 const { PassThrough } = require('stream');
 
 const bundlerName = process.argv[2];
-const projectRoot = path.resolve(__dirname, '..');
+// The bundlers resolve symlinks (e.g. /tmp → /private/tmp on macOS), so the
+// manifest keys use real paths; the registered reference IDs must match.
+const projectRoot = fs.realpathSync(path.resolve(__dirname, '..'));
 const buildDir = path.join(projectRoot, 'build', bundlerName);
 
 // The public wrapper (exports-map entry)…
@@ -53,9 +55,10 @@ const model = createApp({
   ThemeSection: clientReference('ThemeSection.js'),
 });
 
+const errors = [];
 const stream = renderToPipeableStream(model, clientManifest, {
   onError(error) {
-    process.stderr.write(`flight onError: ${String((error && error.stack) || error)}\n`);
+    errors.push(String((error && error.stack) || error));
   },
 });
 
@@ -66,6 +69,9 @@ sink.on('data', (chunk) => {
 });
 sink.on('end', () => {
   fs.writeFileSync(path.join(buildDir, 'flight-payload.rsc'), payload);
-  process.stdout.write(JSON.stringify({ ok: true, payloadLength: payload.length }));
+  process.stdout.write(
+    JSON.stringify({ ok: errors.length === 0, errors, payloadLength: payload.length }),
+  );
+  process.exitCode = errors.length === 0 ? 0 : 1;
 });
 stream.pipe(sink);

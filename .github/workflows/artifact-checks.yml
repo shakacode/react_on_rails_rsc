@@ -19,6 +19,6 @@ jobs:
         with:
           node-version: '20.x'
       - name: Install packages using yarn
-        run: yarn
+        run: yarn --frozen-lockfile
       - name: Verify package artifacts
         run: yarn verify:artifacts

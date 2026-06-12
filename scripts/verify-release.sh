@@ -126,9 +126,32 @@ for (const { exportPath, conditionPath, target } of targets) {
   }
 }
 
-const runtimeEntrypoints = Object.keys(pkg.exports).filter((exportPath) => exportPath !== './package.json');
-if (runtimeEntrypoints.length !== 11) {
-  throw new Error(`Expected 11 runtime export paths, found ${runtimeEntrypoints.length}: ${runtimeEntrypoints.join(', ')}`);
+const expectedRuntimeEntrypoints = [
+  '.',
+  './client',
+  './client.browser',
+  './client.node',
+  './RSCReferenceDiscoveryPlugin',
+  './RspackLoader',
+  './RspackPlugin',
+  './server',
+  './server.node',
+  './WebpackLoader',
+  './WebpackPlugin',
+].sort();
+const runtimeEntrypoints = Object.keys(pkg.exports)
+  .filter((exportPath) => exportPath !== './package.json')
+  .sort();
+
+if (JSON.stringify(runtimeEntrypoints) !== JSON.stringify(expectedRuntimeEntrypoints)) {
+  throw new Error(
+    [
+      'Runtime export paths changed.',
+      `Expected: ${expectedRuntimeEntrypoints.join(', ')}`,
+      `Actual:   ${runtimeEntrypoints.join(', ')}`,
+      'Update the artifact verifier snapshot when the package export surface intentionally changes.',
+    ].join('\n')
+  );
 }
 
 console.log(`  - Verified ${targets.length} export target files across ${runtimeEntrypoints.length} runtime paths plus package.json`);
@@ -217,9 +240,11 @@ log "Verifying embedded React runtime version policy"
 node "$TMP_DIR/verify-runtime-version.cjs" "$PACKAGE_DIR"
 
 log "Running publint"
-yarn publint run "$TARBALL"
+yarn publint "$TARBALL"
 
 log "Running Are The Types Wrong"
+# Keep the Node 16 profile to catch legacy Node resolver regressions; this
+# package still supports consumers on older bundler/runtime stacks.
 yarn attw "$TARBALL" \
   --profile node16 \
   --ignore-rules cjs-only-exports-default \

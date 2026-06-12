@@ -28,7 +28,26 @@ const fs = require('fs');
 const path = require('path');
 
 const [packJsonPath, packDestination] = process.argv.slice(2);
-const packOutput = JSON.parse(fs.readFileSync(packJsonPath, 'utf8'));
+const rawPackOutput = fs.readFileSync(packJsonPath, 'utf8');
+const packOutputLines = rawPackOutput.split(/\r?\n/);
+let packOutput;
+
+for (const [lineIndex, line] of packOutputLines.entries()) {
+  if (!line.trimStart().startsWith('[')) {
+    continue;
+  }
+
+  try {
+    packOutput = JSON.parse(packOutputLines.slice(lineIndex).join('\n'));
+    break;
+  } catch {
+    // npm can print lifecycle output before --json output; keep searching.
+  }
+}
+
+if (!packOutput) {
+  throw new Error(`Unable to parse npm pack JSON output: ${rawPackOutput}`);
+}
 
 if (!Array.isArray(packOutput) || packOutput.length !== 1 || !packOutput[0].filename) {
   throw new Error(`Unexpected npm pack output: ${JSON.stringify(packOutput)}`);

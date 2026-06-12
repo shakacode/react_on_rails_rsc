@@ -17,6 +17,12 @@ This package provides internal tooling for React Server Components integration:
 - Webpack loader for bundling server components
 - Client/server utilities for RSC rendering
 
+## Versioning
+
+The package `major.minor` tracks the React runtime line it ships or requires.
+See [`docs/versioning.md`](docs/versioning.md) for peer dependency,
+prerelease, dist-tag, and runtime-strategy policy.
+
 ## Releasing
 
 Release this package from `main` using the changelog-driven workflow in

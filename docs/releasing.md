@@ -18,6 +18,9 @@ For an actual release:
 
 ## Release Process
 
+Before choosing a target version, confirm the runtime-line policy in
+[versioning.md](versioning.md).
+
 ### 1. Update The Changelog
 
 Use the local Claude Code command:

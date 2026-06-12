@@ -7,8 +7,14 @@ on:
 jobs:
   claude-review:
     if: |
-      !startsWith(github.event.pull_request.title, 'Release react-on-rails-rsc ') &&
-      !startsWith(github.event.pull_request.title, 'Stamp CHANGELOG and package version for ')
+      !(
+        startsWith(github.event.pull_request.title, 'Release react-on-rails-rsc ') ||
+        startsWith(github.event.pull_request.title, 'Stamp CHANGELOG and package version for ') ||
+        (
+          startsWith(github.event.pull_request.title, 'Prepare ') &&
+          endsWith(github.event.pull_request.title, ' changelog')
+        )
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read

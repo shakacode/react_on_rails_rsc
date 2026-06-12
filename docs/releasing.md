@@ -50,7 +50,7 @@ release header after the intro is the target version:
 The changelog compare links at the bottom should also use unprefixed tags:
 
 ```markdown
-[X.Y.Z-rc.N]: https://github.com/shakacode/react_on_rails_rsc/compare/<previous-tag>...X.Y.Z-rc.N
+[X.Y.Z-rc.N]: https://github.com/shakacode/react_on_rails_rsc/compare/PREVIOUS-TAG...X.Y.Z-rc.N
 ```
 
 Review and merge the changelog/version PR before publishing.
@@ -118,8 +118,9 @@ the exact target version, including any `-rc.N` prerelease suffix.
    git ls-remote --tags origin refs/tags/X.Y.Z
    ```
 
-   Expected: one line with a commit SHA and `refs/tags/X.Y.Z`. Empty output
-   means the tag is absent and the parity check failed.
+   Expected: a `refs/tags/X.Y.Z` line. Annotated tags also show a separate
+   dereferenced `refs/tags/X.Y.Z^{}` line with the release commit SHA. Empty
+   output means the tag is absent and the parity check failed.
 
 4. The GitHub release exists and matches the same unprefixed tag:
 
@@ -144,8 +145,8 @@ the exact target version, including any `-rc.N` prerelease suffix.
    ```
 
    Confirm the tarball URL is under `registry.npmjs.org`, and that `shasum`
-   and `integrity` are present and match local `npm pack --dry-run` evidence
-   when that evidence was captured.
+   and `integrity` are present. If a local tarball was created with `npm pack`
+   for release evidence, compare its hash to the registry metadata.
 
 Reference pages:
 
@@ -181,7 +182,7 @@ git push origin --delete X.Y.Z
 Create it manually from the matching `CHANGELOG.md` section:
 
 ```bash
-gh release create X.Y.Z --title "X.Y.Z" --notes "..."
+gh release create X.Y.Z-rc.N --title "X.Y.Z-rc.N" --prerelease --notes "..."
 ```
 
-Add `--prerelease` for prerelease versions such as `X.Y.Z-rc.N`.
+Omit `--prerelease` for final releases.

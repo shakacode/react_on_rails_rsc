@@ -17,11 +17,29 @@ This package provides internal tooling for React Server Components integration:
 - Webpack loader for bundling server components
 - Client/server utilities for RSC rendering
 
+## Versioning
+
+The package `major.minor` tracks the React runtime line it ships or requires.
+See [`docs/versioning.md`](docs/versioning.md) for peer dependency,
+prerelease, dist-tag, and runtime-strategy policy.
+
 ## Releasing
 
 Release this package from `main` using the changelog-driven workflow in
 [`docs/releasing.md`](docs/releasing.md). Run `yarn release:dry-run` before
 `yarn release`.
+
+## Compatibility Policy
+
+The package peer dependencies are the current source of truth for supported
+React and webpack ranges. CI also runs a focused compatibility matrix covering
+React 19.0.4 and 19.2.x, Node.js 20 and 22, webpack 5.59.0 and latest 5.x, and
+rspack latest 1.x. A weekly React canary job is signal-only and is allowed to
+fail while upstream canary APIs move; review its GitHub Actions summary for
+early warnings.
+
+A formal versioning policy is tracked in
+[#70](https://github.com/shakacode/react_on_rails_rsc/issues/70).
 
 ## Support
 

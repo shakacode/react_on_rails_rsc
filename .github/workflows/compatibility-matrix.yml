@@ -1,0 +1,141 @@
+name: Compatibility matrix
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '23 10 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compatibility-matrix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    if: github.event_name != 'schedule'
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: React 19.0.4 / webpack 5.59.0 + rspack 1.x / Node 20
+            node-version: '20.x'
+            react-version: '19.0.4'
+            react-dom-version: '19.0.4'
+            types-react-version: '19.0.4'
+            types-react-dom-version: '19.0.4'
+            webpack-version: '5.59.0'
+            rspack-version: '1.x'
+            node-options: --openssl-legacy-provider
+          - label: React 19.0.4 / webpack latest 5.x + rspack 1.x / Node 22
+            node-version: '22.x'
+            react-version: '19.0.4'
+            react-dom-version: '19.0.4'
+            types-react-version: '19.0.4'
+            types-react-dom-version: '19.0.4'
+            webpack-version: '^5.0.0'
+            rspack-version: '1.x'
+          - label: React 19.2.x / webpack 5.59.0 + rspack 1.x / Node 22
+            node-version: '22.x'
+            react-version: '~19.2.0'
+            react-dom-version: '~19.2.0'
+            types-react-version: '~19.2.0'
+            types-react-dom-version: '~19.2.0'
+            webpack-version: '5.59.0'
+            rspack-version: '1.x'
+            node-options: --openssl-legacy-provider
+          - label: React 19.2.x / webpack latest 5.x + rspack 1.x / Node 20
+            node-version: '20.x'
+            react-version: '~19.2.0'
+            react-dom-version: '~19.2.0'
+            types-react-version: '~19.2.0'
+            types-react-dom-version: '~19.2.0'
+            webpack-version: '^5.0.0'
+            rspack-version: '1.x'
+
+    steps:
+      # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - name: Use Node.js
+        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: yarn
+      - name: Install matrix packages without changing yarn.lock
+        env:
+          COMPAT_LABEL: ${{ matrix.label }}
+          COMPAT_REACT: ${{ matrix.react-version }}
+          COMPAT_REACT_DOM: ${{ matrix.react-dom-version }}
+          COMPAT_REACT_SERVER_DOM_WEBPACK: ${{ matrix.react-version }}
+          COMPAT_TYPES_REACT: ${{ matrix.types-react-version }}
+          COMPAT_TYPES_REACT_DOM: ${{ matrix.types-react-dom-version }}
+          COMPAT_WEBPACK: ${{ matrix.webpack-version }}
+          COMPAT_RSPACK: ${{ matrix.rspack-version }}
+        run: node scripts/prepare-compatibility-install.cjs
+      - name: Build package artifacts
+        env:
+          NODE_OPTIONS: ${{ matrix.node-options || '' }}
+        run: yarn build
+      - name: Run unit and integration tests
+        env:
+          NODE_OPTIONS: ${{ matrix.node-options || '' }}
+        run: yarn test
+      - name: Record matrix result
+        if: always()
+        run: |
+          {
+            echo "### Test command"
+            echo
+            echo "- Command: \`yarn build && yarn test\`"
+            echo "- Result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  canary:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: React canary signal
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - name: Use Node.js
+        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.x'
+          cache: yarn
+      - name: Install canary packages without changing yarn.lock
+        env:
+          COMPAT_LABEL: React canary / webpack latest 5.x / rspack latest 1.x / Node 22
+          COMPAT_REACT: canary
+          COMPAT_REACT_DOM: canary
+          COMPAT_REACT_SERVER_DOM_WEBPACK: canary
+          COMPAT_WEBPACK: '^5.0.0'
+          COMPAT_RSPACK: 1.x
+          # COMPAT_TYPES_REACT / COMPAT_TYPES_REACT_DOM intentionally omitted:
+          # canary @types packages are not reliably published; stable types remain.
+        run: node scripts/prepare-compatibility-install.cjs
+      - name: Build package artifacts
+        run: yarn build
+      - name: Run canary unit and integration tests
+        run: yarn test
+      - name: Record canary result
+        if: always()
+        run: |
+          {
+            echo "### Canary signal"
+            echo
+            echo "- Command: \`yarn test\`"
+            echo "- Result: \`${{ job.status }}\`"
+            echo "- This scheduled canary is signal-only; failures do not block required compatibility checks."
+          } >> "$GITHUB_STEP_SUMMARY"

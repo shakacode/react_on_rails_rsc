@@ -145,20 +145,20 @@ describe('Static analysis: no webpack-specific runtime imports', () => {
 describe('Static analysis: known-incompatible WebpackPlugin is excluded', () => {
   /**
    * Sanity check — we are NOT claiming WebpackPlugin works with rspack.
-   * This test documents that we know it uses webpack/lib/* internals.
+   * This test documents that we know its plugin implementation uses
+   * webpack-only value-level APIs (dependencies.ModuleDependency,
+   * AsyncDependenciesBlock, Template) that rspack does not expose to JS.
    * If someone removes those usages, this test fails and the README should be updated.
    */
-  it('WebpackPlugin.ts or its vendored plugin reaches into webpack/lib/*', () => {
-    const vendoredPluginPath = path.join(
-      SRC_DIR,
-      'react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js',
-    );
-    const raw = fs.readFileSync(vendoredPluginPath, 'utf8');
+  it('WebpackPlugin.ts implementation (webpack/RSCWebpackPlugin.ts) uses webpack-only value APIs', () => {
+    const pluginPath = path.join(SRC_DIR, 'webpack/RSCWebpackPlugin.ts');
+    const raw = fs.readFileSync(pluginPath, 'utf8');
     // This is a SANITY check — we expect these to exist because they are the
     // whole reason rspack compat is hard for the plugin.
-    expect(raw).toMatch(/require\(["']webpack\/lib\/dependencies\/ModuleDependency["']\)/);
-    expect(raw).toMatch(/require\(["']webpack\/lib\/dependencies\/NullDependency["']\)/);
-    expect(raw).toMatch(/require\(["']webpack\/lib\/Template["']\)/);
-    expect(raw).toMatch(/require\(["']webpack["']\)/);
+    expect(raw).toMatch(/import\s+webpack\s*=\s*require\(['"]webpack['"]\)/);
+    expect(raw).toMatch(/webpack\.dependencies\.ModuleDependency/);
+    expect(raw).toMatch(/webpack\.dependencies\.NullDependency/);
+    expect(raw).toMatch(/webpack\.Template/);
+    expect(raw).toMatch(/webpack\.AsyncDependenciesBlock/);
   });
 });

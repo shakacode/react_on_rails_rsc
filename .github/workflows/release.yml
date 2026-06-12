@@ -28,6 +28,15 @@ jobs:
       name: release
       url: https://www.npmjs.com/package/react-on-rails-rsc
     steps:
+      - name: Validate confirm_publish input
+        env:
+          CONFIRM_PUBLISH: ${{ inputs.confirm_publish }}
+        run: |
+          if [[ "$CONFIRM_PUBLISH" != "publish" ]]; then
+            echo 'confirm_publish must be exactly "publish".' >&2
+            exit 1
+          fi
+
       - name: Checkout main
         # Pinned immutable actions/checkout release SHA verified via git ls-remote.
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -43,6 +52,8 @@ jobs:
           # The package runtime support matrix remains tested separately before publishing.
           # Do not enable dependency caching in the release publish job.
           node-version: '24.x'
+          # registry-url scopes npm to npmjs; do not add an npm auth-token secret.
+          # The publish step authenticates through GitHub OIDC trusted publishing.
           registry-url: https://registry.npmjs.org
 
       - name: Enable package manager
@@ -73,6 +84,10 @@ jobs:
           }
 
           const [, changelogVersion] = header;
+
+          if (!/^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/.test(changelogVersion)) {
+            throw new Error(`CHANGELOG.md version "${changelogVersion}" is not valid semver (expected X.Y.Z or X.Y.Z-pre.N).`);
+          }
 
           if (confirmPublish !== 'publish') {
             throw new Error('confirm_publish must be exactly "publish".');
@@ -145,15 +160,27 @@ jobs:
             exit 1
           fi
 
-          # npm view exits non-zero with E404 when the version does not exist.
-          # Any other non-zero exit (network error, auth failure, etc.) should fail the release.
-          if npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >"$NPM_VIEW_OUTPUT" 2>&1; then
+          npm_exit=0
+          npm --silent view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >"$NPM_VIEW_OUTPUT" 2>&1 || npm_exit=$?
+
+          if [[ "$npm_exit" == "0" ]]; then
             echo "${PACKAGE_NAME}@${RELEASE_VERSION} is already published." >&2
             cat "$NPM_VIEW_OUTPUT" >&2
             exit 1
           fi
 
-          if ! grep -q 'E404' "$NPM_VIEW_OUTPUT"; then
+          error_code=$(node - "$NPM_VIEW_OUTPUT" <<'NODE'
+          const fs = require('node:fs');
+          try {
+            const parsed = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+            process.stdout.write(parsed.error?.code || '');
+          } catch {
+          }
+          NODE
+          )
+
+          if [[ "$error_code" != "E404" ]]; then
+            echo "Unexpected npm error (code: ${error_code:-unknown}):" >&2
             cat "$NPM_VIEW_OUTPUT" >&2
             exit 1
           fi

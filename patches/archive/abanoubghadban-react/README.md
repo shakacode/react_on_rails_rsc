@@ -27,6 +27,10 @@ The topic branches are archived relative to `e46103dc9` so their directories
 contain only the topic runtime patch, not another copy of the shared plugin
 patch stack.
 
+The `rsc-patches/v19.2.1` branch only carries patches 1-3 from the shared stack.
+The JSON-walk and FOUC topics are preserved separately below; do not infer a
+complete Option 4 patch corpus from the `v19.2.1` branch directory alone.
+
 ## Generation
 
 The archive was generated from a temporary clone:

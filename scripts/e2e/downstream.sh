@@ -248,7 +248,7 @@ ensure_command() {
 
 configure_pnpm() {
   if command -v pnpm >/dev/null 2>&1; then
-    pnpm --version
+    (cd "$REACT_ON_RAILS_DIR" && pnpm --version)
     return
   fi
 
@@ -286,7 +286,7 @@ NODE
   )"
   corepack enable
   corepack prepare "$package_manager" --activate
-  pnpm --version
+  (cd "$REACT_ON_RAILS_DIR" && pnpm --version)
 }
 
 checkout_downstream() {

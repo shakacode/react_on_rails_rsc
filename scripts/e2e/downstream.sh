@@ -210,7 +210,11 @@ checkout_downstream() {
   else
     REACT_ON_RAILS_DIR="$WORK_DIR/react_on_rails"
     git init "$REACT_ON_RAILS_DIR"
-    git -C "$REACT_ON_RAILS_DIR" remote add origin "$REACT_ON_RAILS_REPO"
+    if git -C "$REACT_ON_RAILS_DIR" remote get-url origin >/dev/null 2>&1; then
+      git -C "$REACT_ON_RAILS_DIR" remote set-url origin "$REACT_ON_RAILS_REPO"
+    else
+      git -C "$REACT_ON_RAILS_DIR" remote add origin "$REACT_ON_RAILS_REPO"
+    fi
     git -C "$REACT_ON_RAILS_DIR" fetch --depth 1 origin "$REACT_ON_RAILS_REF"
     git -C "$REACT_ON_RAILS_DIR" checkout --detach FETCH_HEAD
   fi

@@ -400,12 +400,17 @@ wait_for_http() {
   local url="$2"
   local timeout_seconds="${3:-300}"
   local log_path="${4:-$LOG_DIR/rails.log}"
+  local monitor_pid="${5:-}"
   local start_time="$SECONDS"
 
   while true; do
     if curl --fail --silent --max-time 5 "$url" >/dev/null; then
       echo "$name ready at $url after $((SECONDS - start_time))s"
       return 0
+    fi
+
+    if ! ensure_service_process_running "$name" "$monitor_pid" "$log_path"; then
+      return 1
     fi
 
     if ((SECONDS - start_time >= timeout_seconds)); then
@@ -422,6 +427,8 @@ wait_for_h2c() {
   local authority="$2"
   local path="$3"
   local timeout_seconds="${4:-300}"
+  local monitor_pid="${5:-}"
+  local log_path="${6:-$LOG_DIR/node-renderer.log}"
   local start_time="$SECONDS"
 
   while true; do
@@ -460,21 +467,49 @@ NODE
       return 0
     fi
 
+    if ! ensure_service_process_running "$name" "$monitor_pid" "$log_path"; then
+      return 1
+    fi
+
     if ((SECONDS - start_time >= timeout_seconds)); then
       echo "Timed out waiting for $name at $authority$path" >&2
-      tail -100 "$LOG_DIR/node-renderer.log" >&2 || true
+      tail -100 "$log_path" >&2 || true
       return 1
     fi
     sleep 2
   done
 }
 
+ensure_service_process_running() {
+  local name="$1"
+  local pid="$2"
+  local log_path="$3"
+
+  if [[ -z "$pid" ]] || kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+
+  echo "$name process ($pid) exited before becoming ready" >&2
+  tail -100 "$log_path" >&2 || true
+  return 1
+}
+
 wait_for_services() {
   log_step "Waiting for downstream services"
   # /empty is a stable React on Rails Pro dummy route used as a cheap Rails
   # liveness probe without depending on rendered RSC content.
-  wait_for_http "Rails server" "http://127.0.0.1:${RAILS_PORT}${RAILS_READY_PATH}"
-  wait_for_h2c "Node renderer" "http://127.0.0.1:${RENDERER_PORT}" "/info"
+  wait_for_http \
+    "Rails server" \
+    "http://127.0.0.1:${RAILS_PORT}${RAILS_READY_PATH}" \
+    300 \
+    "$LOG_DIR/rails.log" \
+    "$RAILS_PID"
+  wait_for_h2c \
+    "Node renderer" \
+    "http://127.0.0.1:${RENDERER_PORT}" \
+    "/info" \
+    300 \
+    "$NODE_RENDERER_PID"
 }
 
 install_playwright_browsers() {

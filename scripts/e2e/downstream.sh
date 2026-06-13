@@ -19,6 +19,10 @@ DEFAULT_SPECS=(
 
 REACT_ON_RAILS_REPO="${RSC_DOWNSTREAM_REACT_ON_RAILS_REPO:-$DEFAULT_REACT_ON_RAILS_REPO}"
 REACT_ON_RAILS_REF="${RSC_DOWNSTREAM_REACT_ON_RAILS_REF:-$DEFAULT_REACT_ON_RAILS_REF}"
+REACT_ON_RAILS_REF_EXPLICIT="0"
+if [[ -n "${RSC_DOWNSTREAM_REACT_ON_RAILS_REF:-}" ]]; then
+  REACT_ON_RAILS_REF_EXPLICIT="1"
+fi
 REACT_ON_RAILS_DIR="${RSC_DOWNSTREAM_REACT_ON_RAILS_DIR:-}"
 WORK_DIR="${RSC_DOWNSTREAM_WORK_DIR:-}"
 AUTO_WORK_DIR="0"
@@ -44,6 +48,8 @@ Usage:
 
 Options:
   --react-on-rails-ref REF   Downstream ref to test. Default: main.
+                             Existing checkouts use current HEAD unless this
+                             option or RSC_DOWNSTREAM_REACT_ON_RAILS_REF is set.
   --react-on-rails-repo URL  Downstream repository URL.
   --react-on-rails-dir PATH  Use an existing downstream checkout instead of cloning.
   --work-dir PATH            Directory for the packed tarball, logs, and clone.
@@ -54,7 +60,7 @@ Options:
 
 Environment:
   RSC_DOWNSTREAM_REACT_ON_RAILS_REPO      Downstream repository URL.
-  RSC_DOWNSTREAM_REACT_ON_RAILS_REF       Downstream ref to test. Default: main.
+  RSC_DOWNSTREAM_REACT_ON_RAILS_REF       Downstream ref to test. Default: main for clones.
   RSC_DOWNSTREAM_REACT_ON_RAILS_DIR       Existing downstream checkout path.
   RSC_DOWNSTREAM_WORK_DIR                 Directory for packed tarball, logs, and clone.
   RSC_DOWNSTREAM_KEEP                     1 = preserve generated work dir.
@@ -78,6 +84,7 @@ while (($# > 0)); do
   case "$1" in
     --react-on-rails-ref)
       REACT_ON_RAILS_REF="${2:?--react-on-rails-ref requires a value}"
+      REACT_ON_RAILS_REF_EXPLICIT="1"
       shift 2
       ;;
     --react-on-rails-repo)
@@ -134,6 +141,7 @@ mkdir -p "$PACKAGE_DIR" "$LOG_DIR" "$NPM_CACHE_DIR"
 
 TARBALL=""
 DOWNSTREAM_SHA="UNKNOWN"
+DOWNSTREAM_REF_LABEL="$REACT_ON_RAILS_REF"
 NODE_RENDERER_PID=""
 RAILS_PID=""
 PLAYWRIGHT_CONFIG_FILE=""
@@ -268,6 +276,22 @@ checkout_downstream() {
       return 1
     fi
     echo "Using existing checkout: $REACT_ON_RAILS_DIR"
+    if [[ "$REACT_ON_RAILS_REF_EXPLICIT" == "1" ]]; then
+      if ! git -C "$REACT_ON_RAILS_DIR" diff-index --quiet HEAD --; then
+        echo "Existing checkout has uncommitted changes; cannot check out $REACT_ON_RAILS_REF." >&2
+        echo "Restore or stash the checkout, or omit --react-on-rails-ref to use the current HEAD." >&2
+        return 1
+      fi
+      if ! git -C "$REACT_ON_RAILS_DIR" remote get-url origin >/dev/null 2>&1; then
+        echo "Existing checkout has no origin remote, so $REACT_ON_RAILS_REF cannot be fetched." >&2
+        return 1
+      fi
+      git -C "$REACT_ON_RAILS_DIR" fetch --depth 1 origin -- "$REACT_ON_RAILS_REF"
+      git -C "$REACT_ON_RAILS_DIR" checkout --detach FETCH_HEAD
+    else
+      DOWNSTREAM_REF_LABEL="existing checkout"
+      echo "No downstream ref explicitly requested; using the existing checkout HEAD."
+    fi
   else
     REACT_ON_RAILS_DIR="$WORK_DIR/react_on_rails"
     git init "$REACT_ON_RAILS_DIR"
@@ -282,7 +306,7 @@ checkout_downstream() {
   fi
 
   DOWNSTREAM_SHA="$(git -C "$REACT_ON_RAILS_DIR" rev-parse HEAD)"
-  echo "React on Rails ref: $REACT_ON_RAILS_REF"
+  echo "React on Rails ref: $DOWNSTREAM_REF_LABEL"
   echo "React on Rails SHA: $DOWNSTREAM_SHA"
 }
 
@@ -592,7 +616,7 @@ write_github_summary() {
       echo "- Detail: $detail"
     fi
     echo "- react-on-rails-rsc SHA: $(git rev-parse HEAD)"
-    echo "- React on Rails ref: $REACT_ON_RAILS_REF"
+    echo "- React on Rails ref: $DOWNSTREAM_REF_LABEL"
     echo "- React on Rails SHA: $DOWNSTREAM_SHA"
     if [[ -n "$TARBALL" ]]; then
       echo "- Tarball: $(basename "$TARBALL")"

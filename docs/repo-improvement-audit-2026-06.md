@@ -55,7 +55,7 @@ becomes the *fallback*, not the primary path.
 | Tests | B | Strong rspack + (post-#54) webpack integration; no hydration E2E, no version matrix |
 | CI | C− | PR-only, single Node, no build/artifact verification |
 | Release process | B− | Good script; laptop-run, unpinned tooling, tag/dist-tag drift |
-| Docs / agent setup | B− | Good plan docs; no CLAUDE.md; status doc stale |
+| Docs / agent setup | B− | Good plan docs; no CLAUDE.md at audit time (since added); status doc stale |
 
 ---
 
@@ -169,7 +169,7 @@ only 2 runtime patches stand between this repo and a stock upstream runtime
 
 ```text
 react-on-rails-rsc =
-  dependency: react-server-dom-webpack@~19.2.7   (stock npm; runtime halves only; <19.3)
+  dependency: react-server-dom-webpack@~19.2.7   (stock npm; runtime halves only; 19.2 patch fixes, <19.3)
   src/webpack/RSCWebpackPlugin.ts                (owned TS; #56)
   src/react-server-dom-rspack/                   (already owned)
   client/server wrappers                         (import the real package)
@@ -214,7 +214,7 @@ issue #55).
 ## 8. The backlog
 
 Tracking issue: **#72**. Three difficulty-ordered batches, run A → B → C via
-the `pr-batch`/`plan-pr-batch` skills in `shakacode/react_on_rails`.
+the `pr-batch`/`plan-pr-batch` skills in this repo (`.agents/skills/`).
 
 | Batch | Issues | Notes |
 | --- | --- | --- |

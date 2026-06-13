@@ -310,8 +310,8 @@ checkout_downstream() {
     fi
   else
     REACT_ON_RAILS_DIR="$WORK_DIR/react_on_rails"
-    # Use init+fetch because workflow_dispatch may pass a commit SHA; clone
-    # --branch only handles branch and tag names.
+    # Use init+fetch so workflow_dispatch can pass branch, tag, or ref names
+    # without relying on clone --branch semantics.
     git init "$REACT_ON_RAILS_DIR"
     if git -C "$REACT_ON_RAILS_DIR" remote get-url origin >/dev/null 2>&1; then
       git -C "$REACT_ON_RAILS_DIR" remote set-url origin "$REACT_ON_RAILS_REPO"
@@ -712,6 +712,7 @@ const baseURL = ${JSON.stringify(baseURL)};
 
 export default defineConfig({
   ...baseConfig,
+  webServer: undefined,
   use: {
     ...baseConfig.use,
     baseURL,

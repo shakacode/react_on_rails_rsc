@@ -28,7 +28,7 @@ DUMMY_BUILD_SCRIPT="${RSC_DOWNSTREAM_DUMMY_BUILD_SCRIPT:-$DEFAULT_DUMMY_BUILD_SC
 INSTALL_PLAYWRIGHT="${RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT:-1}"
 INSTALL_PLAYWRIGHT_DEPS="${RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT_DEPS:-0}"
 REQUIRE_PRO_LICENSE="${RSC_DOWNSTREAM_REQUIRE_PRO_LICENSE:-0}"
-RENDERER_PORT="${RENDERER_PORT:-$DEFAULT_RENDERER_PORT}"
+RENDERER_PORT="${RSC_DOWNSTREAM_RENDERER_PORT:-${RENDERER_PORT:-$DEFAULT_RENDERER_PORT}}"
 RAILS_PORT="${RSC_DOWNSTREAM_RAILS_PORT:-${RAILS_PORT:-$DEFAULT_RAILS_PORT}}"
 RAILS_READY_PATH="${RSC_DOWNSTREAM_RAILS_READY_PATH:-$DEFAULT_RAILS_READY_PATH}"
 SPEC_ARGS=()
@@ -64,7 +64,8 @@ Environment:
   RSC_DOWNSTREAM_REQUIRE_PRO_LICENSE      1 = fail early if REACT_ON_RAILS_PRO_LICENSE is empty.
   RSC_DOWNSTREAM_RAILS_PORT               Rails server port. Default: 3000.
   RSC_DOWNSTREAM_RAILS_READY_PATH         Rails readiness path. Default: /empty.
-  RENDERER_PORT                           Node renderer port. Default: 3800.
+  RSC_DOWNSTREAM_RENDERER_PORT            Node renderer port. Default: 3800.
+  RENDERER_PORT                           Node renderer port fallback when RSC_DOWNSTREAM_RENDERER_PORT is unset.
   RAILS_PORT                              Rails server port fallback when RSC_DOWNSTREAM_RAILS_PORT is unset.
 
 Default spec subset:
@@ -128,12 +129,14 @@ mkdir -p "$WORK_DIR"
 WORK_DIR="$(cd "$WORK_DIR" && pwd)"
 PACKAGE_DIR="$WORK_DIR/package"
 LOG_DIR="$WORK_DIR/logs"
-mkdir -p "$PACKAGE_DIR" "$LOG_DIR"
+NPM_CACHE_DIR="$WORK_DIR/npm-cache"
+mkdir -p "$PACKAGE_DIR" "$LOG_DIR" "$NPM_CACHE_DIR"
 
 TARBALL=""
 DOWNSTREAM_SHA="UNKNOWN"
 NODE_RENDERER_PID=""
 RAILS_PID=""
+PLAYWRIGHT_CONFIG_FILE=""
 LAST_STEP="initialization"
 FAILED_SPECS_FILE="$WORK_DIR/failed-specs.txt"
 FAILURE_SUMMARY_WRITTEN="0"
@@ -144,6 +147,10 @@ cleanup() {
   for pid in "$RAILS_PID" "$NODE_RENDERER_PID"; do
     kill_process_tree "$pid"
   done
+
+  if [[ -n "$PLAYWRIGHT_CONFIG_FILE" ]]; then
+    rm -f "$PLAYWRIGHT_CONFIG_FILE"
+  fi
 
   if [[ "$AUTO_WORK_DIR" != "1" ]]; then
     echo "Preserving user-supplied work dir: $WORK_DIR"
@@ -282,7 +289,9 @@ checkout_downstream() {
 pack_local_package() {
   log_step "Building and packing react-on-rails-rsc"
   yarn build
-  TARBALL="$PACKAGE_DIR/$(npm pack --quiet --pack-destination "$PACKAGE_DIR" | tail -1)"
+  TARBALL="$PACKAGE_DIR/$(
+    npm_config_cache="$NPM_CACHE_DIR" npm pack --quiet --pack-destination "$PACKAGE_DIR" | tail -1
+  )"
   test -f "$TARBALL"
   echo "Packed tarball: $TARBALL"
 }
@@ -379,7 +388,9 @@ start_background_services() {
 
   (
     cd "$dummy_dir"
-    RAILS_ENV="test" bundle exec rails server -p "$RAILS_PORT"
+    RAILS_ENV="test" \
+      REACT_RENDERER_URL="http://127.0.0.1:$RENDERER_PORT" \
+      bundle exec rails server -p "$RAILS_PORT"
   ) >"$LOG_DIR/rails.log" 2>&1 &
   RAILS_PID="$!"
 }
@@ -566,13 +577,54 @@ write_github_summary() {
   } >>"$GITHUB_STEP_SUMMARY"
 }
 
+write_playwright_config() {
+  local dummy_dir="$REACT_ON_RAILS_DIR/react_on_rails_pro/spec/dummy"
+  PLAYWRIGHT_CONFIG_FILE="$dummy_dir/.react-on-rails-rsc-downstream.playwright.config.ts"
+
+  node - "$PLAYWRIGHT_CONFIG_FILE" "$RAILS_PORT" <<'NODE'
+const fs = require('fs');
+
+const [configPath, railsPort] = process.argv.slice(2);
+const baseURL = `http://127.0.0.1:${railsPort}/`;
+
+fs.writeFileSync(
+  configPath,
+  `import { defineConfig } from '@playwright/test';
+import baseConfig from './playwright.config';
+
+const baseURL = ${JSON.stringify(baseURL)};
+
+export default defineConfig({
+  ...baseConfig,
+  use: {
+    ...baseConfig.use,
+    baseURL,
+  },
+  projects: baseConfig.projects?.map((project) => ({
+    ...project,
+    use: {
+      ...project.use,
+      baseURL,
+    },
+  })),
+});
+`
+);
+NODE
+}
+
 run_playwright_subset() {
   log_step "Running downstream RSC Playwright subset"
   local dummy_dir="$REACT_ON_RAILS_DIR/react_on_rails_pro/spec/dummy"
   local test_status=0
 
+  write_playwright_config
+
   set +e
-  (cd "$dummy_dir" && CI="${CI:-}" pnpm exec playwright test "${SPEC_ARGS[@]}")
+  (
+    cd "$dummy_dir" &&
+      CI="${CI:-}" pnpm exec playwright test --config "$PLAYWRIGHT_CONFIG_FILE" "${SPEC_ARGS[@]}"
+  )
   test_status=$?
   set -e
 

@@ -1,0 +1,272 @@
+name: Release package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version from the top CHANGELOG.md header and package.json
+        required: true
+        type: string
+      confirm_publish:
+        description: Confirm npm publish, git tag, and GitHub release creation
+        required: true
+        type: choice
+        options:
+          - publish
+
+concurrency:
+  group: release-package
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+    environment:
+      name: release
+      url: https://www.npmjs.com/package/react-on-rails-rsc
+    steps:
+      - name: Validate confirm_publish input
+        env:
+          CONFIRM_PUBLISH: ${{ inputs.confirm_publish }}
+        run: |
+          if [[ "$CONFIRM_PUBLISH" != "publish" ]]; then
+            echo 'confirm_publish must be exactly "publish".' >&2
+            exit 1
+          fi
+
+      - name: Checkout main
+        # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Use Node.js
+        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          # npm trusted publishing requires the npm CLI version shipped with the Node 24 line.
+          # The package runtime support matrix remains tested separately before publishing.
+          # Do not enable dependency caching in the release publish job.
+          node-version: '24.x'
+
+      - name: Enable package manager
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn --frozen-lockfile
+
+      - name: Read release metadata
+        id: metadata
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const path = require('node:path');
+
+          const inputVersion = process.env.INPUT_VERSION;
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+          const header = changelog.match(/^## \[([0-9][^\]]*)\] - ([0-9]{4}-[0-9]{2}-[0-9]{2})$/m);
+
+          if (!header) {
+            throw new Error('CHANGELOG.md must start its release entries with ## [X.Y.Z] - YYYY-MM-DD.');
+          }
+
+          const [, changelogVersion] = header;
+
+          if (!/^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/.test(changelogVersion)) {
+            throw new Error(`CHANGELOG.md version "${changelogVersion}" is not valid semver (expected X.Y.Z or X.Y.Z-pre.N).`);
+          }
+
+          if (inputVersion !== changelogVersion) {
+            throw new Error(`workflow_dispatch version ${inputVersion} does not match CHANGELOG.md ${changelogVersion}.`);
+          }
+
+          if (packageJson.version !== changelogVersion) {
+            throw new Error(`package.json version ${packageJson.version} does not match CHANGELOG.md ${changelogVersion}.`);
+          }
+
+          const releaseLines = [];
+          let inSection = false;
+          for (const line of changelog.split(/\r?\n/)) {
+            if (line === header[0]) {
+              inSection = true;
+              continue;
+            }
+
+            if (inSection && /^## \[[0-9]/.test(line)) {
+              break;
+            }
+
+            if (inSection) {
+              releaseLines.push(line);
+            }
+          }
+
+          const notes = releaseLines.join(os.EOL).trim();
+          if (!notes) {
+            throw new Error(`CHANGELOG.md has no release notes for ${changelogVersion}.`);
+          }
+
+          const notesPath = path.join(process.env.RUNNER_TEMP, 'release-notes.md');
+          fs.writeFileSync(notesPath, `${notes}${os.EOL}`);
+
+          const isPrerelease = changelogVersion.includes('-');
+          const output = [
+            `package=${packageJson.name}`,
+            `version=${changelogVersion}`,
+            `npm_tag=${isPrerelease ? 'next' : 'latest'}`,
+            `is_prerelease=${isPrerelease ? 'true' : 'false'}`,
+            `notes_path=${notesPath}`,
+          ].join(os.EOL);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `${output}${os.EOL}`);
+          NODE
+
+      - name: Validate release ref and publish state
+        env:
+          PACKAGE_NAME: ${{ steps.metadata.outputs.package }}
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+          NPM_VIEW_OUTPUT: ${{ runner.temp }}/npm-view.out
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Releases must be dispatched from main; current ref is $GITHUB_REF." >&2
+            exit 1
+          fi
+
+          node --version
+          npm --version
+          git diff --quiet
+          git diff --cached --quiet
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "Release tag ${RELEASE_VERSION} already exists on origin." >&2
+            exit 1
+          fi
+
+          for attempt in 1 2 3 4 5; do
+            npm_exit=0
+            npm --silent view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >"$NPM_VIEW_OUTPUT" 2>&1 || npm_exit=$?
+
+            if [[ "$npm_exit" -eq 0 ]]; then
+              echo "${PACKAGE_NAME}@${RELEASE_VERSION} is already published." >&2
+              cat "$NPM_VIEW_OUTPUT" >&2
+              exit 1
+            fi
+
+            error_code=$(node - "$NPM_VIEW_OUTPUT" <<'NODE'
+          const fs = require('node:fs');
+          try {
+            const parsed = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+            process.stdout.write(parsed.error?.code || '');
+          } catch {
+          }
+          NODE
+            )
+
+            if [[ "$error_code" == "E404" ]]; then
+              break
+            fi
+
+            if [[ "$attempt" -lt 5 ]] && grep -Eiq 'ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|network|timeout' "$NPM_VIEW_OUTPUT"; then
+              echo "npm view failed before publish; retrying in 10s (attempt ${attempt}/5):" >&2
+              cat "$NPM_VIEW_OUTPUT" >&2
+              sleep 10
+              continue
+            fi
+
+            echo "Unexpected npm error (code: ${error_code:-unknown}) while checking publish state:" >&2
+            cat "$NPM_VIEW_OUTPUT" >&2
+            exit 1
+          done
+
+      - name: Run release validation
+        run: |
+          set -euo pipefail
+
+          yarn build
+          yarn test
+
+          if ! node -e "process.exit((require('./package.json').scripts || {})['verify:artifacts'] ? 0 : 1)" 2>/dev/null; then
+            echo "verify:artifacts script not found in package.json; refusing to publish with reduced verification." >&2
+            exit 1
+          fi
+          yarn verify:artifacts
+
+          git diff --quiet
+          git diff --cached --quiet
+
+      - name: Publish to npm with provenance
+        env:
+          NPM_TAG: ${{ steps.metadata.outputs.npm_tag }}
+        run: |
+          set -euo pipefail
+
+          # No npm auth token secret is configured; npm uses GitHub OIDC trusted publishing.
+          # Do not set setup-node registry-url here; that writes token-based npm auth config.
+          # Publish the explicitly built and verified dist/ tree without rerunning prepublishOnly.
+          # Current prepublishOnly only runs yarn build; publish/postpublish hooks are also skipped.
+          # If any publish lifecycle script is added or expanded, update this job first.
+          npm publish --ignore-scripts --provenance --access public --tag "$NPM_TAG"
+
+      - name: Create local release tag
+        env:
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$RELEASE_VERSION" -m "Release $RELEASE_VERSION" HEAD
+
+      - name: Push tag and create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+          RELEASE_NOTES_PATH: ${{ steps.metadata.outputs.notes_path }}
+          IS_PRERELEASE: ${{ steps.metadata.outputs.is_prerelease }}
+        run: |
+          set -euo pipefail
+
+          git push origin "refs/tags/${RELEASE_VERSION}"
+
+          release_args=(--title "$RELEASE_VERSION" --notes-file "$RELEASE_NOTES_PATH" --target "$(git rev-parse HEAD)")
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          gh release create "$RELEASE_VERSION" "${release_args[@]}"
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_NAME: ${{ steps.metadata.outputs.package }}
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if npm view "${PACKAGE_NAME}@${RELEASE_VERSION}" version; then
+              break
+            fi
+
+            if [[ "$attempt" -eq 12 ]]; then
+              echo "Published package ${PACKAGE_NAME}@${RELEASE_VERSION} was not visible after retries." >&2
+              exit 1
+            fi
+
+            echo "Package not yet visible; waiting 15s (attempt ${attempt}/12)..."
+            sleep 15
+          done
+
+          npm view "$PACKAGE_NAME" dist-tags --json
+          gh release view "$RELEASE_VERSION"

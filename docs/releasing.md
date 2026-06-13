@@ -1,8 +1,9 @@
 # Releasing react-on-rails-rsc
 
 This project uses a changelog-driven release workflow. The target version is
-read from `CHANGELOG.md`; do not pass a version to the release script. Update
-the changelog first, merge that change to `main`, then run the release script.
+read from `CHANGELOG.md`; do not pass a version to the release tooling. Update
+the changelog and `package.json` first, merge that change to `main`, then
+publish from the GitHub Actions release workflow.
 
 Tags in this repository do not use a `v` prefix. For example, use
 `X.Y.Z-rc.N`, not `vX.Y.Z-rc.N`.
@@ -46,10 +47,19 @@ Tags in this repository do not use a `v` prefix. For example, use
 
 For an actual release:
 
-1. `npm whoami` succeeds for an npm account that can publish `react-on-rails-rsc`.
-2. `gh auth status` succeeds for a GitHub account that can create releases.
-3. The working tree is clean and the current branch is `main`.
-4. `CHANGELOG.md` has a top release header for the version being published.
+1. The npm package has a trusted publisher configured for GitHub Actions:
+   organization `shakacode`, repository `react_on_rails_rsc`, workflow filename
+   `release.yml`, environment `release`, and allowed action `npm publish`.
+2. The GitHub `release` environment exists with maintainer approval protection
+   and deployment branches restricted to `main`.
+3. No `NPM_TOKEN` or other long-lived npm publish token is required in GitHub
+   secrets; publishing uses GitHub Actions OIDC.
+4. `CHANGELOG.md` has a top release header for the version being published, and
+   `package.json` has the same version.
+5. The release workflow uses Node 24 and npm trusted publishing/provenance.
+   See the npm docs for
+   [trusted publishing](https://docs.npmjs.com/trusted-publishers/) and
+   [provenance](https://docs.npmjs.com/generating-provenance-statements/).
 
 ## Release Process
 
@@ -79,7 +89,7 @@ The changelog compare links at the bottom should also use unprefixed tags:
 
 Review and merge the changelog/version PR before publishing.
 
-### 2. Run A Dry Run
+### 2. Run A Local Dry Run
 
 From `main`:
 
@@ -88,14 +98,52 @@ yarn release:dry-run
 ```
 
 The dry run verifies the release version, npm/GitHub auth where available,
-package publish state, tests, build, and `npm pack --dry-run`.
+package publish state, tests, build, and `npm pack --dry-run`. It does not
+publish to npm, push a tag, or create a GitHub release.
 
 Use this dry run as the local fallback whenever you need to validate release
 readiness without publishing. In dry-run mode, missing npm or GitHub auth is a
 warning instead of a release blocker, and no npm publish, git tag, tag push, or
 GitHub release is created.
 
-### 3. Publish
+### 3. Publish From GitHub Actions
+
+After the changelog/version PR lands on `main`, open GitHub Actions and run
+`Release package` from the `main` branch.
+
+Use these `workflow_dispatch` inputs:
+
+1. `version`: the exact version from the top `CHANGELOG.md` release header.
+2. `confirm_publish`: `publish`.
+
+The workflow will:
+
+1. Require the protected GitHub `release` environment before publishing.
+2. Verify that the dispatch ref is `main`.
+3. Verify that `CHANGELOG.md` and `package.json` contain the same version.
+4. Stop if the unprefixed git tag already exists or the npm version is already
+   published.
+5. Run `yarn build`.
+6. Run `yarn test`.
+7. Run `yarn verify:artifacts`.
+8. Publish with npm trusted publishing and provenance:
+
+   ```bash
+   npm publish --ignore-scripts --provenance --access public --tag <next-or-latest>
+   ```
+
+9. Push the unprefixed annotated git tag.
+10. Create the GitHub release from the matching `CHANGELOG.md` section.
+11. Verify the npm package, npm dist-tags, and GitHub release.
+
+Prereleases such as `X.Y.Z-rc.N` publish with the npm `next` dist-tag. Final
+versions publish with `latest`; dispatch a final release only after the
+downstream React on Rails release gate has accepted the candidate.
+
+### 4. Maintainer-Only Local Fallback
+
+Use the local publish path only if the GitHub Actions release path is blocked
+and a maintainer explicitly chooses to publish from a trusted workstation:
 
 ```bash
 yarn release
@@ -111,7 +159,7 @@ The script will:
 6. Run `release-it` to commit any needed version bump, tag, and publish to npm.
 7. Create a GitHub release from the matching `CHANGELOG.md` section.
 
-### 4. Verify
+### 5. Verify
 
 #### Release Artifact Parity Checklist
 
@@ -236,11 +284,17 @@ git tag -d X.Y.Z
 git push origin --delete X.Y.Z
 ```
 
-**GitHub release failed after npm publish:**
+**npm publish succeeded but the tag push or GitHub release failed:**
 
-Create it manually from the matching `CHANGELOG.md` section:
+Do not rerun the release workflow for the same version. The duplicate-publish
+guard will stop it, and publishing the package has already completed. Create the
+missing unprefixed tag from the release commit, push it, then create the GitHub
+release from the matching changelog notes:
 
 ```bash
+git tag -a X.Y.Z -m "Release X.Y.Z" <release-commit-sha>
+git push origin X.Y.Z
+
 # Final release
 # Create /tmp/release-notes.md from the matching CHANGELOG.md section first.
 gh release create X.Y.Z --title "X.Y.Z" --target <release-commit-sha> --notes-file /tmp/release-notes.md

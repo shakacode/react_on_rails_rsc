@@ -7,7 +7,7 @@
 [shakacode/react_on_rails#3965](https://github.com/shakacode/react_on_rails/issues/3965)
 **Related docs:** [`releasing.md`](releasing.md),
 [`eliminate-react-fork.md`](eliminate-react-fork.md),
-[`open-rsc-work-status.md`](open-rsc-work-status.md) (stale; refresh tracked in #70)
+[`open-rsc-work-status.md`](open-rsc-work-status.md) (was stale at audit time; since refreshed in #70)
 
 This document is the durable record of the full repo deep dive: what was
 verified, what it implies, and why the backlog is shaped the way it is. Facts
@@ -169,11 +169,11 @@ only 2 runtime patches stand between this repo and a stock upstream runtime
 
 ```text
 react-on-rails-rsc =
-  dependency: react-server-dom-webpack@~19.2.7   (stock npm; runtime halves only; 19.2 patch fixes, <19.3)
+  dependency: react-server-dom-webpack@~19.2.7   (stock npm; allows 19.2 patches, blocks 19.3)
   src/webpack/RSCWebpackPlugin.ts                (owned TS; #56)
   src/react-server-dom-rspack/                   (already owned)
   client/server wrappers                         (import the real package)
-  peerDeps: react/react-dom >=19.2.0 <19.3.0
+  peerDeps: react/react-dom >=19.2.7 <19.3.0     (matches runtime peer floor; cap is deliberate)
 ```
 
 Wins: deletes ~1.8 MB of vendored built code; React upgrades become a
@@ -232,10 +232,11 @@ flowchart LR
   i60 --> i71["#71 archive fork"]
   i65["#65 ship 19.0.5 final"] --> ror["react_on_rails#3965 pin fix"]
   i68["#68 release hygiene"] -. before .-> i65
-  i59["#59 downstream E2E"] -. soft .-> i61["#61 artifact CI"]
+  i59["#59 downstream E2E"] -. soft .-> i61
   i61["#61 artifact CI"] -. soft .-> i62["#62 matrix"]
   i61 -. soft .-> i63["#63 CI release"]
   i55 -. informs .-> i58["#58 upstream patches"]
+  i58 -. if rejected .-> opt4["Option 4 fallback (patch files)"]
 ```
 
 **Critical path:** #55/#56/#57 can proceed in parallel; all three gate #60,
@@ -260,7 +261,7 @@ npm view react dist-tags --json
 npm view react-server-dom-webpack versions --json   # stable lines exist
 npm view react-on-rails-rsc dist-tags --json        # rc-tag drift
 git ls-remote --tags origin                         # missing 19.0.5-rc.5
-gh api 'repos/abanoubghadban/react/commits?sha=rsc-patches/v19.2.1'  # patch corpus
+gh api 'repos/abanoubghadban/react/commits?sha=rsc-patches%2Fv19.2.1'  # patch corpus
 git log --oneline --follow -- src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js  # drift
 gh api repos/vercel/next.js/contents/packages/next/src/compiled    # Next.js vendoring
 gh api repos/vercel/next.js/contents/packages/next/src/build/webpack/plugins  # Next.js own plugins

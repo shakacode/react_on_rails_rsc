@@ -581,6 +581,8 @@ write_playwright_config() {
   local dummy_dir="$REACT_ON_RAILS_DIR/react_on_rails_pro/spec/dummy"
   PLAYWRIGHT_CONFIG_FILE="$dummy_dir/.react-on-rails-rsc-downstream.playwright.config.ts"
 
+  # The Pro dummy currently uses playwright.config.ts; update this generated
+  # import if the downstream app moves that base config to JavaScript.
   node - "$PLAYWRIGHT_CONFIG_FILE" "$RAILS_PORT" <<'NODE'
 const fs = require('fs');
 

@@ -23,6 +23,7 @@ REACT_ON_RAILS_DIR="${RSC_DOWNSTREAM_REACT_ON_RAILS_DIR:-}"
 WORK_DIR="${RSC_DOWNSTREAM_WORK_DIR:-}"
 AUTO_WORK_DIR="0"
 KEEP_WORK_DIR="${RSC_DOWNSTREAM_KEEP:-0}"
+USING_EXISTING_REACT_ON_RAILS_DIR="0"
 DUMMY_BUILD_SCRIPT="${RSC_DOWNSTREAM_DUMMY_BUILD_SCRIPT:-$DEFAULT_DUMMY_BUILD_SCRIPT}"
 INSTALL_PLAYWRIGHT="${RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT:-1}"
 INSTALL_PLAYWRIGHT_DEPS="${RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT_DEPS:-0}"
@@ -171,6 +172,14 @@ kill_process_tree() {
   fi
 
   kill "$pid" 2>/dev/null || true
+  local deadline=$((SECONDS + 10))
+  while kill -0 "$pid" 2>/dev/null && ((SECONDS < deadline)); do
+    sleep 1
+  done
+
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -KILL "$pid" 2>/dev/null || true
+  fi
   wait "$pid" 2>/dev/null || true
 }
 
@@ -245,6 +254,7 @@ checkout_downstream() {
   log_step "Preparing React on Rails checkout"
 
   if [[ -n "$REACT_ON_RAILS_DIR" ]]; then
+    USING_EXISTING_REACT_ON_RAILS_DIR="1"
     REACT_ON_RAILS_DIR="$(cd "$REACT_ON_RAILS_DIR" && pwd)"
     if [[ ! -e "$REACT_ON_RAILS_DIR/.git" ]]; then
       echo "Not a git repo or worktree: $REACT_ON_RAILS_DIR" >&2
@@ -261,6 +271,7 @@ checkout_downstream() {
     fi
     git -C "$REACT_ON_RAILS_DIR" fetch --depth 1 origin "$REACT_ON_RAILS_REF"
     git -C "$REACT_ON_RAILS_DIR" checkout --detach FETCH_HEAD
+    USING_EXISTING_REACT_ON_RAILS_DIR="0"
   fi
 
   DOWNSTREAM_SHA="$(git -C "$REACT_ON_RAILS_DIR" rev-parse HEAD)"
@@ -282,6 +293,11 @@ install_downstream_dependencies() {
   if [[ "$REQUIRE_PRO_LICENSE" == "1" && -z "${REACT_ON_RAILS_PRO_LICENSE:-}" ]]; then
     echo "REACT_ON_RAILS_PRO_LICENSE is required for the Pro dummy app." >&2
     return 1
+  fi
+
+  if [[ "$USING_EXISTING_REACT_ON_RAILS_DIR" == "1" ]]; then
+    echo "Warning: mutating package manifests in existing checkout: $REACT_ON_RAILS_DIR" >&2
+    echo "Restore with: git -C \"$REACT_ON_RAILS_DIR\" checkout -- package.json packages/react-on-rails-pro/package.json react_on_rails_pro/spec/dummy/package.json pnpm-lock.yaml" >&2
   fi
 
   node - "$REACT_ON_RAILS_DIR" "$TARBALL" <<'NODE'

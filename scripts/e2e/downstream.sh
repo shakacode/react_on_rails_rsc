@@ -362,7 +362,10 @@ pack_local_package() {
     return 1
   fi
   TARBALL="$PACKAGE_DIR/$tarball_name"
-  test -f "$TARBALL"
+  if [[ ! -f "$TARBALL" ]]; then
+    echo "Packed tarball not found: $TARBALL" >&2
+    return 1
+  fi
   echo "Packed tarball: $TARBALL"
 }
 

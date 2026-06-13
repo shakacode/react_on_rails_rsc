@@ -123,7 +123,10 @@ jobs:
             exit 1
           fi
           tarball_path="$pack_dir/$tarball_name"
-          test -f "$tarball_path"
+          if [[ ! -f "$tarball_path" ]]; then
+            echo "::error::Packed tarball not found: $tarball_path" >&2
+            exit 1
+          fi
           echo "Packed tarball: $tarball_path"
           echo "RSC_DOWNSTREAM_TARBALL=$tarball_path" >> "$GITHUB_ENV"
 
@@ -140,7 +143,6 @@ jobs:
         run: |
           set -euo pipefail
           corepack enable
-          corepack prepare "$(node -p "require('./package.json').packageManager")" --activate
           corepack prepare "$(node -p "require('./react_on_rails/package.json').packageManager")" --activate
           echo "Downstream Node: $(node --version)"
           echo "Yarn: $(yarn --version)"

@@ -169,16 +169,17 @@ only 2 runtime patches stand between this repo and a stock upstream runtime
 
 ```text
 react-on-rails-rsc =
-  dependency: react-server-dom-webpack@19.2.7            (stock npm; exact runtime patch; bump with peer floor)
+  dependency: react-server-dom-webpack: "^19.2.7"        (stock npm; caret range matching runtime peer floor; bump package floor when upstream floor rises)
   src/webpack/RSCWebpackPlugin.ts                (owned TS; #56)
   src/react-server-dom-rspack/                   (already owned)
   client/server wrappers                         (import the real package)
-  peerDeps: react/react-dom >=19.2.7 <19.3.0     (floor raise from ^19.0.4 is semver-breaking; requires major bump; minor cap is deliberate until 19.3 is revalidated)
+  peerDeps: react/react-dom ^19.2.7              (floor raise from ^19.0.4 is semver-breaking; validate later minors in #62 before claiming support)
 ```
 
 Wins: deletes ~1.8 MB of vendored built code; React upgrades become a
-dependency bump + matrix run; security fixes arrive same-day via npm;
-all bundler logic reviewable TS; `[RSC-REPLACE]` and the fork die.
+dependency bump + matrix run; npm makes security fixes available same-day, while
+#63/#66 keep this package's release path responsible for dependency and peer
+floor bumps; all bundler logic reviewable TS; `[RSC-REPLACE]` and the fork die.
 
 **Gate (#55):** the 2 runtime patches. Decision tree: (a) already upstream
 in 19.2.7? → done; (b) not upstream → submit (#58) and meanwhile assess a
@@ -263,7 +264,7 @@ npm view react dist-tags --json
 npm view react-server-dom-webpack versions --json   # stable lines exist
 npm view react-on-rails-rsc dist-tags --json        # rc-tag drift
 git ls-remote --tags origin                         # missing 19.0.5-rc.5
-gh api --paginate 'repos/abanoubghadban/react/commits?sha=rsc-patches%2Fv19.2.1'  # patch corpus
+gh api --paginate 'repos/abanoubghadban/react/commits?sha=rsc-patches%2Fv19.2.1'  # patch corpus; copy output to #58/#71 before archive
 git log --oneline --follow -- src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js  # drift
 gh api repos/vercel/next.js/contents/packages/next/src/compiled    # Next.js vendoring
 gh api repos/vercel/next.js/contents/packages/next/src/build/webpack/plugins  # Next.js own plugins

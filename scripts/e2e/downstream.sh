@@ -276,7 +276,7 @@ checkout_downstream() {
     else
       git -C "$REACT_ON_RAILS_DIR" remote add origin "$REACT_ON_RAILS_REPO"
     fi
-    git -C "$REACT_ON_RAILS_DIR" fetch --depth 1 origin "$REACT_ON_RAILS_REF"
+    git -C "$REACT_ON_RAILS_DIR" fetch --depth 1 origin -- "$REACT_ON_RAILS_REF"
     git -C "$REACT_ON_RAILS_DIR" checkout --detach FETCH_HEAD
     USING_EXISTING_REACT_ON_RAILS_DIR="0"
   fi

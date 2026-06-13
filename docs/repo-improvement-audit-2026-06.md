@@ -173,7 +173,7 @@ react-on-rails-rsc =
   src/webpack/RSCWebpackPlugin.ts                (owned TS; #56)
   src/react-server-dom-rspack/                   (already owned)
   client/server wrappers                         (import the real package)
-  peerDeps: react/react-dom >=19.2.7 <19.3.0     (matches runtime peer floor; cap is deliberate)
+  peerDeps: react/react-dom >=19.2.7 <19.3.0     (matches runtime peer floor; minor cap is deliberate until 19.3 is revalidated)
 ```
 
 Wins: deletes ~1.8 MB of vendored built code; React upgrades become a

@@ -148,6 +148,12 @@ PLAYWRIGHT_CONFIG_FILE=""
 LAST_STEP="initialization"
 FAILED_SPECS_FILE="$WORK_DIR/failed-specs.txt"
 FAILURE_SUMMARY_WRITTEN="0"
+DOWNSTREAM_MUTATED_PATHS=(
+  "package.json"
+  "packages/react-on-rails-pro/package.json"
+  "react_on_rails_pro/spec/dummy/package.json"
+  "pnpm-lock.yaml"
+)
 
 cleanup() {
   local status=$?
@@ -179,11 +185,7 @@ restore_existing_checkout_manifests() {
     return
   fi
 
-  git -C "$REACT_ON_RAILS_DIR" checkout -- \
-    package.json \
-    packages/react-on-rails-pro/package.json \
-    react_on_rails_pro/spec/dummy/package.json \
-    pnpm-lock.yaml 2>/dev/null || true
+  git -C "$REACT_ON_RAILS_DIR" checkout -- "${DOWNSTREAM_MUTATED_PATHS[@]}" 2>/dev/null || true
 }
 
 kill_process_tree() {
@@ -345,8 +347,9 @@ install_downstream_dependencies() {
   fi
 
   if [[ "$USING_EXISTING_REACT_ON_RAILS_DIR" == "1" ]]; then
+    ensure_existing_checkout_mutation_targets_clean
     echo "Warning: mutating package manifests in existing checkout: $REACT_ON_RAILS_DIR" >&2
-    echo "Restore with: git -C \"$REACT_ON_RAILS_DIR\" checkout -- package.json packages/react-on-rails-pro/package.json react_on_rails_pro/spec/dummy/package.json pnpm-lock.yaml" >&2
+    echo "Restore with: git -C \"$REACT_ON_RAILS_DIR\" checkout -- ${DOWNSTREAM_MUTATED_PATHS[*]}" >&2
   fi
 
   node - "$REACT_ON_RAILS_DIR" "$TARBALL" <<'NODE'
@@ -405,6 +408,26 @@ NODE
   if ! (cd "$dummy_dir" && bundle check); then
     (cd "$dummy_dir" && bundle install --jobs 4 --retry 3)
   fi
+}
+
+ensure_existing_checkout_mutation_targets_clean() {
+  local dirty_paths=()
+  local relative_path
+
+  for relative_path in "${DOWNSTREAM_MUTATED_PATHS[@]}"; do
+    if [[ -n "$(git -C "$REACT_ON_RAILS_DIR" status --porcelain -- "$relative_path")" ]]; then
+      dirty_paths+=("$relative_path")
+    fi
+  done
+
+  if ((${#dirty_paths[@]} == 0)); then
+    return
+  fi
+
+  echo "Existing checkout has uncommitted edits in files this script must mutate:" >&2
+  printf '  - %s\n' "${dirty_paths[@]}" >&2
+  echo "Commit, stash, or restore those files before using --react-on-rails-dir." >&2
+  return 1
 }
 
 build_downstream_dummy() {

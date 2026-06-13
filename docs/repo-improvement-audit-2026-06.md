@@ -169,11 +169,11 @@ only 2 runtime patches stand between this repo and a stock upstream runtime
 
 ```text
 react-on-rails-rsc =
-  dependency: react-server-dom-webpack@^19.2.x   (stock npm; runtime halves only)
+  dependency: react-server-dom-webpack@~19.2.7   (stock npm; runtime halves only; <19.3)
   src/webpack/RSCWebpackPlugin.ts                (owned TS; #56)
   src/react-server-dom-rspack/                   (already owned)
   client/server wrappers                         (import the real package)
-  peerDeps: react/react-dom ^19.2
+  peerDeps: react/react-dom >=19.2.0 <19.3.0
 ```
 
 Wins: deletes ~1.8 MB of vendored built code; React upgrades become a
@@ -189,7 +189,7 @@ to `eliminate-react-fork.md` Option 4 (patch files applied to vanilla
 
 Note: GitHub's search API rejects queries against `facebook/react`, so the
 upstream-status check must be done by cloning + `git log`/diff (recorded in
-#55).
+issue #55).
 
 ## 7. Release & verification recommendations (summary)
 
@@ -218,7 +218,7 @@ the `pr-batch`/`plan-pr-batch` skills in `shakacode/react_on_rails`.
 
 | Batch | Issues | Notes |
 | --- | --- | --- |
-| A (hardest) | #55 #56 #57 #58 #59 → #60 | #60 last; hard-blocked by #55+#56+#57 |
+| A (hardest) | #55 #56 #57 #58 #59 #60 | #60 last; hard-blocked by #55+#56+#57; #59 supplies soft evidence for #61 |
 | B | #61 #62 #63 #64 #65 #66 | #65 time-sensitive (pull forward, no Batch-A dependency); #66 hard-blocked by #60 |
 | C | #67 #68 #69 #70 #71 + react_on_rails#3965 | #68 pull forward (before #65); #71 blocked by #60; #3965 blocked by #65 |
 
@@ -232,13 +232,14 @@ flowchart LR
   i60 --> i71["#71 archive fork"]
   i65["#65 ship 19.0.5 final"] --> ror["react_on_rails#3965 pin fix"]
   i68["#68 release hygiene"] -. before .-> i65
+  i59["#59 downstream E2E"] -. soft .-> i61["#61 artifact CI"]
   i61["#61 artifact CI"] -. soft .-> i62["#62 matrix"]
   i61 -. soft .-> i63["#63 CI release"]
-  i61 -. soft .-> i59["#59 downstream E2E"]
   i55 -. informs .-> i58["#58 upstream patches"]
 ```
 
-**Critical path:** #55 → #56 → #60 → #66, with #57 also gating #60.
+**Critical path:** #55, #56, and #57 can proceed in parallel; all three gate
+#60, which then gates #66. #55 also informs #58.
 
 ## 9. Triage outcomes during the audit
 
@@ -259,7 +260,7 @@ npm view react dist-tags --json
 npm view react-server-dom-webpack versions --json   # stable lines exist
 npm view react-on-rails-rsc dist-tags --json        # rc-tag drift
 git ls-remote --tags origin                         # missing 19.0.5-rc.5
-gh api repos/abanoubghadban/react/commits?sha=rsc-patches/v19.2.1  # patch corpus
+gh api 'repos/abanoubghadban/react/commits?sha=rsc-patches/v19.2.1'  # patch corpus
 git log --oneline --follow -- src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js  # drift
 gh api repos/vercel/next.js/contents/packages/next/src/compiled    # Next.js vendoring
 gh api repos/vercel/next.js/contents/packages/next/src/build/webpack/plugins  # Next.js own plugins

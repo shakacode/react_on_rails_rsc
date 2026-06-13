@@ -121,10 +121,7 @@ cleanup() {
   local status=$?
 
   for pid in "$RAILS_PID" "$NODE_RENDERER_PID"; do
-    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
-      wait "$pid" 2>/dev/null || true
-    fi
+    kill_process_tree "$pid"
   done
 
   if [[ "$AUTO_WORK_DIR" != "1" ]]; then
@@ -138,6 +135,24 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
+
+kill_process_tree() {
+  local pid="$1"
+
+  if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
+    return
+  fi
+
+  if command -v pgrep >/dev/null 2>&1; then
+    local child_pid
+    while IFS= read -r child_pid; do
+      kill_process_tree "$child_pid"
+    done < <(pgrep -P "$pid" 2>/dev/null || true)
+  fi
+
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
 
 on_error() {
   local status=$?
@@ -187,7 +202,10 @@ checkout_downstream() {
 
   if [[ -n "$REACT_ON_RAILS_DIR" ]]; then
     REACT_ON_RAILS_DIR="$(cd "$REACT_ON_RAILS_DIR" && pwd)"
-    test -d "$REACT_ON_RAILS_DIR/.git"
+    if [[ ! -e "$REACT_ON_RAILS_DIR/.git" ]]; then
+      echo "Not a git repo or worktree: $REACT_ON_RAILS_DIR" >&2
+      return 1
+    fi
     echo "Using existing checkout: $REACT_ON_RAILS_DIR"
   else
     REACT_ON_RAILS_DIR="$WORK_DIR/react_on_rails"

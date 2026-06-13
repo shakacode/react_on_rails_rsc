@@ -31,7 +31,6 @@ jobs:
     env:
       REACT_ON_RAILS_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.react_on_rails_ref || 'main' }}
       RSC_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.rsc_ref || github.ref }}
-      RSC_DOWNSTREAM_KEEP: '1'
       RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT_DEPS: '1'
     steps:
       - name: Check out react-on-rails-rsc

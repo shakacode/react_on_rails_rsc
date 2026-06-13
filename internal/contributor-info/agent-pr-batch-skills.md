@@ -7,6 +7,11 @@ repository.
 `AGENTS.md` is the policy source of truth. The skill and workflow files below are operating guides
 that must stay aligned with it.
 
+When one coordinator runs multiple batches across machines, launch surfaces, or
+repositories, use [Multi-Batch Operations](multi-batch-operations.md) for the
+operator-level topology, launcher roles, cross-batch routing, and failure
+drills. This file stays focused on skill selection and per-batch sizing.
+
 ## Quick Skill Map
 
 | Skill or workflow | Use when | Primary output |
@@ -53,7 +58,7 @@ ported from the Rails/Pro/node-renderer codebase and has not been adapted for th
    - One independent issue normally gets one branch and one PR.
    - Existing PR targets stay on their PR branch; do not create replacement PRs unless the branch cannot be used safely.
    - Shared files, dependency order, or broad behavior should reduce concurrency.
-   - Cap at 8 items when files or risk overlap, or 10 fully independent items; propose a smaller first batch when in doubt.
+   - Cap each batch at 8 items when files or risk overlap, or 10 fully independent items; propose a smaller first batch when in doubt. For multiple concurrent batches, keep this as a per-batch cap and apply the cross-batch routing guidance in [Multi-Batch Operations](multi-batch-operations.md) before launching.
 
 5. **Close out with evidence.**
    - Local validation uses this repo's real gates: `yarn build`, targeted `yarn jest <path>`, and `yarn test` when broad behavior changed.
@@ -146,6 +151,10 @@ When changing one part of the PR skill suite, check the matching docs and workfl
   `$post-merge-audit`.
 - Keep this guide and [`.agents/skills/README.md`](../../.agents/skills/README.md) updated when a
   skill is added, removed, renamed, or retargeted.
+- Keep [Multi-Batch Operations](multi-batch-operations.md) and
+  [Agent Coordination Backend](agent-coordination-backend.md) aligned with
+  `$plan-pr-batch`, `$pr-batch`, and the canonical coordination state section in
+  [`pr-processing.md`](../../.agents/workflows/pr-processing.md).
 
 ## Troubleshooting
 

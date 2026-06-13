@@ -233,6 +233,9 @@ const packageJsonPaths = [
 
 for (const relativePath of packageJsonPaths) {
   const fullPath = path.join(root, relativePath);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`Expected downstream package file not found: ${fullPath}`);
+  }
   const packageJson = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
 
   for (const sectionName of ['dependencies', 'devDependencies', 'optionalDependencies']) {
@@ -360,7 +363,7 @@ NODE
 wait_for_services() {
   log_step "Waiting for downstream services"
   wait_for_http "Rails server" "http://127.0.0.1:3000/empty"
-  wait_for_h2c "Node renderer" "http://127.0.0.1:3800" "/info"
+  wait_for_h2c "Node renderer" "http://127.0.0.1:${RENDERER_PORT:-3800}" "/info"
 }
 
 install_playwright_browsers() {

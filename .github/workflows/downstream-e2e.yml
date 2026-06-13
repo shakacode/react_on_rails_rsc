@@ -55,9 +55,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rortv="react_on_rails/bin/read-tool-version"
+          if [[ ! -x "$rortv" ]]; then
+            echo "::error::Expected $rortv not found in the downstream checkout." >&2
+            exit 1
+          fi
           {
-            echo "ruby-version=$(react_on_rails/bin/read-tool-version react_on_rails/.minimum.tool-versions ruby)"
-            echo "node-version=$(react_on_rails/bin/read-tool-version react_on_rails/.tool-versions nodejs)"
+            echo "ruby-version=$("$rortv" react_on_rails/.minimum.tool-versions ruby)"
+            echo "node-version=$("$rortv" react_on_rails/.tool-versions nodejs)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Setup Ruby
@@ -83,7 +88,9 @@ jobs:
           corepack prepare "$(node -p "require('./react_on_rails/package.json').packageManager")" --activate
           echo "Node: $(node --version)"
           echo "Yarn: $(yarn --version)"
-          echo "pnpm: $(pnpm --version)"
+          if command -v pnpm >/dev/null 2>&1; then
+            echo "pnpm: $(pnpm --version)"
+          fi
           echo "Ruby: $(ruby --version)"
           echo "Bundler: $(bundle --version)"
 

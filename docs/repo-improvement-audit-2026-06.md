@@ -7,7 +7,7 @@
 [shakacode/react_on_rails#3965](https://github.com/shakacode/react_on_rails/issues/3965)
 **Related docs:** [`releasing.md`](releasing.md),
 [`eliminate-react-fork.md`](eliminate-react-fork.md),
-[`open-rsc-work-status.md`](open-rsc-work-status.md) (was stale at audit time; since refreshed in #70)
+[`open-rsc-work-status.md`](open-rsc-work-status.md)
 
 This document is the durable record of the full repo deep dive: what was
 verified, what it implies, and why the backlog is shaped the way it is. Facts
@@ -83,7 +83,7 @@ becomes the *fallback*, not the primary path.
 | Thing | Version |
 | --- | --- |
 | React stable | **19.2.7** (`backport` line 19.1.8; 19.3 canary) |
-| Vendored runtime here | **19.0.4** + FOUC/runtime-chunk patches (#35) |
+| Vendored runtime here | **19.0.4** + FOUC (Flash of Unstyled Content)/runtime-chunk patches (#35) |
 | Upstream `react-server-dom-webpack` stable on npm | **19.0.0–19.0.7, 19.1.0–19.1.8, 19.2.0–19.2.7** — full stable coverage |
 | This package on npm | `latest=19.0.4`, `next=19.0.5-rc.7`, `rc=19.0.5-rc.5` (stale orphan tag) |
 | peerDependencies | `react`/`react-dom` `^19.0.4`, `webpack ^5.59.0` |
@@ -169,11 +169,11 @@ only 2 runtime patches stand between this repo and a stock upstream runtime
 
 ```text
 react-on-rails-rsc =
-  dependency: react-server-dom-webpack@~19.2.7   (stock npm; allows 19.2 patches, blocks 19.3)
+  dependency: react-server-dom-webpack@>=19.2.7 <19.3.0  (stock npm; allows 19.2 patches, blocks 19.3)
   src/webpack/RSCWebpackPlugin.ts                (owned TS; #56)
   src/react-server-dom-rspack/                   (already owned)
   client/server wrappers                         (import the real package)
-  peerDeps: react/react-dom >=19.2.7 <19.3.0     (matches runtime peer floor; minor cap is deliberate until 19.3 is revalidated)
+  peerDeps: react/react-dom >=19.2.7 <19.3.0     (floor raise from ^19.0.4 is semver-breaking; requires major bump; minor cap is deliberate until 19.3 is revalidated)
 ```
 
 Wins: deletes ~1.8 MB of vendored built code; React upgrades become a
@@ -213,8 +213,10 @@ issue #55).
 
 ## 8. The backlog
 
-Tracking issue: **#72**. Three difficulty-ordered batches, run A → B → C via
-the `pr-batch`/`plan-pr-batch` skills in this repo (`.agents/skills/`).
+Tracking issue: **#72**. Three difficulty-ordered batches run through the
+`pr-batch`/`plan-pr-batch` skills in this repo (`.agents/skills/`). Default
+order is A → B → C, with the explicit exception that #68 from Batch C is pulled
+forward before #65 in Batch B.
 
 | Batch | Issues | Notes |
 | --- | --- | --- |
@@ -261,7 +263,7 @@ npm view react dist-tags --json
 npm view react-server-dom-webpack versions --json   # stable lines exist
 npm view react-on-rails-rsc dist-tags --json        # rc-tag drift
 git ls-remote --tags origin                         # missing 19.0.5-rc.5
-gh api 'repos/abanoubghadban/react/commits?sha=rsc-patches%2Fv19.2.1'  # patch corpus
+gh api --paginate 'repos/abanoubghadban/react/commits?sha=rsc-patches%2Fv19.2.1'  # patch corpus
 git log --oneline --follow -- src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js  # drift
 gh api repos/vercel/next.js/contents/packages/next/src/compiled    # Next.js vendoring
 gh api repos/vercel/next.js/contents/packages/next/src/build/webpack/plugins  # Next.js own plugins

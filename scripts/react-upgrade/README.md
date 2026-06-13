@@ -1,6 +1,16 @@
 # React Upgrade Scripts
 
-Automation scripts to upgrade `react-server-dom-webpack` from the React fork to `react-on-rails-rsc`.
+Legacy automation scripts for upgrading the vendored `react-server-dom-webpack` runtime from the
+React fork into `react-on-rails-rsc`.
+
+> [!WARNING]
+> This is legacy fork-cherry-pick tooling. The active strategy is the stock npm
+> runtime path documented in
+> [`docs/eliminate-react-fork.md`](../../docs/eliminate-react-fork.md). Use this
+> script only for emergency maintenance of the current vendored runtime. Do not
+> use it for the Option 4 patch-file fallback; seed that path from the in-repo
+> archive and rewrite the tooling first. Patch history from the fork is preserved in
+> [`patches/archive/abanoubghadban-react/`](../../patches/archive/abanoubghadban-react/).
 
 ## Prerequisites
 

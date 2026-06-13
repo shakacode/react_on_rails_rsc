@@ -1,19 +1,26 @@
 # Eliminating the React Fork Repository
 
 **Issue:** [#31](https://github.com/shakacode/react_on_rails_rsc/issues/31), [#55](https://github.com/shakacode/react_on_rails_rsc/issues/55) (Option 5 spike)
-**Status:** Option 5 (stock npm runtime) selected — GO, pending the #60 migration gates. Option 4 (patch files) is the documented fallback.
-**Date:** 2026-04-17 (Options 1–4), 2026-06-12 (Option 5 spike)
+**Status:** Option 5 (stock npm runtime) selected — GO. As of 2026-06-13, `main` still carries the
+vendored runtime and legacy `scripts/react-upgrade/` helper after the interim 19.0.7 CVE patch
+([#86](https://github.com/shakacode/react_on_rails_rsc/pull/86)); the stock-runtime replacement
+itself remains outstanding. Option 4 (patch files) is the documented fallback. Fork patch history is
+archived in this repo; archiving `AbanoubGhadban/react` remains an owner/admin action.
+**Date:** 2026-04-17 (Options 1–4), 2026-06-12 (Option 5 spike), 2026-06-13 (patch archive)
 
 ## Background
 
-Upgrading `react-server-dom-webpack` currently requires two repositories:
+The legacy vendored-runtime upgrade flow required two repositories:
 
 1. **`shakacode/react_on_rails_rsc`** (this repo) — the npm package that ships built RSC artifacts in `src/react-server-dom-webpack/`, plus native code (`WebpackPlugin`, `WebpackLoader`, `RSCRspackPlugin`, etc.)
 2. **`abanoubghadban/react`** — a fork of `facebook/react` hosting `rsc-patches/v<version>` branches, each containing `[RSC-PATCH]` commits on top of upstream React version tags.
 
-The fork exists solely to park a small set of source-level patches against React's `packages/react-server-dom-webpack/`, build the patched package, and copy the output into this repo. It has no independent consumers.
+The fork existed solely to park a small set of source-level patches against React's
+`packages/react-server-dom-webpack/`, build the patched package, and copy the output into this repo.
+It has no independent consumers. This live fork path is now legacy-only; use it only for maintainer
+directed emergency maintenance while the stock-runtime replacement is still outstanding.
 
-### Current upgrade flow (via `scripts/react-upgrade/`)
+### Legacy upgrade flow (via `scripts/react-upgrade/`)
 
 ```
 abanoubghadban/react                           shakacode/react_on_rails_rsc
@@ -330,11 +337,11 @@ Diffed vendored (~19.0.4) vs stock 19.2.7 built files:
    `react-on-rails-rsc`) is acceptable; update any docs/tests that assert the branding.
 8. On React 19.3 stable: bump and confirm the JSON-walk perf patch is included (re-run the parse
    benchmark if desired).
-9. Archive `abanoubghadban/react` and delete `scripts/react-upgrade/` fork tooling.
+9. Archive `abanoubghadban/react` and delete or replace `scripts/react-upgrade/` fork tooling.
    **Prerequisite:** all Option 4 fallback criteria (below) have been ruled out, the step 6 smoke
-   test is green, and the fork branches (`rsc-patches/*`) are confirmed no longer needed as a patch
-   source. Archiving keeps the repo readable on GitHub but treat this as the point of no return for
-   the cherry-pick workflow.
+   test is green, the fork branch history is preserved in `patches/archive/`, and an owner/admin
+   archives the fork. Archiving keeps the repo readable on GitHub but treat this as the point of no
+   return for the cherry-pick workflow.
 
 #### Fallback criteria (Option 4, 2-patch corpus)
 
@@ -351,14 +358,41 @@ JSON-walk only until 19.3) applied to vanilla `facebook/react` — if **any** of
 - Upstream stable falls back behind on a security fix we need faster than a release cycle (unlikely —
   the current situation is the reverse).
 
-Option 4 remains fully specified below (Decision section history) and the fork branches
-(`rsc-patches/v19.0.3` @ `2c29304508`) remain available to export patches from until the migration is
-complete and verified.
+Option 4 remains fully specified below (Decision section history). The fork branch history is now
+preserved under `patches/archive/`; do not use the live fork as the normal patch source.
+
+#### Upstream patch and fork-retirement status
+
+Status verified 2026-06-13 for
+[#58](https://github.com/shakacode/react_on_rails_rsc/issues/58) and
+[#71](https://github.com/shakacode/react_on_rails_rsc/issues/71):
+
+- Patch history is preserved in
+  [`patches/archive/abanoubghadban-react/`](../patches/archive/abanoubghadban-react/).
+  This archive includes the three `rsc-patches/v*` branches plus the two
+  upstream-shaped runtime topic branches. It is historical evidence, not the
+  active fallback patch directory.
+- JSON-walk parsing is already upstreamed in
+  [facebook/react#35776](https://github.com/facebook/react/pull/35776),
+  merge commit `f247ebaf44317ac6648b62f99ceaed1e4fc4dc01`; no new upstream PR
+  is needed for that patch.
+- The FOUC topic branch
+  `fix/3211-rsc-css-deferred-suspense` (`980eda222`) is not upstream in
+  `facebook/react` main or `v19.2.7`, but that exact patch shape is obsolete for
+  this repo: it uses the older loader-wrapper/global-manifest approach that #48
+  and #49 replaced with request-scoped stylesheet hints. If the wrapper-layer
+  stock-runtime design fails, upstream or fallback work should be based on the
+  current hint-emission design, not the archived topic patch.
+- The `loadServerReference` bound-args divergence is a stock-runtime smoke-test
+  gate, not an upstream patch request.
+- `AbanoubGhadban/react` is still public and unarchived. The current token has
+  pull-only permission (`admin=false`, `push=false`), so archiving the fork is
+  blocked on owner/admin action.
 
 ## Decision
 
-**Superseded 2026-06-12 by Option 5 (stock npm runtime) — see above; GO, gated on the #60 checklist,
-with Option 4 as the explicit fallback.**
+**Superseded 2026-06-12 by Option 5 (stock npm runtime) — see above; GO, gated on the
+stock-runtime checklist, with Option 4 as the explicit fallback.**
 
 Original decision (2026-04-17): **We are going with Option 4 (patch files).**
 
@@ -368,10 +402,16 @@ The steps below implement Option 4 and apply **only if** an Option 5 fallback cr
 triggered. The active migration plan is the #60 checklist in the Option 5 section.
 
 Original note: implementation will begin in a follow-up issue after the currently open PRs are merged (#29, #21, #20, #11).
+The historical fork patch corpus has since been archived under
+`patches/archive/abanoubghadban-react/`; use that archive as the provenance source for any fallback
+patch-file work.
 
 High-level steps:
 
-1. **Export existing patches** — Run `git format-patch` on each `rsc-patches/v<version>` branch in `abanoubghadban/react` to produce `.patch` files. Commit them to `patches/react-server-dom-webpack/v<version>/`.
+1. **Seed active fallback patches from the archive** — Start from the preserved
+   `patches/archive/abanoubghadban-react/` history and create the minimal active corpus under
+   `patches/react-server-dom-webpack/v<version>/`. Do not depend on the live fork for normal fallback
+   work.
 
 2. **Rewrite `scripts/react-upgrade/upgrade.js`** — Replace the cherry-pick workflow with:
    - Shallow-clone `facebook/react` at the target tag into a temp directory
@@ -386,4 +426,5 @@ High-level steps:
 
 4. **Update CI** — Remove any references to `abanoubghadban/react`. Add a CI job to validate patches apply cleanly against their target React version.
 
-5. **Archive `abanoubghadban/react`** — Once everything is verified, archive or delete the fork.
+5. **Archive `abanoubghadban/react`** — Once everything is verified, have an owner/admin archive or
+   delete the fork.

@@ -14,6 +14,12 @@ verified, what it implies, and why the backlog is shaped the way it is. Facts
 below were verified on the audit dates; re-verify anything status-sensitive
 before acting on it months later.
 
+> [!NOTE]
+> Post-audit status update (2026-06-13): fork patch history is now preserved in
+> `patches/archive/abanoubghadban-react/`. References below to the fork and
+> `scripts/react-upgrade/` describe the audit-time legacy path unless explicitly
+> marked otherwise.
+
 ---
 
 ## 1. Executive summary

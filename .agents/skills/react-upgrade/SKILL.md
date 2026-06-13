@@ -1,26 +1,29 @@
 ---
 name: react-upgrade
-description: "Drive the current react-server-dom-webpack upgrade flow using scripts/react-upgrade/upgrade.js and the React fork cherry-pick workflow."
+description: "Legacy helper for emergency maintenance of the vendored react-server-dom-webpack runtime through scripts/react-upgrade/upgrade.js and the React fork cherry-pick workflow."
 argument-hint: 'See Commands section; set TARGET_VERSION and REACT_FORK_DIR, then pass needed flags.'
 ---
 
 # React Upgrade
 
-Use this skill when upgrading the vendored `react-server-dom-webpack` runtime
-artifacts in `src/react-server-dom-webpack/`.
+Use this skill only when a maintainer explicitly asks for emergency maintenance
+of the vendored `react-server-dom-webpack` runtime artifacts in
+`src/react-server-dom-webpack/`. It is not the Option 4 patch-file fallback
+documented in `docs/eliminate-react-fork.md`.
 
 ## Current Rule
 
-Never hand-edit `src/react-server-dom-webpack/`. The current supported flow is
+Never hand-edit `src/react-server-dom-webpack/`. The legacy supported flow is
 the cherry-pick based script in `scripts/react-upgrade/upgrade.js`.
 
 Read `docs/eliminate-react-fork.md` before changing the upgrade strategy. That
-document describes the planned patch-file future, but the current script still
-uses a local React fork.
+document records Option 5 (stock npm runtime) as the active strategy and Option
+4 patch files as the fallback. This legacy script still uses a local React fork
+and should not be used for new stock-runtime work.
 
-Transition note: patch-file or stock-React tooling is planned after #60/#71.
-Until those issues land in this repo, do not invent patch directories, stock
-React clone behavior, or completed replacement tooling.
+Transition note: fork patch history is archived under
+`patches/archive/abanoubghadban-react/`. Those files preserve provenance only;
+they are not the active fallback patch directory.
 
 ## Prerequisites
 

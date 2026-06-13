@@ -27,7 +27,7 @@ here. Source lives in `src/`, tests in `tests/`, build output in `dist/`.
 - When the user wants release artifact verification, use `.agents/skills/verify-release/SKILL.md` (`$verify-release`); it runs `yarn verify:artifacts` / `scripts/verify-release.sh`.
 - When the user wants package-level end-to-end verification, use `.agents/skills/run-e2e/SKILL.md` (`$run-e2e`); it runs `scripts/e2e/run.sh`.
 - When the user wants downstream React on Rails verification, use `.agents/skills/downstream-e2e/SKILL.md` (`$downstream-e2e`); this is a documented stub until `scripts/e2e/downstream.sh` lands.
-- When the user wants to upgrade the vendored React Server DOM runtime, use `.agents/skills/react-upgrade/SKILL.md` (`$react-upgrade`) and never hand-edit `src/react-server-dom-webpack/`.
+- When a maintainer explicitly asks to maintain the legacy vendored React Server DOM runtime, use `.agents/skills/react-upgrade/SKILL.md` (`$react-upgrade`) and never hand-edit `src/react-server-dom-webpack/`.
 - When the user wants to refresh the open RSC work status or live backlog map, use `.agents/skills/triage/SKILL.md` (`$triage`) and report unverifiable facts as `UNKNOWN`.
 - Default simplify model: `claude-opus-4-8`
 

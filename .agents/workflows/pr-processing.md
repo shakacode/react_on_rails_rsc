@@ -11,6 +11,10 @@ Run a Codex batch
 
 For assistants without skill support, follow the high-concurrency batch launch rules below before using the rest of this workflow.
 
+For one coordinator running multiple batches across machines, launch surfaces,
+or the React on Rails / RSC repositories, use
+`internal/contributor-info/multi-batch-operations.md`.
+
 For post-merge audits after a concurrent batch or before a release candidate, use `.agents/skills/post-merge-audit/SKILL.md` when skills are available. Reusable audit, comparison, issue-creation, and Claude handoff prompts live in `.agents/workflows/post-merge-audit.md`.
 
 For adversarial pre-merge or post-merge PR review, use `.agents/skills/adversarial-pr-review/SKILL.md` when skills are available. Reusable Codex, Claude, and comparison prompts live in `.agents/workflows/adversarial-pr-review.md`.
@@ -28,6 +32,19 @@ For adversarial pre-merge or post-merge PR review, use `.agents/skills/adversari
    - When the value, priority, or proposed fix scope is unclear, use `.agents/skills/evaluate-issue/SKILL.md` before implementation (or `.agents/workflows/evaluate-issue.md` for agents without skill support).
 3. Isolate the work:
    - Fetch/prune `main`, confirm the expected repository root, and verify nested repo paths before assigning work.
+   - When the private `shakacode/agent-coordination` backend is available
+     (`agent-coord status` exits 0), use it as the coordination source of truth:
+     claim before creating a worktree, branch, or conductor session; heartbeat
+     at phase transitions; and check status before dependency-sensitive work,
+     rebase, push, readiness, or closeout.
+   - If `agent-coord status` is unavailable, report private coordination state
+     as `UNKNOWN` and use structured public claim comments only as an advisory
+     fallback. A refused `agent-coord claim` after successful status is a hard
+     stop, not an unavailable-backend fallback.
+   - For dependent lanes, ensure the coordinator has created or updated the
+     private backend `batches/<batch-id>.json` before workers start. If a lane
+     declares `depends_on` and status shows no matching batch file or lane
+     state, stop and report dependency state as `UNKNOWN` instead of proceeding.
    - Use the current checkout for one focused task.
    - For multiple independent PRs or lanes (independent work streams with separate branch/worktree ownership), use one worktree per PR branch so agents do not overlap edits.
 4. Make a local batch:
@@ -270,6 +287,10 @@ Goal name: <concrete goal name, not the pasted prompt text>.
 Targets: <exact issue/PR list>.
 Lane: <machine/worker ownership and exclusions>.
 Mode: spawn worker subagents only after the target list and lane split are confirmed.
+Coordination: follow this workflow under Coordination State and Worker Rules
+before creating worktrees or branches. Include stable agent ids,
+`agent-coord status` / claim outcomes, batch ids, dependency refs, and any
+`UNKNOWN` state in every worker lane and handoff.
 
 Fetch/prune main first, confirm the expected repo root, and verify any nested repo paths before assigning work. Classify each target as an implementation PR, combined investigation PR, deliberate no-PR evidence comment, or product-decision blocker.
 
@@ -383,7 +404,15 @@ Use exact lane assignments as the primary coordination mechanism. Labels are use
 
 - Use a maintainer-applied eligibility label such as `codex-ready` only if the repo has adopted it.
 - Use a temporary `codex-wip` label only as a visible hint; do not treat it as the durable lock.
-- Prefer a structured claim comment for resumable coordination:
+- When the private `shakacode/agent-coordination` backend is available
+  (`agent-coord status` exits 0), treat private state as the source of truth for
+  claims, heartbeats, liveness, active batches, and dependency rendering. See
+  [Agent Coordination Backend](../../internal/contributor-info/agent-coordination-backend.md).
+- Public claim comments are advisory fallback state for humans and recovery
+  only. They do not override a live/stale private holder, bypass a refused
+  private claim, or unblock a dependency lane by themselves.
+- When the private backend is unavailable, use a structured claim comment for
+  resumable advisory coordination:
 
 ```markdown
 <!-- codex-claim v1
@@ -402,7 +431,12 @@ and rely on the machine, branch, and batch fields. Set `expires_at` to a short
 bounded lease, usually 2-4 hours for an active batch or no later than the known
 batch window. Refresh the claim when continuing beyond that window.
 
-On restart, search for existing claim comments. Resume your own live claim, skip another live claim, or treat expired claims as recoverable after reporting the takeover.
+On restart, first run `agent-coord status` when available. Resume your own live
+private claim, skip another live or stale private claim, or treat a dead claim as
+recoverable after reporting the takeover. If private status is unavailable,
+search for existing public claim comments. Resume your own live fallback claim,
+skip another live fallback claim, or treat expired fallback claims as recoverable
+after reporting the takeover.
 
 ### Worker Rules
 
@@ -410,6 +444,18 @@ When worker subagents are explicitly authorized:
 
 - Assign one target or one disjoint lane per worker.
 - Give each worker a separate worktree and branch.
+- If the private coordination backend is available, run `agent-coord claim`
+  before creating the worktree, branch, or conductor session. A refused claim is
+  a hard stop; report the holder, heartbeat liveness, and target.
+- Use stable agent ids that identify machine role, tool, and lane. Keep the same
+  agent id when resuming the same lane.
+- Send `agent-coord heartbeat` at item start, branch or PR update, review pass,
+  blocked state, resumed state, and done state.
+- Run `agent-coord status` before rebase, push, readiness, or closeout. If the
+  lane shows non-empty `blocked_on`, set the heartbeat to `--status blocked`,
+  report the blocked refs, and move to independent work.
+- If a worker lane declares `depends_on` but status cannot verify the referenced
+  batch file or lane, stop with dependency state `UNKNOWN`.
 - Tell workers they are not alone in the codebase and must not revert others' edits.
 - Keep write scopes disjoint unless the main agent serializes integration.
 - The main agent owns final PR creation, status reporting, and merge sequencing.
@@ -423,11 +469,15 @@ PR-only output.
 The closeout lane is:
 
 1. Re-fetch every worker PR and issue state from GitHub.
-2. Wait for current-head checks and configured review agents, using bounded
+2. Run `agent-coord status` when available and reconcile live private claims,
+   heartbeats, `blocked_on` refs, and any `UNKNOWN` dependency state before
+   declaring targets ready or merged. If private status is unavailable, say so
+   and use public claim comments only as advisory fallback evidence.
+3. Wait for current-head checks and configured review agents, using bounded
    polling.
-3. Fetch current unresolved review threads and triage them as fixed, waived, or
+4. Fetch current unresolved review threads and triage them as fixed, waived, or
    still blocking.
-4. Mark ready or merge PRs that satisfy the merge qualification rules in
+5. Mark ready or merge PRs that satisfy the merge qualification rules in
    **Merge And Release Model**, applying the merge-endgame debounce rule before
    merge. The coordinator MAY auto-merge READY low-risk PRs, merging
    sequentially and running `git pull --rebase origin main` between PRs that
@@ -436,7 +486,7 @@ The closeout lane is:
    runtime-version bumps, broad refactors, and release-process changes. When
    unsure whether a PR is low-risk, leave it ready and ask. Report remaining
    blockers, questions, or `UNKNOWN` live state.
-5. After any closeout-lane merge action, run a lightweight sweep for late
+6. After any closeout-lane merge action, run a lightweight sweep for late
    post-merge bot findings before the final batch handoff: confirm the PR landed,
    check `main` status, and inspect late review/check comments that arrived
    around or after merge. Route release-relevant findings into the next

@@ -13,6 +13,7 @@ here. Source lives in `src/`, tests in `tests/`, build output in `dist/`.
 - `AGENTS.md`: canonical entry point for agent instructions and workflow discovery
 - `.agents/skills/`: agent skills; `.claude/skills` is a symlink here so Claude Code exposes the same workflows as slash commands
 - `.agents/workflows/`: shared prompt templates and reusable workflows for Codex, GPT, and other non-Claude tools
+- `internal/contributor-info/multi-batch-operations.md`: operator guide for multiple concurrent batches across machines, launch surfaces, or the React on Rails / RSC repos
 - When deciding whether an issue or proposed fix is worth doing, use `.agents/skills/evaluate-issue/SKILL.md`; a short invocation is `$evaluate-issue` or "Is this issue worth fixing?"
 - When the user wants to choose issues or PRs for a future Codex batch, use `.agents/skills/plan-pr-batch/SKILL.md` to produce a ready `$pr-batch` goal; a short invocation is `$plan-pr-batch` or "Plan a Codex batch"
 - When the user wants a multi-issue or multi-PR Codex batch, use `.agents/skills/pr-batch/SKILL.md`; a short invocation is `$pr-batch` or "Run a Codex batch"

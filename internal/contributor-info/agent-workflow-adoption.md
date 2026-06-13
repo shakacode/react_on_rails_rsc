@@ -27,6 +27,10 @@ The missing docs from the original React on Rails port are now represented by:
 
 - [PR Skill Guide](./agent-pr-batch-skills.md) - which skill to use, how to launch batches, and how to
   close out with evidence.
+- [Agent Coordination Backend](./agent-coordination-backend.md) - pointer to the private shared
+  backend for claim, heartbeat, status, and dependency state.
+- [Multi-Batch Operations](./multi-batch-operations.md) - operator guide for concurrent batches
+  across machines, launch surfaces, or the React on Rails / RSC repos.
 - This adoption guide - how to keep the workflow suite coherent and how to retarget it elsewhere.
 
 ## Required Baseline Files
@@ -53,6 +57,8 @@ Copy or maintain these together:
 | [`.agents/workflows/adversarial-pr-review.md`](../../.agents/workflows/adversarial-pr-review.md) | Reusable adversarial review prompts and comparisons. |
 | [`.agents/workflows/post-merge-audit.md`](../../.agents/workflows/post-merge-audit.md) | Reusable post-merge audit prompts and issue-plan templates. |
 | [`.agents/workflows/evaluate-issue.md`](../../.agents/workflows/evaluate-issue.md) | Lightweight evaluation prompt for agents without skill support. |
+| [`internal/contributor-info/agent-coordination-backend.md`](./agent-coordination-backend.md) | Private coordination backend pointer, setup, heartbeat, status, and fallback rules. |
+| [`internal/contributor-info/multi-batch-operations.md`](./multi-batch-operations.md) | Operator model for concurrent batches across machines, launch surfaces, and repos. |
 
 Keep [`$stress-test`](../../.agents/skills/stress-test/SKILL.md) out of the required baseline until
 it is rewritten for this package. It still assumes React on Rails Pro, Rails apps, and node-renderer
@@ -78,6 +84,8 @@ complete:
   shared runtime code, public API, and security-sensitive surfaces.
 - Label vocabulary, including whether `needs-customer-feedback`, `codex-ready`, `codex-wip`,
   `codex-pending-question`, `full-ci`, or `benchmark` actually exist.
+- Cross-repo coordination backend, agent-id format, claim/heartbeat/status lifecycle, and
+  directory-routing rules if the repo will share multi-batch operations with other repos.
 - Full-CI trigger mechanism, if any. This package intentionally does not have `+ci-*` PR comment
   commands.
 - Follow-up issue policy. This package uses `Follow-up:` titles and prefers one bundled deferred-work
@@ -110,6 +118,9 @@ For this repository, the adapted replacement rules are:
   generated docs, scripts, or config changed.
 - Use the full `gh pr checks <PR>` list for merge readiness.
 - Treat AI reviewers as advisory unless they identify a confirmed blocker.
+- Use the private `shakacode/agent-coordination` backend for ShakaCode-internal concurrent batches
+  when `agent-coord status` is available; otherwise report private state as `UNKNOWN` and use public
+  claim comments only as advisory fallback state.
 - Update `CHANGELOG.md` only for user-visible changes.
 - Run `yarn release:dry-run` before a release, and release from the top `CHANGELOG.md` version heading.
 
@@ -122,8 +133,11 @@ Policy changes should flow in this order:
 3. Update deeper workflows under [`.agents/workflows/`](../../.agents/workflows/pr-processing.md).
 4. Update [PR Skill Guide](./agent-pr-batch-skills.md) and this guide if user-facing skill selection,
    launch rules, adoption rules, or validation guidance changed.
-5. Update Claude compatibility links or prompts if they exist.
-6. Run the verification appropriate for the changed surface.
+5. Update [Agent Coordination Backend](./agent-coordination-backend.md) and
+   [Multi-Batch Operations](./multi-batch-operations.md) when coordination
+   state, private backend behavior, agent ids, or cross-repo routing changed.
+6. Update Claude compatibility links or prompts if they exist.
+7. Run the verification appropriate for the changed surface.
 
 Do not let a skill, workflow, and `AGENTS.md` describe different merge gates or validation commands.
 When in conflict, `AGENTS.md` wins and the docs should be corrected.

@@ -525,7 +525,12 @@ ensure_service_process_running() {
   local pid="$2"
   local log_path="$3"
 
-  if [[ -z "$pid" ]] || kill -0 "$pid" 2>/dev/null; then
+  if [[ -z "$pid" ]]; then
+    echo "$name was never started (empty PID)" >&2
+    return 1
+  fi
+
+  if kill -0 "$pid" 2>/dev/null; then
     return 0
   fi
 
@@ -587,16 +592,21 @@ const decode = (value) =>
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');
 const failures = [];
-const testcasePattern = /<testcase\b([^>]*)>([\s\S]*?)<\/testcase>/g;
+const testcasePattern =
+  /<testcase\b((?:[^>"']|"[^"]*"|'[^']*')*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
 let match;
 
 while ((match = testcasePattern.exec(xml)) !== null) {
   const attributes = match[1];
-  const body = match[2];
+  const body = match[2] || '';
   if (!/<(?:failure|error)\b/.test(body)) continue;
   const classname = attributes.match(/\bclassname="([^"]*)"/)?.[1];
   const name = attributes.match(/\bname="([^"]*)"/)?.[1];
   failures.push([classname, name].filter(Boolean).map(decode).join(' - '));
+}
+
+if (failures.length === 0 && /<(?:failure|error)\b/.test(xml)) {
+  failures.push('Playwright reported failures; see JUnit XML for details.');
 }
 
 for (const failure of failures) {

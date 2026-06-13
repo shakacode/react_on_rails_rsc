@@ -125,12 +125,11 @@ The workflow will:
    published.
 5. Run `yarn build`.
 6. Run `yarn test`.
-7. Run `yarn verify:artifacts` when that script is present; otherwise run
-   `npm pack --dry-run` against the built output.
+7. Run `yarn verify:artifacts`.
 8. Publish with npm trusted publishing and provenance:
 
    ```bash
-   npm publish --provenance --access public --tag <next-or-latest>
+   npm publish --ignore-scripts --provenance --access public --tag <next-or-latest>
    ```
 
 9. Push the unprefixed annotated git tag.

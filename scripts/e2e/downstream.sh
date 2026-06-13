@@ -157,7 +157,7 @@ cleanup() {
   elif [[ "$KEEP_WORK_DIR" == "1" ]]; then
     echo "RSC_DOWNSTREAM_KEEP=1 - keeping work dir: $WORK_DIR"
   else
-    rm -rf "$WORK_DIR"
+    rm -rf "$WORK_DIR" || true
   fi
 
   exit "$status"
@@ -399,6 +399,7 @@ wait_for_http() {
   local name="$1"
   local url="$2"
   local timeout_seconds="${3:-300}"
+  local log_path="${4:-$LOG_DIR/rails.log}"
   local start_time="$SECONDS"
 
   while true; do
@@ -409,7 +410,7 @@ wait_for_http() {
 
     if ((SECONDS - start_time >= timeout_seconds)); then
       echo "Timed out waiting for $name at $url" >&2
-      tail -100 "$LOG_DIR/rails.log" >&2 || true
+      tail -100 "$log_path" >&2 || true
       return 1
     fi
     sleep 1
@@ -464,7 +465,7 @@ NODE
       tail -100 "$LOG_DIR/node-renderer.log" >&2 || true
       return 1
     fi
-    sleep 1
+    sleep 2
   done
 }
 
@@ -653,9 +654,9 @@ main() {
   pack_local_package
   install_downstream_dependencies
   build_downstream_dummy
+  install_playwright_browsers
   start_background_services
   wait_for_services
-  install_playwright_browsers
   run_playwright_subset
 }
 

@@ -2,10 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
-## [19.0.5-rc.8] - 2026-06-12
+## [19.0.5-rc.8] - 2026-06-13
 
 ### Fixed
 - Fixed Webpack client manifest generation to bind each client component to the chunk group created by its client-reference dependency, avoiding cross-reference chunk over-preloads while preserving entries for eager-imported client references. ([#54])
+- Updated the vendored `react-server-dom-webpack` runtime from the React 19.0.4 security level to 19.0.7, applying the upstream React Server Components reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh) while preserving the in-repo Flight CSS hint behavior. Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#86])
 
 ## [19.0.5-rc.7] - 2026-06-09
 
@@ -87,3 +88,4 @@ All notable changes to this package will be documented in this file.
 
 [#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52
 [#54]: https://github.com/shakacode/react_on_rails_rsc/pull/54
+[#86]: https://github.com/shakacode/react_on_rails_rsc/pull/86

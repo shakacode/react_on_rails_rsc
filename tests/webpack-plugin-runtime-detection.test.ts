@@ -2,8 +2,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-const ReactFlightWebpackPlugin = require('../src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js') as {
-  __internal_isReactOnRailsRSCRuntimeResource(resource: string | undefined, isServer: boolean): boolean;
+const { RSCWebpackPlugin: ReactFlightWebpackPlugin } = require('../src/webpack/RSCWebpackPlugin') as {
+  RSCWebpackPlugin: {
+    __internal_isReactOnRailsRSCRuntimeResource(resource: string | undefined, isServer: boolean): boolean;
+  };
 };
 
 const tempRoots: string[] = [];

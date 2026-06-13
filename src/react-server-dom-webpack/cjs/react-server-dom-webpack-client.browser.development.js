@@ -555,7 +555,7 @@
             null === formData && (formData = new FormData());
             var _data3 = formData;
             key = nextPartId++;
-            var prefix = formFieldPrefix + key + "_";
+            var prefix = formFieldPrefix + "_" + key + "_";
             value.forEach(function (originalValue, originalKey) {
               _data3.append(prefix + originalKey, originalValue);
             });
@@ -2511,10 +2511,10 @@
       return hook.checkDCE ? !0 : !1;
     })({
       bundleType: 1,
-      version: "19.0.4",
+      version: "19.0.7",
       rendererPackageName: "react-on-rails-rsc",
       currentDispatcherRef: ReactSharedInternals,
-      reconcilerVersion: "19.0.4",
+      reconcilerVersion: "19.0.7",
       getCurrentComponentInfo: function () {
         return currentOwnerInDEV;
       }

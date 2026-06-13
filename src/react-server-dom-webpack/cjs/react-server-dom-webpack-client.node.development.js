@@ -576,7 +576,7 @@
             null === formData && (formData = new FormData());
             var _data3 = formData;
             key = nextPartId++;
-            var prefix = formFieldPrefix + key + "_";
+            var prefix = formFieldPrefix + "_" + key + "_";
             value.forEach(function (originalValue, originalKey) {
               _data3.append(prefix + originalKey, originalValue);
             });
@@ -2610,8 +2610,11 @@
         options ? !0 === options.replayConsoleLogs : !1,
         options && options.environmentName ? options.environmentName : void 0
       );
+      var streamErrored = !1;
       stream.on("data", function (chunk) {
-        if ("string" === typeof chunk) {
+        if (streamErrored) return;
+        try {
+          if ("string" === typeof chunk) {
           for (
             var i = 0,
               rowState = response._rowState,
@@ -2783,12 +2786,21 @@
           response._rowTag = i;
           response._rowLength = rowState;
         }
+        } catch (error) {
+          streamErrored = !0;
+          reportGlobalError(response, error);
+          // Destroy without re-emitting the parse error already reported above.
+          stream.destroy();
+        }
       });
       stream.on("error", function (error) {
-        reportGlobalError(response, error);
+        streamErrored ||
+          ((streamErrored = !0), reportGlobalError(response, error));
       });
       stream.on("end", function () {
-        reportGlobalError(response, Error("Connection closed."));
+        streamErrored ||
+          ((streamErrored = !0),
+          reportGlobalError(response, Error("Connection closed.")));
       });
       return getChunk(response, 0);
     };

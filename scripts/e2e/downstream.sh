@@ -9,6 +9,9 @@ cd "$ROOT"
 DEFAULT_REACT_ON_RAILS_REPO="https://github.com/shakacode/react_on_rails.git"
 DEFAULT_REACT_ON_RAILS_REF="main"
 DEFAULT_DUMMY_BUILD_SCRIPT="build:test:rspack"
+DEFAULT_RENDERER_PORT="3800"
+DEFAULT_RAILS_PORT="3000"
+DEFAULT_RAILS_READY_PATH="/empty"
 DEFAULT_SPECS=(
   "e2e-tests/rsc_echo_props.spec.ts"
   "e2e-tests/rsc_route_ssr_false.spec.ts"
@@ -24,7 +27,14 @@ DUMMY_BUILD_SCRIPT="${RSC_DOWNSTREAM_DUMMY_BUILD_SCRIPT:-$DEFAULT_DUMMY_BUILD_SC
 INSTALL_PLAYWRIGHT="${RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT:-1}"
 INSTALL_PLAYWRIGHT_DEPS="${RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT_DEPS:-0}"
 REQUIRE_PRO_LICENSE="${RSC_DOWNSTREAM_REQUIRE_PRO_LICENSE:-0}"
+RENDERER_PORT="${RENDERER_PORT:-$DEFAULT_RENDERER_PORT}"
+RAILS_PORT="${RSC_DOWNSTREAM_RAILS_PORT:-${RAILS_PORT:-$DEFAULT_RAILS_PORT}}"
+RAILS_READY_PATH="${RSC_DOWNSTREAM_RAILS_READY_PATH:-$DEFAULT_RAILS_READY_PATH}"
 SPEC_ARGS=()
+
+if [[ "$RAILS_READY_PATH" != /* ]]; then
+  RAILS_READY_PATH="/$RAILS_READY_PATH"
+fi
 
 usage() {
   cat <<'USAGE'
@@ -42,9 +52,19 @@ Options:
   -h, --help                 Show this help.
 
 Environment:
+  RSC_DOWNSTREAM_REACT_ON_RAILS_REPO      Downstream repository URL.
+  RSC_DOWNSTREAM_REACT_ON_RAILS_REF       Downstream ref to test. Default: main.
+  RSC_DOWNSTREAM_REACT_ON_RAILS_DIR       Existing downstream checkout path.
+  RSC_DOWNSTREAM_WORK_DIR                 Directory for packed tarball, logs, and clone.
+  RSC_DOWNSTREAM_KEEP                     1 = preserve generated work dir.
   RSC_DOWNSTREAM_DUMMY_BUILD_SCRIPT       Dummy build script. Default: build:test:rspack.
+  RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT       0 = skip Playwright browser installation.
   RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT_DEPS  1 = pass --with-deps to Playwright install.
   RSC_DOWNSTREAM_REQUIRE_PRO_LICENSE      1 = fail early if REACT_ON_RAILS_PRO_LICENSE is empty.
+  RSC_DOWNSTREAM_RAILS_PORT               Rails server port. Default: 3000.
+  RSC_DOWNSTREAM_RAILS_READY_PATH         Rails readiness path. Default: /empty.
+  RENDERER_PORT                           Node renderer port. Default: 3800.
+  RAILS_PORT                              Rails server port fallback when RSC_DOWNSTREAM_RAILS_PORT is unset.
 
 Default spec subset:
   e2e-tests/rsc_echo_props.spec.ts
@@ -190,7 +210,31 @@ configure_pnpm() {
   local package_manager
   package_manager="$(
     cd "$REACT_ON_RAILS_DIR"
-    node -e "const pm=require('./package.json').packageManager||''; if (!pm.startsWith('pnpm@')) process.exit(1); process.stdout.write(pm)"
+    node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+
+const packageJsonPath = path.join(process.cwd(), 'package.json');
+let packageJson;
+try {
+  packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`Failed to parse downstream package JSON at ${packageJsonPath}: ${message}`);
+  process.exit(1);
+}
+
+const packageManager = packageJson.packageManager || '';
+if (!packageManager.startsWith('pnpm@')) {
+  console.error(
+    `Expected downstream packageManager to start with "pnpm@" in ${packageJsonPath}; found ` +
+      (packageManager || '<missing>')
+  );
+  process.exit(1);
+}
+
+process.stdout.write(packageManager);
+NODE
   )"
   corepack enable
   corepack prepare "$package_manager" --activate
@@ -227,7 +271,7 @@ checkout_downstream() {
 pack_local_package() {
   log_step "Building and packing react-on-rails-rsc"
   yarn build
-  TARBALL="$PACKAGE_DIR/$(npm pack --quiet --pack-destination "$PACKAGE_DIR")"
+  TARBALL="$PACKAGE_DIR/$(npm pack --quiet --pack-destination "$PACKAGE_DIR" | tail -1)"
   test -f "$TARBALL"
   echo "Packed tarball: $TARBALL"
 }
@@ -253,12 +297,22 @@ const packageJsonPaths = [
   'react_on_rails_pro/spec/dummy/package.json',
 ];
 
-for (const relativePath of packageJsonPaths) {
-  const fullPath = path.join(root, relativePath);
+function readPackageJson(fullPath) {
   if (!fs.existsSync(fullPath)) {
     throw new Error(`Expected downstream package file not found: ${fullPath}`);
   }
-  const packageJson = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+
+  try {
+    return JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse downstream package JSON at ${fullPath}: ${message}`);
+  }
+}
+
+for (const relativePath of packageJsonPaths) {
+  const fullPath = path.join(root, relativePath);
+  const packageJson = readPackageJson(fullPath);
 
   for (const sectionName of ['dependencies', 'devDependencies', 'optionalDependencies']) {
     if (packageJson[sectionName]?.[dependencyName]) {
@@ -277,6 +331,9 @@ for (const relativePath of packageJsonPaths) {
 NODE
 
   configure_pnpm
+  # The disposable downstream checkout has its package manifests rewritten to
+  # point at the local tarball, so the lockfile must be allowed to refresh that
+  # expected spec while preserving existing locked versions for unchanged deps.
   (cd "$REACT_ON_RAILS_DIR" && pnpm install --no-frozen-lockfile)
 
   local dummy_dir="$REACT_ON_RAILS_DIR/react_on_rails_pro/spec/dummy"
@@ -300,13 +357,13 @@ start_background_services() {
 
   (
     cd "$dummy_dir"
-    RENDERER_PORT="${RENDERER_PORT:-3800}" pnpm run node-renderer
+    RENDERER_PORT="$RENDERER_PORT" pnpm run node-renderer
   ) >"$LOG_DIR/node-renderer.log" 2>&1 &
   NODE_RENDERER_PID="$!"
 
   (
     cd "$dummy_dir"
-    RAILS_ENV="test" bundle exec rails server
+    RAILS_ENV="test" bundle exec rails server -p "$RAILS_PORT"
   ) >"$LOG_DIR/rails.log" 2>&1 &
   RAILS_PID="$!"
 }
@@ -340,6 +397,8 @@ wait_for_h2c() {
   local start_time="$SECONDS"
 
   while true; do
+    # The React on Rails Pro node renderer exposes its /info readiness endpoint
+    # over h2c, so use Node's http2 client rather than curl's HTTP/1.1 probe.
     if node - "$authority" "$path" <<'NODE'
 const http2 = require('node:http2');
 
@@ -384,8 +443,10 @@ NODE
 
 wait_for_services() {
   log_step "Waiting for downstream services"
-  wait_for_http "Rails server" "http://127.0.0.1:3000/empty"
-  wait_for_h2c "Node renderer" "http://127.0.0.1:${RENDERER_PORT:-3800}" "/info"
+  # /empty is a stable React on Rails Pro dummy route used as a cheap Rails
+  # liveness probe without depending on rendered RSC content.
+  wait_for_http "Rails server" "http://127.0.0.1:${RAILS_PORT}${RAILS_READY_PATH}"
+  wait_for_h2c "Node renderer" "http://127.0.0.1:${RENDERER_PORT}" "/info"
 }
 
 install_playwright_browsers() {

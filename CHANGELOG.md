@@ -2,90 +2,37 @@
 
 All notable changes to this package will be documented in this file.
 
-## [19.0.5-rc.8] - 2026-06-13
-
-### Fixed
-- Fixed Webpack client manifest generation to bind each client component to the chunk group created by its client-reference dependency, avoiding cross-reference chunk over-preloads while preserving entries for eager-imported client references. ([#54])
-- Updated the vendored `react-server-dom-webpack` runtime from the React 19.0.4 security level to 19.0.7, applying the upstream React Server Components reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh) while preserving the in-repo Flight CSS hint behavior. Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#86])
-
-## [19.0.5-rc.7] - 2026-06-09
+## [19.0.5] - 2026-06-13
 
 ### Added
-- Added Webpack client manifest coverage for excluding runtime-chunk CSS from the client manifest, retaining runtime-chunk CSS on the server manifest, and skipping hot-update CSS. ([#52])
-
-### Fixed
-- Fixed the Webpack client manifest CSS collection to exclude runtime-chunk CSS, matching the existing JS-chunk filtering, so shared runtime CSS no longer leaks into every client component's Flight stylesheet hints; the server manifest still retains runtime-chunk CSS for SSR coverage. ([#52])
-- Fixed the Webpack client manifest CSS collection to skip `.hot-update.css` HMR files. ([#52])
-
-## [19.0.5-rc.6] - 2026-06-04
-
-### Added
-- Added regression coverage for manifest CSS serialization on rendered client references and component-shaped client-reference export metadata.
-
-### Fixed
-- Fixed rendered client references with manifest CSS to emit request-scoped Flight stylesheet hints while preserving `react.client.reference` metadata and nested client-element prop shapes.
-- Removed the process-global client manifest used by the earlier CSS wrapper path, avoiding cross-request manifest races.
-- Fixed Webpack client manifest CSS collection to record CSS files regardless of JS/CSS file order, include `.mjs` chunks, normalize CSS hrefs when `publicPath` omits a trailing slash, and skip unresolved document-relative CSS hrefs when webpack uses the `publicPath: "auto"` sentinel.
-
-## [19.0.5-rc.5] - 2026-06-03
+- Added `RSCRspackPlugin` and `RSCRspackLoader` exports for Rspack-native RSC client reference manifest generation. ([#29])
+- Added the `RSCReferenceDiscoveryPlugin` export and graph-derived Webpack client reference discovery so builds can emit client metadata from the actual RSC graph. ([#47])
 
 ### Changed
-- Updated the vendored `react-server-dom-webpack` runtime to React 19.0.4 and aligned package peer dependencies with React 19.0.4.
+- Updated RSC payload parsing to walk parsed models after `JSON.parse`, reducing Flight chunk deserialization overhead while preserving RSC model revival behavior. ([#33])
 
 ### Fixed
-- Replaced the `19.0.5-rc.4` runtime bundle that still reported React 19.0.3, so release candidates no longer include React Server Components runtime versions affected by CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779.
+- Fixed Webpack client manifest chunk and CSS collection to merge shared client-reference chunks, avoid runtime and hot-update CSS leaks, preserve CSS from CSS-first and `.mjs` chunk layouts, normalize emitted CSS hrefs, and bind each client component to its client-reference dependency chunk group. ([#23]) ([#35]) ([#52]) ([#54])
+- Fixed RSC stylesheet hints for client components in deferred Suspense trees by serializing manifest CSS through request-scoped Flight payload links while preserving client-reference metadata. ([#35])
+- Fixed Rspack client manifest generation to preserve server bundle exports, scope entries to explicit client references, support symlinked references, and keep the default `splitChunks.chunks` behavior at `async` when unset. ([#36]) ([#38]) ([#40])
+- Fixed default client reference discovery to skip dependency and generated asset directories, and fixed Webpack runtime detection when package managers install multiple `react-on-rails-rsc` package instances for different peer dependency sets. ([#42]) ([#43])
 
-## [19.0.5-rc.4] - 2026-06-02
+### Security
+- Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
-### Added
-- Added `RSCReferenceDiscoveryPlugin` and an export for emitting RSC graph-derived client reference metadata.
-- Added coverage for graph-derived client-reference chunk discovery, CSS-first chunk ordering, default client-reference excludes, and duplicate package runtime detection.
+[19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
-### Changed
-- Updated RSC loader/client-reference discovery to derive client references from the RSC graph and reuse directive parsing helpers.
-- Refreshed the open RSC work status investigation for current issues, stale PRs, and release-order risks.
-
-### Fixed
-- Fixed default client reference discovery to skip dependency and generated asset directories such as `node_modules`, `vendor/bundle`, and `vendor/cache`.
-- Fixed Webpack plugin runtime detection when package managers install multiple `react-on-rails-rsc` package instances for different peer dependency sets.
-- Fixed `RSCRspackPlugin` so an unset `optimization.splitChunks.chunks` preserves the Rspack/Webpack default `async` behavior while still excluding generated RSC client-reference chunks from splitChunks extraction.
-
-## [19.0.5-rc.3] - 2026-05-30
-
-### Fixed
-- Fixed `RSCRspackPlugin` so an unset `optimization.splitChunks.chunks` preserves the Rspack/Webpack default `async` behavior while still excluding generated RSC client-reference chunks from splitChunks extraction.
-
-## [19.0.5-rc.2] - 2026-05-30
-
-### Added
-- Added `RSCRspackPlugin` and `RSCRspackLoader` exports for Rspack-native RSC client reference manifest generation.
-- Added Rspack compatibility and plugin coverage for browser, client, server, directive parsing, dead-code, multiple-client, production-client, and symlinked-module scenarios.
-- Added a plan for eliminating the React fork repository by moving RSC patches into this repo.
-
-### Changed
-- Updated RSC payload parsing to walk parsed models rather than relying on JSON revivers.
-- Preserved server bundle exports while injecting client-reference metadata for Rspack builds.
-
-### Fixed
-- Fixed Rspack RSC client manifest generation, including symlinked client component references.
-- Fixed `RSCRspackPlugin` server bundle injection and export preservation.
-- Fixed the package `prepare`/`prepack` artifact check to look for emitted build outputs.
-- Updated Claude workflow permissions for checks and statuses.
-
-## [19.0.5-rc.1] - 2026-02-28
-
-### Changed
-- Released the first `19.0.5` release candidate.
-
-[19.0.5-rc.8]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.7...19.0.5-rc.8
-[19.0.5-rc.7]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.6...19.0.5-rc.7
-[19.0.5-rc.6]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.5...19.0.5-rc.6
-[19.0.5-rc.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.4...19.0.5-rc.5
-[19.0.5-rc.4]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.3...19.0.5-rc.4
-[19.0.5-rc.3]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.2...19.0.5-rc.3
-[19.0.5-rc.2]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.1...19.0.5-rc.2
-[19.0.5-rc.1]: https://github.com/shakacode/react_on_rails_rsc/releases/tag/19.0.5-rc.1
-
+[#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23
+[#29]: https://github.com/shakacode/react_on_rails_rsc/pull/29
+[#33]: https://github.com/shakacode/react_on_rails_rsc/pull/33
+[#35]: https://github.com/shakacode/react_on_rails_rsc/pull/35
+[#36]: https://github.com/shakacode/react_on_rails_rsc/pull/36
+[#38]: https://github.com/shakacode/react_on_rails_rsc/pull/38
+[#40]: https://github.com/shakacode/react_on_rails_rsc/pull/40
+[#42]: https://github.com/shakacode/react_on_rails_rsc/pull/42
+[#43]: https://github.com/shakacode/react_on_rails_rsc/pull/43
+[#47]: https://github.com/shakacode/react_on_rails_rsc/pull/47
+[#48]: https://github.com/shakacode/react_on_rails_rsc/pull/48
 [#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52
 [#54]: https://github.com/shakacode/react_on_rails_rsc/pull/54
 [#86]: https://github.com/shakacode/react_on_rails_rsc/pull/86

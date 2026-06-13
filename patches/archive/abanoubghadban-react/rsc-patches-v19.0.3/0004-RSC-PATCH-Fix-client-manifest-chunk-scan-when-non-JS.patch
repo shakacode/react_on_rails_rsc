@@ -1,0 +1,129 @@
+From e46103dc9f4212ee664ace0c2a5fb5395adcc30c Mon Sep 17 00:00:00 2001
+From: Abanoub Ghadban <abanoub@shakacode.com>
+Date: Sat, 18 Apr 2026 17:34:58 +0200
+Subject: [PATCH 4/7] [RSC-PATCH] Fix client manifest chunk scan when non-JS
+ assets precede JS
+
+Co-Authored-By: Yassa Tamer <yassatamer99@gmail.com>
+---
+ .../flight/__tests__/__e2e__/smoke.test.js    | 58 +++++++++++++++++++
+ fixtures/flight/src/Dynamic.css               |  3 +
+ fixtures/flight/src/Dynamic.js                |  3 +-
+ .../src/ReactFlightWebpackPlugin.js           |  8 +--
+ 4 files changed, 67 insertions(+), 5 deletions(-)
+ create mode 100644 fixtures/flight/src/Dynamic.css
+
+diff --git a/fixtures/flight/__tests__/__e2e__/smoke.test.js b/fixtures/flight/__tests__/__e2e__/smoke.test.js
+index f2bcbbd11..ad55a2239 100644
+--- a/fixtures/flight/__tests__/__e2e__/smoke.test.js
++++ b/fixtures/flight/__tests__/__e2e__/smoke.test.js
+@@ -27,3 +27,61 @@ test('smoke test', async ({page}) => {
+   await expect(consoleErrors).toEqual([]);
+   await expect(pageErrors).toEqual([]);
+ });
++
++test('records JS chunks for CSS-importing client component and loads it in both paths', async ({
++  page,
++  request,
++}) => {
++  const consoleErrors = [];
++  page.on('console', msg => {
++    const type = msg.type();
++    if (type === 'warn' || type === 'error') {
++      consoleErrors.push({type, text: msg.text()});
++    }
++  });
++
++  const pageErrors = [];
++  page.on('pageerror', error => {
++    pageErrors.push(error.stack || error.message);
++  });
++
++  await page.goto('/');
++
++  const manifestResponse = await request.get('/react-client-manifest.json');
++  expect(manifestResponse.ok()).toBe(true);
++  const manifest = await manifestResponse.json();
++
++  const moduleMetadata =
++    manifest.filePathToModuleMetadata ?? manifest;
++
++  const dynamicEntry = Object.entries(moduleMetadata).find(([key]) =>
++    /\/Dynamic\.js$/.test(key)
++  );
++  expect(dynamicEntry).toBeTruthy();
++
++  const [, entry] = dynamicEntry;
++  expect(entry.chunks.length).toBeGreaterThan(0);
++
++  // chunks array is [chunkId, filename, chunkId, filename, …] pairs
++  const filenames = entry.chunks.filter((_, index) => index % 2 === 1);
++  expect(
++    filenames.some(
++      name => typeof name === 'string' && name.endsWith('.js') && !name.endsWith('.hot-update.js')
++    )
++  ).toBe(true);
++  expect(
++    filenames.some(name => typeof name === 'string' && name.endsWith('.css'))
++  ).toBe(false);
++
++  await expect(page.getByTestId('dynamic-component')).toHaveCount(1);
++  await expect(pageErrors).toEqual([]);
++  await expect(consoleErrors).toEqual([]);
++
++  await page.getByRole('button', {name: 'Load dynamic import Component'}).click();
++
++  await expect(page.getByText('loaded dynamically:')).toBeVisible();
++  await expect(page.getByTestId('dynamic-component')).toHaveCount(2);
++
++  await expect(pageErrors).toEqual([]);
++  await expect(consoleErrors).toEqual([]);
++});
+diff --git a/fixtures/flight/src/Dynamic.css b/fixtures/flight/src/Dynamic.css
+new file mode 100644
+index 000000000..d35585efb
+--- /dev/null
++++ b/fixtures/flight/src/Dynamic.css
+@@ -0,0 +1,3 @@
++.dynamic-component {
++  color: blue;
++}
+diff --git a/fixtures/flight/src/Dynamic.js b/fixtures/flight/src/Dynamic.js
+index dac88887c..e05a4365e 100644
+--- a/fixtures/flight/src/Dynamic.js
++++ b/fixtures/flight/src/Dynamic.js
+@@ -1,10 +1,11 @@
+ 'use client';
+ 
+ import * as React from 'react';
++import './Dynamic.css';
+ 
+ export function Dynamic() {
+   return (
+-    <div>
++    <div data-testid="dynamic-component" className="dynamic-component">
+       This client component should be loaded in a single chunk even when it is
+       used as both a client reference and as a dynamic import.
+     </div>
+diff --git a/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js b/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
+index 17e7169c8..a574fd3eb 100644
+--- a/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
++++ b/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
+@@ -279,10 +279,10 @@ export default class ReactFlightWebpackPlugin {
+             chunkGroup.chunks.forEach(function (c) {
+               // eslint-disable-next-line no-for-of-loops/no-for-of-loops
+               for (const file of c.files) {
+-                if (!file.endsWith('.js')) return;
+-                if (file.endsWith('.hot-update.js')) return;
+-                chunks.push(c.id, file);
+-                break;
++                if (file.endsWith('.js') && !file.endsWith('.hot-update.js')) {
++                  chunks.push(c.id, file);
++                  break;
++                }
+               }
+             });
+ 
+-- 
+2.50.1 (Apple Git-155)
+

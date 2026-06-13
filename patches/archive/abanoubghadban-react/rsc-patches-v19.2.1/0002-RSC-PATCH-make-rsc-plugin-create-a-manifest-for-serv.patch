@@ -1,0 +1,136 @@
+From 9d3d85d7ff8f04fe949387cf317d94ebbdb3a7dc Mon Sep 17 00:00:00 2001
+From: Abanoub Ghadban <abanoub@shakacode.com>
+Date: Sun, 8 Jun 2025 15:41:54 +0300
+Subject: [PATCH 2/3] [RSC-PATCH] make rsc plugin create a manifest for server
+ build
+
+---
+ .../src/ReactFlightWebpackPlugin.js           | 81 +++----------------
+ 1 file changed, 10 insertions(+), 71 deletions(-)
+
+diff --git a/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js b/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
+index 995cd63e1..dd11c4516 100644
+--- a/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
++++ b/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
+@@ -242,27 +242,23 @@ export default class ReactFlightWebpackPlugin {
+             (resolvedClientReferences || []).map(ref => ref.request),
+           );
+ 
+-          const clientManifest: {
++          type FilePathToModuleMetadata = {
+             [string]: ImportManifestEntry,
+-          } = {};
+-          type ServerConsumerModuleMap = {
+-            [string]: {
+-              [string]: {specifier: string, name: string},
+-            },
+           };
+-          const moduleMap: ServerConsumerModuleMap = {};
+-          const ssrBundleConfig: {
++          type BundleManifest = {
+             moduleLoading: {
+               prefix: string,
+               crossOrigin: string | null,
+             },
+-            moduleMap: ServerConsumerModuleMap,
+-          } = {
++            filePathToModuleMetadata: FilePathToModuleMetadata,
++          };
++          const filePathToModuleMetadata: FilePathToModuleMetadata = {};
++          const bundleManifest: BundleManifest = {
+             moduleLoading: {
+               prefix: compilation.outputOptions.publicPath || '',
+               crossOrigin: crossOriginMode,
+             },
+-            moduleMap,
++            filePathToModuleMetadata,
+           };
+ 
+           // We figure out which files are always loaded by any initial chunk (entrypoint).
+@@ -308,61 +304,11 @@ export default class ReactFlightWebpackPlugin {
+               const href = pathToFileURL(module.resource).href;
+ 
+               if (href !== undefined) {
+-                const ssrExports: {
+-                  [string]: {specifier: string, name: string},
+-                } = {};
+-
+-                clientManifest[href] = {
++                filePathToModuleMetadata[href] = {
+                   id,
+                   chunks,
+                   name: '*',
+                 };
+-
+-                if (_this.isServer) {
+-                  return;
+-                }
+-
+-                ssrExports['*'] = {
+-                  specifier: href,
+-                  name: '*',
+-                };
+-
+-                // TODO: If this module ends up split into multiple modules, then
+-                // we should encode each the chunks needed for the specific export.
+-                // When the module isn't split, it doesn't matter and we can just
+-                // encode the id of the whole module. This code doesn't currently
+-                // deal with module splitting so is likely broken from ESM anyway.
+-                /*
+-                clientManifest[href + '#'] = {
+-                  id,
+-                  chunks,
+-                  name: '',
+-                };
+-                ssrExports[''] = {
+-                  specifier: href,
+-                  name: '',
+-                };
+-
+-                const moduleProvidedExports = compilation.moduleGraph
+-                  .getExportsInfo(module)
+-                  .getProvidedExports();
+-
+-                if (Array.isArray(moduleProvidedExports)) {
+-                  moduleProvidedExports.forEach(function (name) {
+-                    clientManifest[href + '#' + name] = {
+-                      id,
+-                      chunks,
+-                      name: name,
+-                    };
+-                    ssrExports[name] = {
+-                      specifier: href,
+-                      name: name,
+-                    };
+-                  });
+-                }
+-                */
+-
+-                moduleMap[id] = ssrExports;
+               }
+             }
+ 
+@@ -384,18 +330,11 @@ export default class ReactFlightWebpackPlugin {
+             });
+           });
+ 
+-          const clientOutput = JSON.stringify(clientManifest, null, 2);
++          const bundleOutput = JSON.stringify(bundleManifest, null, 2);
+           compilation.emitAsset(
+             _this.clientManifestFilename,
+-            new sources.RawSource(clientOutput, false),
++            new sources.RawSource(bundleOutput, false),
+           );
+-          if (!_this.isServer) {
+-            const ssrOutput = JSON.stringify(ssrBundleConfig, null, 2);
+-            compilation.emitAsset(
+-              _this.serverConsumerManifestFilename,
+-              new sources.RawSource(ssrOutput, false),
+-            );
+-          }
+         },
+       );
+     });
+-- 
+2.50.1 (Apple Git-155)
+

@@ -61,13 +61,18 @@ release notes.
 ## React Runtime Artifacts
 
 Never hand-edit files under `src/react-server-dom-webpack/`. Those files are
-runtime artifacts produced by the React upgrade flow and replacement tooling.
-Use the current `scripts/react-upgrade/upgrade.js` cherry-pick flow, and review
-`docs/eliminate-react-fork.md` before changing upgrade strategy.
+runtime artifacts produced by legacy React upgrade flow and replacement
+tooling. Review `docs/eliminate-react-fork.md` before changing runtime
+strategy.
 
-The current upgrade flow still depends on a local React fork path and
-`[RSC-PATCH]` / `[RSC-REPLACE]` cherry-picks. Patch-file or stock-React tooling
-is planned after #60/#71; do not claim it exists until those changes land.
+The stock-runtime strategy is selected, but `main` still carries the vendored
+runtime and `scripts/react-upgrade/` helper. Use
+`scripts/react-upgrade/upgrade.js` only for maintainer-directed emergency
+maintenance of the current vendored runtime, not for the Option 4 patch-file
+fallback.
+Fork patch history is preserved in
+`patches/archive/abanoubghadban-react/`; that archive is provenance, not an
+active runtime path.
 
 ## Validation
 

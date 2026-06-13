@@ -1,7 +1,7 @@
 {
   "name": "react-upgrade",
   "version": "1.0.0",
-  "description": "Scripts to upgrade react-server-dom-webpack from React fork",
+  "description": "Legacy scripts to upgrade the vendored react-server-dom-webpack runtime from the React fork",
   "type": "module",
   "main": "upgrade.js",
   "scripts": {

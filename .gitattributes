@@ -1,0 +1,2 @@
+# Historical `git format-patch` archives preserve upstream patch text verbatim.
+patches/archive/**/*.patch -whitespace

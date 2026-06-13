@@ -1,0 +1,395 @@
+From 980eda22244208a90b2a21e2e10847795a85b2be Mon Sep 17 00:00:00 2001
+From: Abanoub Ghadban <abanoub@shakacode.com>
+Date: Wed, 29 Apr 2026 12:20:43 +0300
+Subject: [PATCH] [RSC-PATCH] Fix FOUC for use-client CSS in deferred Suspense
+ subtrees
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Problem
+-------
+
+When a `'use client'` component imports a CSS Module and lives inside a
+deferred Suspense subtree (an async server-component ancestor), the
+resolution chunk that streams in carries the client component's HTML
+but no in-tree stylesheet element. React DOM emits its `$RC` swap
+script (immediate swap), not `$RR` (gated swap). The browser swaps the
+styled <div> into view before its stylesheet has loaded, producing a
+flash of unstyled content. Empirically observed on Slow 3G; verified
+by reading React's resolution-chunk emission protocol — `$RR` is emitted
+exclusively when an in-tree `<link rel="stylesheet" precedence>` element
+is rendered as part of a streaming Suspense resolution. Hint-form
+`preinit` calls do NOT produce `$RR`.
+
+Fix
+---
+
+Three coordinated changes:
+
+1. Plugin (`ReactFlightWebpackPlugin.js`): for every chunkGroup, walk
+   `c.files` for `.css` siblings of the JS chunks. Record them as a
+   sibling `css: string[]` array on each client-reference manifest entry,
+   prefixed with `compilation.outputOptions.publicPath` so they are
+   usable URLs. The `css` field is merged across multiple chunkGroups
+   that resolve the same module, mirroring the existing `chunks` merge.
+
+2. Loader (`ReactFlightWebpackNodeLoader.js` -> `transformClientModule`):
+   instead of emitting raw `registerClientReference(...)` exports, emit
+   server-side wrapper functions per export. Each wrapper, when invoked
+   by React Flight during render, looks up its CSS hrefs from
+   `globalThis.__reactFlightClientManifest` and returns a Fragment
+   containing one `<link rel="stylesheet" precedence="rsc-css" href={css}/>`
+   per file plus the original client reference. React Flight encodes the
+   link as regular in-tree JSX and the client reference as `I[...]` as
+   before; the only thing that changes in the encoded RSC payload is
+   that the bare element `["$","$L<id>",null,props]` becomes a
+   2-element array `[<linkElement>, ["$","$L<id>",null,props]]` (a
+   key-less Fragment).
+
+   When the resolution chunk is a separate flush from the shell (the
+   normal deferred-Suspense case), React DOM sees the in-tree `<link>`
+   inside the resolved subtree, treats it as a precedence-managed
+   stylesheet resource, and emits `$RR(boundary, segment, [[href,
+   precedence]])` instead of `$RC(...)`. `$RR` creates a
+   `<link rel=stylesheet>` in `<head>` client-side, awaits its `load`
+   event, and only then runs the swap. The styled subtree never paints
+   unstyled.
+
+   When the resolution is fast enough to merge into the shell (no async
+   above the boundary), the link goes into the shell directly; the
+   browser's standard CSSOM render-blocking handles FOUC prevention.
+   Either way, no unstyled paint reaches the user.
+
+3. Server entry points (`ReactFlightDOMServerNode.js`,
+   `ReactFlightDOMServerEdge.js`, `ReactFlightDOMServerBrowser.js`):
+   publish the manifest to `globalThis.__reactFlightClientManifest` as
+   a side effect of `renderToPipeableStream`/`renderToReadableStream`/
+   `prerender*`. The loader-emitted wrappers find it without any
+   consumer-side wiring. Single assignment per render call; safe to
+   overwrite each time since the wrappers only read it during the same
+   render that just set it.
+
+Verification
+------------
+
+A standalone harness rendered an async-resolved Suspense subtree
+containing a `'use client'` boundary, with the CSS endpoint delayed by
+4 seconds. With this patch, the SSR HTML contains the wrapping pattern
+in the RSC payload and `$RR(...,[["/path/to.css","rsc-css"]])` in the
+resolution chunk; in the browser, the fallback stays visible until the
+stylesheet load event fires (~5s = 1s async + 4s CSS), then the styled
+subtree appears in a single frame. Without the patch, the styled card
+paints unstyled the moment the resolution chunk arrives — i.e., the
+flash this patch eliminates.
+---
+ .../src/ReactFlightWebpackNodeLoader.js       | 123 ++++++++++++++----
+ .../src/ReactFlightWebpackPlugin.js           |  42 +++++-
+ .../src/server/ReactFlightDOMServerBrowser.js |   5 +
+ .../src/server/ReactFlightDOMServerEdge.js    |   5 +
+ .../src/server/ReactFlightDOMServerNode.js    |   8 ++
+ .../src/shared/ReactFlightImportMetadata.js   |   6 +
+ 6 files changed, 161 insertions(+), 28 deletions(-)
+
+diff --git a/packages/react-server-dom-webpack/src/ReactFlightWebpackNodeLoader.js b/packages/react-server-dom-webpack/src/ReactFlightWebpackNodeLoader.js
+index 9799acc3a..2cd07cf55 100644
+--- a/packages/react-server-dom-webpack/src/ReactFlightWebpackNodeLoader.js
++++ b/packages/react-server-dom-webpack/src/ReactFlightWebpackNodeLoader.js
+@@ -584,37 +584,110 @@ async function transformClientModule(
+     return '';
+   }
+ 
++  // FOUC fix: for component-shaped exports of a 'use client' file, emit a
++  // server-side wrapper that renders
++  //   <><link rel=stylesheet precedence=rsc-css href=…/>...<RealRef {...props}/></>
++  // so React DOM emits its $RR gating script for deferred Suspense subtrees,
++  // holding the swap until the stylesheet's load event fires — the only
++  // mechanism that fully prevents flash-of-unstyled-content for a styled
++  // client component that streams in via Suspense.
++  //
++  // Non-component exports (lowercase-named) keep the original client-
++  // reference shim so they can still be passed across the server/client
++  // boundary as tagged values (hooks, stores, constants, plain utilities,
++  // etc.). Wrapping non-components would turn passing them as values into a
++  // serialization failure.
++  //
++  // CSS hrefs are looked up at runtime from
++  // globalThis.__reactFlightClientManifest, which the public render entry
++  // points (renderToPipeableStream / renderToReadableStream / prerender)
++  // populate as a side effect on entry. The lookup runs on every wrapper
++  // invocation (no closure cache) so HMR rebuilds and multi-bundle setups
++  // always read the current manifest.
++  //
++  // The manifest published on globalThis is the flat ClientManifest the
++  // server APIs receive (a Record<filePath, ImportManifestEntry>). The
++  // lookup also handles the wrapped {filePathToModuleMetadata, ...} shape
++  // that the plugin emits to disk, in case a consumer publishes that shape.
++  //
++  // Children are spread variadic into createElement(Fragment, null, …) via
++  // .apply so React doesn't warn about missing keys for the inner element.
++  //
++  // Known limitations of this loader-level wrap:
++  // - Component-shape heuristic is name-based (PascalCase). False positives
++  //   for non-component PascalCase exports (e.g. `Store`, `ThemeContext`,
++  //   `URL`) and false negatives for lowercase-named components.
++  // - Wrapped exports are no longer client-reference-shaped, so passing a
++  //   client component as a value (`<Outer Component={Inner} />`) breaks.
++  //   Fully resolving these requires moving the wrap site into the React
++  //   Flight server's serializeClientReference, which is out of scope here.
+   let newSrc =
+-    'import {registerClientReference} from "react-server-dom-webpack/server";\n';
++    'import {registerClientReference} from "react-server-dom-webpack/server";\n' +
++    'import {createElement as __rfwn_h, Fragment as __rfwn_F} from "react";\n' +
++    'function __rfwn_css(refUrl){' +
++      'var m=globalThis.__reactFlightClientManifest;' +
++      'if(!m)return [];' +
++      'var entries=m.filePathToModuleMetadata||m;' +
++      'var e=entries[refUrl];' +
++      'return (e&&e.css)||[];' +
++    '}\n' +
++    'function __rfwn_wrap(ref,refUrl){' +
++      'return function __rfwn_wrapped(props){' +
++        'var __h=__rfwn_css(refUrl);' +
++        'if(__h.length===0)return __rfwn_h(ref,props);' +
++        'var c=[__rfwn_F,null];' +
++        'for(var i=0;i<__h.length;i++){' +
++          'c.push(__rfwn_h("link",{key:"__rfwn_link_"+__h[i],rel:"stylesheet",href:__h[i],precedence:"rsc-css"}));' +
++        '}' +
++        'c.push(__rfwn_h(ref,props));' +
++        'return __rfwn_h.apply(null,c);' +
++      '};' +
++    '}\n';
++  // Component-shape: default export OR named export starting with PascalCase
++  // (uppercase letter followed by lowercase). Lowercase, UPPER_SNAKE, and
++  // single-letter names get the bare shim.
++  const isComponentName = (n: string): boolean =>
++    n === 'default' || /^[A-Z][a-z]/.test(n);
++  // Keep the default-export's private variable name in a separate namespace
++  // so a named export literally called "_default" doesn't collide.
++  const refVarFor = (n: string): string =>
++    n === 'default' ? '__rfwn_default_ref__' : '__rfwn_named_ref_' + n;
+   for (let i = 0; i < names.length; i++) {
+     const name = names[i];
++    const errorMessage =
++      name === 'default'
++        ? `Attempted to call the default export of ${url} from the server ` +
++          `but it's on the client. It's not possible to invoke a client function from ` +
++          `the server, it can only be rendered as a Component or passed to props of a ` +
++          `Client Component.`
++        : `Attempted to call ${name}() from the server but ${name} is on the client. ` +
++          `It's not possible to invoke a client function from the server, it can ` +
++          `only be rendered as a Component or passed to props of a Client Component.`;
++    const shim =
++      'registerClientReference(function() { throw new Error(' +
++      JSON.stringify(errorMessage) +
++      '); }, ' +
++      JSON.stringify(url) +
++      ', ' +
++      JSON.stringify(name) +
++      ')';
++    if (!isComponentName(name)) {
++      // Non-component export: emit the bare shim, no wrapping.
++      if (name === 'default') {
++        newSrc += 'export default ' + shim + ';\n';
++      } else {
++        newSrc += 'export const ' + name + ' = ' + shim + ';\n';
++      }
++      continue;
++    }
++    // Component export: bind shim to a private name, then wrap.
++    const refVar = refVarFor(name);
++    newSrc += 'const ' + refVar + ' = ' + shim + ';\n';
+     if (name === 'default') {
+-      newSrc += 'export default ';
+-      newSrc += 'registerClientReference(function() {';
+-      newSrc +=
+-        'throw new Error(' +
+-        JSON.stringify(
+-          `Attempted to call the default export of ${url} from the server ` +
+-            `but it's on the client. It's not possible to invoke a client function from ` +
+-            `the server, it can only be rendered as a Component or passed to props of a ` +
+-            `Client Component.`,
+-        ) +
+-        ');';
++      newSrc += 'export default __rfwn_wrap(' + refVar + ', ' + JSON.stringify(url) + ');\n';
+     } else {
+-      newSrc += 'export const ' + name + ' = ';
+-      newSrc += 'registerClientReference(function() {';
+-      newSrc +=
+-        'throw new Error(' +
+-        JSON.stringify(
+-          `Attempted to call ${name}() from the server but ${name} is on the client. ` +
+-            `It's not possible to invoke a client function from the server, it can ` +
+-            `only be rendered as a Component or passed to props of a Client Component.`,
+-        ) +
+-        ');';
++      newSrc += 'export const ' + name + ' = __rfwn_wrap(' + refVar + ', ' + JSON.stringify(url) + ');\n';
+     }
+-    newSrc += '},';
+-    newSrc += JSON.stringify(url) + ',';
+-    newSrc += JSON.stringify(name) + ');\n';
+   }
+ 
+   // TODO: Generate source maps for Client Reference functions so they can point to their
+diff --git a/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js b/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
+index a574fd3eb..3b574adec 100644
+--- a/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
++++ b/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
+@@ -274,15 +274,42 @@ export default class ReactFlightWebpackPlugin {
+             }
+           });
+ 
++          // FOUC fix: prefix used to turn bare CSS chunk filenames into full
++          // URLs the SSR pipeline can hand to the React DOM stylesheet
++          // resource graph.
++          const cssPrefix: string =
++            typeof compilation.outputOptions.publicPath === 'string'
++              ? compilation.outputOptions.publicPath
++              : '';
++
+           compilation.chunkGroups.forEach(function (chunkGroup) {
+             const chunks: Array<string> = [];
++            // FOUC fix: also collect every .css file emitted alongside the JS
++            // chunks reachable from this chunkGroup. They are recorded on each
++            // resolved client reference's manifest entry so the SSR pipeline
++            // can render <link rel="stylesheet" precedence> JSX siblings of
++            // each client-reference element. React DOM emits its $RR gating
++            // script for deferred Suspense subtrees, holding the swap until
++            // each stylesheet's load event fires.
++            const cssFiles: Array<string> = [];
+             chunkGroup.chunks.forEach(function (c) {
+               // eslint-disable-next-line no-for-of-loops/no-for-of-loops
+               for (const file of c.files) {
+-                if (file.endsWith('.js') && !file.endsWith('.hot-update.js')) {
+-                  chunks.push(c.id, file);
+-                  break;
++                if (file.endsWith('.css')) {
++                  const cssUrl = cssPrefix + file;
++                  if (cssFiles.indexOf(cssUrl) === -1) {
++                    cssFiles.push(cssUrl);
++                  }
++                  continue;
++                }
++                if (!file.endsWith('.js')) {
++                  continue;
++                }
++                if (file.endsWith('.hot-update.js')) {
++                  continue;
+                 }
++                chunks.push(c.id, file);
++                break;
+               }
+             });
+ 
+@@ -312,10 +339,19 @@ export default class ReactFlightWebpackPlugin {
+                       existing.chunks.push(chunks[j], chunks[j + 1]);
+                     }
+                   }
++                  if (existing.css == null) {
++                    existing.css = [];
++                  }
++                  for (let k = 0; k < cssFiles.length; k++) {
++                    if (existing.css.indexOf(cssFiles[k]) === -1) {
++                      existing.css.push(cssFiles[k]);
++                    }
++                  }
+                 } else {
+                   filePathToModuleMetadata[href] = {
+                     id,
+                     chunks: chunks.slice(),
++                    css: cssFiles.slice(),
+                     name: '*',
+                   };
+                 }
+diff --git a/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerBrowser.js b/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerBrowser.js
+index 7954417b9..0ef4e48ff 100644
+--- a/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerBrowser.js
++++ b/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerBrowser.js
+@@ -59,6 +59,9 @@ function renderToReadableStream(
+   webpackMap: ClientManifest,
+   options?: Options,
+ ): ReadableStream {
++  // FOUC fix: publish the manifest so the loader-emitted CSS wrappers
++  // can look up each client reference's CSS hrefs at render time.
++  (globalThis: any).__reactFlightClientManifest = webpackMap;
+   const request = createRequest(
+     model,
+     webpackMap,
+@@ -110,6 +113,8 @@ function prerender(
+   webpackMap: ClientManifest,
+   options?: Options,
+ ): Promise<StaticResult> {
++  // FOUC fix: see renderToReadableStream above.
++  (globalThis: any).__reactFlightClientManifest = webpackMap;
+   return new Promise((resolve, reject) => {
+     const onFatalError = reject;
+     function onAllReady() {
+diff --git a/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerEdge.js b/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerEdge.js
+index 7954417b9..0ef4e48ff 100644
+--- a/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerEdge.js
++++ b/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerEdge.js
+@@ -59,6 +59,9 @@ function renderToReadableStream(
+   webpackMap: ClientManifest,
+   options?: Options,
+ ): ReadableStream {
++  // FOUC fix: publish the manifest so the loader-emitted CSS wrappers
++  // can look up each client reference's CSS hrefs at render time.
++  (globalThis: any).__reactFlightClientManifest = webpackMap;
+   const request = createRequest(
+     model,
+     webpackMap,
+@@ -110,6 +113,8 @@ function prerender(
+   webpackMap: ClientManifest,
+   options?: Options,
+ ): Promise<StaticResult> {
++  // FOUC fix: see renderToReadableStream above.
++  (globalThis: any).__reactFlightClientManifest = webpackMap;
+   return new Promise((resolve, reject) => {
+     const onFatalError = reject;
+     function onAllReady() {
+diff --git a/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerNode.js b/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerNode.js
+index bf94c9e93..16d887e08 100644
+--- a/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerNode.js
++++ b/packages/react-server-dom-webpack/src/server/ReactFlightDOMServerNode.js
+@@ -87,6 +87,11 @@ function renderToPipeableStream(
+   webpackMap: ClientManifest,
+   options?: Options,
+ ): PipeableStream {
++  // FOUC fix: publish the manifest so the loader-emitted CSS wrappers
++  // (see ReactFlightWebpackNodeLoader transformClientModule) can look up
++  // each client reference's CSS hrefs at render time without consumers
++  // having to wire it manually.
++  (globalThis: any).__reactFlightClientManifest = webpackMap;
+   const request = createRequest(
+     model,
+     webpackMap,
+@@ -163,6 +168,9 @@ function prerenderToNodeStream(
+   webpackMap: ClientManifest,
+   options?: PrerenderOptions,
+ ): Promise<StaticResult> {
++  // FOUC fix: same as renderToPipeableStream — publish the manifest so
++  // loader-emitted CSS wrappers can find it via globalThis.
++  (globalThis: any).__reactFlightClientManifest = webpackMap;
+   return new Promise((resolve, reject) => {
+     const onFatalError = reject;
+     function onAllReady() {
+diff --git a/packages/react-server-dom-webpack/src/shared/ReactFlightImportMetadata.js b/packages/react-server-dom-webpack/src/shared/ReactFlightImportMetadata.js
+index 29b012f60..769f9e81f 100644
+--- a/packages/react-server-dom-webpack/src/shared/ReactFlightImportMetadata.js
++++ b/packages/react-server-dom-webpack/src/shared/ReactFlightImportMetadata.js
+@@ -11,6 +11,12 @@ export type ImportManifestEntry = {
+   id: string,
+   // chunks is a double indexed array of chunkId / chunkFilename pairs
+   chunks: Array<string>,
++  // FOUC fix: list of CSS file URLs (publicPath-prefixed) emitted alongside
++  // this client reference's JS chunks. Read by the SSR pipeline so a
++  // <link rel="stylesheet" precedence> JSX sibling can be rendered next to
++  // the client reference, triggering React DOM's $RR gating script for
++  // deferred Suspense subtrees.
++  css?: Array<string>,
+   name: string,
+   async?: boolean,
+ };
+-- 
+2.50.1 (Apple Git-155)
+

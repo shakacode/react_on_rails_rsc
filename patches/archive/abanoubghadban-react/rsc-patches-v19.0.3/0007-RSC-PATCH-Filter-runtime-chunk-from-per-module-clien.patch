@@ -1,0 +1,93 @@
+From 2c29304508de9773450421cdffa1fef6246dc4c1 Mon Sep 17 00:00:00 2001
+From: Abanoub Ghadban <abanoub@shakacode.com>
+Date: Tue, 5 May 2026 21:01:17 +0300
+Subject: [PATCH 7/7] [RSC-PATCH] Filter runtime chunk from per-module client
+ manifest chunks (#7)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+* [RSC-PATCH] Filter runtime chunk from per-module client manifest chunks
+
+`ReactFlightWebpackPlugin` already collects `runtimeChunkFiles` and the
+source comment promises it is used "to filter out chunks that Flight
+will never need to load" — but the filter was never applied. With
+`output.runtimeChunk: 'single'` the runtime chunk file ends up in every
+client reference's `chunks` array in `react-client-manifest.json`, and
+React Flight emits a `<script>` tag for that runtime URL alongside the
+host page's own runtime tag.
+
+Browsers do not deduplicate identical `<script async>` tags by URL, so
+the webpack runtime IIFE evaluates twice: a new `__webpack_require__`,
+a new module cache, and new chunk closures. Any module relying on
+singleton semantics (registered client references, version-checked
+SDKs, global registries) is loaded twice with two distinct instances
+and breaks at runtime — most visibly as singleton-init guards
+asserting that another bundle already initialized them.
+
+This commit adds the filter the comment already promised: when
+iterating a chunk group's files for the manifest, skip files that
+belong to the collected runtime chunk set. Initial entrypoints already
+load these on the host page; Flight should never request them.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+* [RSC-PATCH] Guard runtime-chunk filter to client manifest only
+
+Apply the runtime-chunk filter only when emitting the client manifest
+(`isServer === false`). Server bundles commonly use
+`webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 })` to collapse
+every chunk into the entry. Under that configuration the entrypoint's
+runtime chunk is the server bundle file itself, so the filter would
+strip it from every client reference's `chunks` array and leave each
+manifest entry as `chunks: []`. The RSC encoder then cannot resolve
+any client module reference, the Flight stream emits no further
+chunks, and consumers (e.g. node-renderer with a stream-chunk
+timeout) eventually abort with a stall.
+
+The double-runtime hazard the original commit guards against only
+exists on the client (host page loads the runtime separately, then
+Float emits it again from the manifest). Server-side rendering
+consumes the manifest in-process, so re-listing the runtime there is
+both safe and required.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+---------
+
+Co-authored-by: AbanoubGhadban <c_yassa@shakacode.com>
+Co-authored-by: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+---
+ .../src/ReactFlightWebpackPlugin.js              | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js b/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
+index 3b574adec..0145ce19f 100644
+--- a/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
++++ b/packages/react-server-dom-webpack/src/ReactFlightWebpackPlugin.js
+@@ -308,6 +308,22 @@ export default class ReactFlightWebpackPlugin {
+                 if (file.endsWith('.hot-update.js')) {
+                   continue;
+                 }
++                // Skip the runtime chunk on the CLIENT manifest only: it is
++                // always loaded by the host page alongside any initial entry,
++                // so re-emitting it during the Flight stream would re-execute
++                // the webpack runtime IIFE, create a second module cache, and
++                // break singletons that depend on a single runtime instance.
++                //
++                // We must NOT apply this filter to the server manifest. Server
++                // bundles commonly use LimitChunkCountPlugin({maxChunks: 1}),
++                // which collapses every chunk into the entry — making that
++                // single output file the entrypoint's runtime chunk. Filtering
++                // it out leaves every client reference with chunks: [], so the
++                // RSC encoder cannot resolve any client module reference and
++                // the Flight stream stalls.
++                if (!_this.isServer && runtimeChunkFiles.has(file)) {
++                  continue;
++                }
+                 chunks.push(c.id, file);
+                 break;
+               }
+-- 
+2.50.1 (Apple Git-155)
+

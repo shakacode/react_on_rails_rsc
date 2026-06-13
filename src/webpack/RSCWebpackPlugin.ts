@@ -5,7 +5,7 @@
  * This is a faithful port of the previously vendored build of React's
  * reference `ReactFlightWebpackPlugin`
  * (`src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js`)
- * including every fork patch and in-repo edit that file accumulated:
+ * including every historical fork patch and in-repo edit that file accumulated:
  *
  *  - Server-build support: `isServer` option, server manifest emission
  *    (`react-server-client-manifest.json`), and server chunk-group scanning.

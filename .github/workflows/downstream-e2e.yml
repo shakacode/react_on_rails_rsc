@@ -70,7 +70,7 @@ jobs:
         with:
           ruby-version: ${{ steps.downstream-versions.outputs.ruby-version }}
           working-directory: react_on_rails/react_on_rails_pro/spec/dummy
-          bundler-cache: false
+          bundler-cache: true
 
       - name: Setup Node
         # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.

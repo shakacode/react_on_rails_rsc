@@ -227,7 +227,7 @@ checkout_downstream() {
 pack_local_package() {
   log_step "Building and packing react-on-rails-rsc"
   yarn build
-  TARBALL="$PACKAGE_DIR/$(npm pack --pack-destination "$PACKAGE_DIR" | tail -1)"
+  TARBALL="$PACKAGE_DIR/$(npm pack --quiet --pack-destination "$PACKAGE_DIR")"
   test -f "$TARBALL"
   echo "Packed tarball: $TARBALL"
 }
@@ -289,9 +289,9 @@ build_downstream_dummy() {
   log_step "Building downstream Pro dummy app"
   local dummy_dir="$REACT_ON_RAILS_DIR/react_on_rails_pro/spec/dummy"
 
-  (cd "$REACT_ON_RAILS_DIR" && pnpm run build)
-  (cd "$dummy_dir" && bundle exec rake react_on_rails:generate_packs)
-  (cd "$dummy_dir" && pnpm run "$DUMMY_BUILD_SCRIPT")
+  (cd "$REACT_ON_RAILS_DIR" && pnpm run build) 2>&1 | tee "$LOG_DIR/pnpm-build.log"
+  (cd "$dummy_dir" && bundle exec rake react_on_rails:generate_packs) 2>&1 | tee "$LOG_DIR/generate-packs.log"
+  (cd "$dummy_dir" && pnpm run "$DUMMY_BUILD_SCRIPT") 2>&1 | tee "$LOG_DIR/dummy-build.log"
 }
 
 start_background_services() {

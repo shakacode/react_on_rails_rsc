@@ -238,8 +238,8 @@ flowchart LR
   i55 -. informs .-> i58["#58 upstream patches"]
 ```
 
-**Critical path:** #55, #56, and #57 can proceed in parallel; all three gate
-#60, which then gates #66. #55 also informs #58.
+**Critical path:** #55/#56/#57 can proceed in parallel; all three gate #60,
+which then gates #66. #55 also informs #58.
 
 ## 9. Triage outcomes during the audit
 

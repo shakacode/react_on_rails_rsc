@@ -290,7 +290,7 @@ pack_local_package() {
   log_step "Building and packing react-on-rails-rsc"
   yarn build
   TARBALL="$PACKAGE_DIR/$(
-    npm_config_cache="$NPM_CACHE_DIR" npm pack --quiet --pack-destination "$PACKAGE_DIR" | tail -1
+    npm_config_cache="$NPM_CACHE_DIR" npm pack --loglevel=error --pack-destination "$PACKAGE_DIR" | tail -1
   )"
   test -f "$TARBALL"
   echo "Packed tarball: $TARBALL"

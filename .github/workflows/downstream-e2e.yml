@@ -20,7 +20,7 @@ on:
     - cron: '37 11 * * *'
 
 concurrency:
-  group: downstream-e2e-${{ github.event_name }}-${{ github.ref }}
+  group: downstream-e2e-${{ github.event_name }}-${{ github.ref }}-${{ inputs.rsc_ref || github.ref }}-${{ inputs.react_on_rails_ref || 'main' }}
   cancel-in-progress: false
 
 jobs:
@@ -59,6 +59,8 @@ jobs:
             echo "::error::Expected $rortv not found in the downstream checkout." >&2
             exit 1
           fi
+          # Ruby intentionally runs at the downstream minimum supported version;
+          # Node uses the downstream exact toolchain version for JS build parity.
           {
             echo "ruby-version=$("$rortv" react_on_rails/.minimum.tool-versions ruby)"
             echo "node-version=$("$rortv" react_on_rails/.tool-versions nodejs)"

@@ -52,9 +52,6 @@ jobs:
           # The package runtime support matrix remains tested separately before publishing.
           # Do not enable dependency caching in the release publish job.
           node-version: '24.x'
-          # registry-url scopes npm to npmjs; do not add an npm auth-token secret.
-          # The publish step authenticates through GitHub OIDC trusted publishing.
-          registry-url: https://registry.npmjs.org
 
       - name: Enable package manager
         run: corepack enable
@@ -154,16 +151,17 @@ jobs:
             exit 1
           fi
 
-          npm_exit=0
-          npm --silent view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >"$NPM_VIEW_OUTPUT" 2>&1 || npm_exit=$?
+          for attempt in 1 2 3 4 5; do
+            npm_exit=0
+            npm --silent view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >"$NPM_VIEW_OUTPUT" 2>&1 || npm_exit=$?
 
-          if [[ "$npm_exit" -eq 0 ]]; then
-            echo "${PACKAGE_NAME}@${RELEASE_VERSION} is already published." >&2
-            cat "$NPM_VIEW_OUTPUT" >&2
-            exit 1
-          fi
+            if [[ "$npm_exit" -eq 0 ]]; then
+              echo "${PACKAGE_NAME}@${RELEASE_VERSION} is already published." >&2
+              cat "$NPM_VIEW_OUTPUT" >&2
+              exit 1
+            fi
 
-          error_code=$(node - "$NPM_VIEW_OUTPUT" <<'NODE'
+            error_code=$(node - "$NPM_VIEW_OUTPUT" <<'NODE'
           const fs = require('node:fs');
           try {
             const parsed = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -171,24 +169,34 @@ jobs:
           } catch {
           }
           NODE
-          )
+            )
 
-          if [[ "$error_code" != "E404" ]]; then
-            echo "Unexpected npm error (code: ${error_code:-unknown}):" >&2
+            if [[ "$error_code" == "E404" ]]; then
+              break
+            fi
+
+            if [[ "$attempt" -lt 5 ]] && grep -Eiq 'ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|network|timeout' "$NPM_VIEW_OUTPUT"; then
+              echo "npm view failed before publish; retrying in 10s (attempt ${attempt}/5):" >&2
+              cat "$NPM_VIEW_OUTPUT" >&2
+              sleep 10
+              continue
+            fi
+
+            echo "Unexpected npm error (code: ${error_code:-unknown}) while checking publish state:" >&2
             cat "$NPM_VIEW_OUTPUT" >&2
             exit 1
-          fi
+          done
 
       - name: Run release validation
         run: |
           set -euo pipefail
 
+          yarn build
           yarn test
 
-          if node -e "process.exit(require('./package.json').scripts['verify:artifacts'] ? 0 : 1)"; then
+          if node -e "process.exit((require('./package.json').scripts || {})['verify:artifacts'] ? 0 : 1)"; then
             yarn verify:artifacts
           else
-            yarn build
             npm pack --dry-run
           fi
 
@@ -202,8 +210,9 @@ jobs:
           set -euo pipefail
 
           # No npm auth token secret is configured; npm uses GitHub OIDC trusted publishing.
-          # Publish the validated dist/ tree without rerunning prepublishOnly.
-          # If prepublishOnly grows beyond the build already covered above, update this job first.
+          # Do not set setup-node registry-url here; that writes token-based npm auth config.
+          # Publish the explicitly built and verified dist/ tree without rerunning prepublishOnly.
+          # If prepublishOnly grows beyond the validation above, update this job first.
           npm publish --ignore-scripts --provenance --access public --tag "$NPM_TAG"
 
       - name: Create local release tag
@@ -252,6 +261,7 @@ jobs:
               exit 1
             fi
 
+            echo "Package not yet visible; waiting 15s (attempt ${attempt}/12)..."
             sleep 15
           done
 

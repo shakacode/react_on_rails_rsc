@@ -123,18 +123,19 @@ The workflow will:
 3. Verify that `CHANGELOG.md` and `package.json` contain the same version.
 4. Stop if the unprefixed git tag already exists or the npm version is already
    published.
-5. Run `yarn test`.
-6. Run `yarn verify:artifacts` when that script is present; otherwise run
-   `yarn run build` and `npm pack --dry-run`.
-7. Publish with npm trusted publishing and provenance:
+5. Run `yarn build`.
+6. Run `yarn test`.
+7. Run `yarn verify:artifacts` when that script is present; otherwise run
+   `npm pack --dry-run` against the built output.
+8. Publish with npm trusted publishing and provenance:
 
    ```bash
    npm publish --provenance --access public --tag <next-or-latest>
    ```
 
-8. Push the unprefixed annotated git tag.
-9. Create the GitHub release from the matching `CHANGELOG.md` section.
-10. Verify the npm package, npm dist-tags, and GitHub release.
+9. Push the unprefixed annotated git tag.
+10. Create the GitHub release from the matching `CHANGELOG.md` section.
+11. Verify the npm package, npm dist-tags, and GitHub release.
 
 Prereleases such as `X.Y.Z-rc.N` publish with the npm `next` dist-tag. Final
 versions publish with `latest`; dispatch a final release only after the

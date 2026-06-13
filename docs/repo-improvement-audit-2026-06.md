@@ -181,12 +181,14 @@ dependency bump + matrix run; npm makes security fixes available same-day, while
 #63/#66 keep this package's release path responsible for dependency and peer
 floor bumps; all bundler logic reviewable TS; `[RSC-REPLACE]` and the fork die.
 
-**Gate (#55):** the 2 runtime patches. Decision tree: (a) already upstream
-in 19.2.7? → done; (b) not upstream → submit (#58) and meanwhile assess a
-wrapper-layer implementation of the FOUC behavior (the wrappers already do
-manifest-aware stylesheet-hint work post-#35); (c) both fail → **fallback**
-to `eliminate-react-fork.md` Option 4 (patch files applied to vanilla
-`facebook/react`), with a 2-patch corpus only.
+**Post-audit update (#55):** the stock-runtime spike selected Option 5 (GO) and
+replaced this section's original 2-patch gate with a 3-delta migration
+inventory in `eliminate-react-fork.md`: JSON-walk parsing is upstreamed in
+facebook/react#35776 but not in 19.2.7, the current FOUC fix is an in-repo
+rewrite that #60 should re-implement at the wrapper layer, and the
+`loadServerReference` bound-args delta needs explicit bound-server-action smoke
+coverage in #60. If any #60 gate fails, fall back to `eliminate-react-fork.md`
+Option 4 (patch files applied to vanilla `facebook/react`).
 
 Note: GitHub's search API rejects queries against `facebook/react`, so the
 upstream-status check must be done by cloning + `git log`/diff (recorded in

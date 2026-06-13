@@ -70,6 +70,7 @@ runtime and `scripts/react-upgrade/` helper. Use
 `scripts/react-upgrade/upgrade.js` only for maintainer-directed emergency
 maintenance of the current vendored runtime, not for the Option 4 patch-file
 fallback.
+
 Fork patch history is preserved in
 `patches/archive/abanoubghadban-react/`; that archive is provenance, not an
 active runtime path.

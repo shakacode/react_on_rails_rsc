@@ -160,6 +160,8 @@ cleanup() {
     rm -f "$PLAYWRIGHT_CONFIG_FILE"
   fi
 
+  restore_existing_checkout_manifests
+
   if [[ "$AUTO_WORK_DIR" != "1" ]]; then
     echo "Preserving user-supplied work dir: $WORK_DIR"
   elif [[ "$KEEP_WORK_DIR" == "1" ]]; then
@@ -171,6 +173,18 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
+
+restore_existing_checkout_manifests() {
+  if [[ "$USING_EXISTING_REACT_ON_RAILS_DIR" != "1" ]] || [[ -z "$REACT_ON_RAILS_DIR" ]]; then
+    return
+  fi
+
+  git -C "$REACT_ON_RAILS_DIR" checkout -- \
+    package.json \
+    packages/react-on-rails-pro/package.json \
+    react_on_rails_pro/spec/dummy/package.json \
+    pnpm-lock.yaml 2>/dev/null || true
+}
 
 kill_process_tree() {
   local pid="$1"
@@ -294,6 +308,8 @@ checkout_downstream() {
     fi
   else
     REACT_ON_RAILS_DIR="$WORK_DIR/react_on_rails"
+    # Use init+fetch because workflow_dispatch may pass a commit SHA; clone
+    # --branch only handles branch and tag names.
     git init "$REACT_ON_RAILS_DIR"
     if git -C "$REACT_ON_RAILS_DIR" remote get-url origin >/dev/null 2>&1; then
       git -C "$REACT_ON_RAILS_DIR" remote set-url origin "$REACT_ON_RAILS_REPO"
@@ -643,6 +659,11 @@ write_playwright_config() {
 
   # The Pro dummy currently uses playwright.config.ts; update this generated
   # import if the downstream app moves that base config to JavaScript.
+  if [[ ! -f "$dummy_dir/playwright.config.ts" ]]; then
+    echo "Expected playwright.config.ts not found in $dummy_dir; update the generated config import." >&2
+    return 1
+  fi
+
   node - "$PLAYWRIGHT_CONFIG_FILE" "$RAILS_PORT" <<'NODE'
 const fs = require('fs');
 

@@ -78,6 +78,7 @@
     "test:rsc": "NODE_CONDITIONS=react-server jest tests/*.rsc.test.*",
     "test:non-rsc": "jest tests --testPathIgnorePatterns=\".*\\.rsc\\.test\\..*\"",
     "test:e2e": "bash scripts/e2e/run.sh",
+    "test:e2e:downstream": "bash scripts/e2e/downstream.sh",
     "build": "rm -rf dist tsconfig.tsbuildinfo && yarn run tsc",
     "verify:artifacts": "bash scripts/verify-release.sh",
     "prepublishOnly": "yarn run build",

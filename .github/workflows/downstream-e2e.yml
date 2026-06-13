@@ -1,0 +1,119 @@
+name: Downstream E2E (React on Rails Pro dummy)
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      react_on_rails_ref:
+        description: React on Rails ref to test
+        required: false
+        type: string
+        default: main
+      rsc_ref:
+        description: react_on_rails_rsc ref to test (defaults to the dispatch ref)
+        required: false
+        type: string
+        default: ''
+  schedule:
+    - cron: '37 11 * * *'
+
+concurrency:
+  group: downstream-e2e-${{ github.event_name }}-${{ github.ref }}-${{ inputs.rsc_ref || github.ref }}-${{ inputs.react_on_rails_ref || 'main' }}
+  cancel-in-progress: false
+
+jobs:
+  pro-dummy-rsc-playwright:
+    name: Pro dummy RSC Playwright subset
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      REACT_ON_RAILS_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.react_on_rails_ref || 'main' }}
+      RSC_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.rsc_ref || github.ref }}
+      RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT_DEPS: '1'
+    steps:
+      - name: Check out react-on-rails-rsc
+        # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ env.RSC_REF }}
+          persist-credentials: false
+
+      - name: Check out React on Rails
+        # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          repository: shakacode/react_on_rails
+          ref: ${{ env.REACT_ON_RAILS_REF }}
+          path: react_on_rails
+          persist-credentials: false
+
+      - name: Read downstream runtime versions
+        id: downstream-versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          rortv="react_on_rails/bin/read-tool-version"
+          if [[ ! -x "$rortv" ]]; then
+            echo "::error::Expected $rortv not found in the downstream checkout." >&2
+            exit 1
+          fi
+          # Ruby intentionally runs at the downstream minimum supported version;
+          # Node uses the downstream exact toolchain version for JS build parity.
+          {
+            echo "ruby-version=$("$rortv" react_on_rails/.minimum.tool-versions ruby)"
+            echo "node-version=$("$rortv" react_on_rails/.tool-versions nodejs)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup Ruby
+        # Pinned immutable ruby/setup-ruby@v1.313.0 release SHA verified via git ls-remote.
+        uses: ruby/setup-ruby@89f90524b88a01fe6e0b732220432cc6142926af
+        with:
+          ruby-version: ${{ steps.downstream-versions.outputs.ruby-version }}
+          working-directory: react_on_rails/react_on_rails_pro/spec/dummy
+          bundler-cache: true
+
+      - name: Setup Node
+        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ steps.downstream-versions.outputs.node-version }}
+
+      - name: Enable package managers
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare "$(node -p "require('./package.json').packageManager")" --activate
+          corepack prepare "$(node -p "require('./react_on_rails/package.json').packageManager")" --activate
+          echo "Node: $(node --version)"
+          echo "Yarn: $(yarn --version)"
+          if command -v pnpm >/dev/null 2>&1; then
+            echo "pnpm: $(pnpm --version)"
+          fi
+          echo "Ruby: $(ruby --version)"
+          echo "Bundler: $(bundle --version)"
+
+      - name: Install react-on-rails-rsc dependencies
+        run: yarn --frozen-lockfile
+
+      - name: Run downstream RSC E2E
+        env:
+          RSC_DOWNSTREAM_WORK_DIR: ${{ runner.temp }}/react-on-rails-rsc-downstream
+        run: |
+          bash scripts/e2e/downstream.sh \
+            --react-on-rails-dir react_on_rails \
+            --react-on-rails-ref "$REACT_ON_RAILS_REF"
+
+      - name: Upload downstream logs
+        # Pinned immutable actions/upload-artifact@v4 release SHA verified via git ls-remote.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: downstream-rsc-e2e-logs
+          path: |
+            ${{ runner.temp }}/react-on-rails-rsc-downstream/logs
+            react_on_rails/react_on_rails_pro/spec/dummy/test-results
+            react_on_rails/react_on_rails_pro/spec/dummy/playwright-report
+          if-no-files-found: ignore

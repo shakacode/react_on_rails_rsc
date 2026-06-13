@@ -37,11 +37,12 @@ Tags in this repository do not use a `v` prefix. For example, use
 
 - The npm `latest` dist-tag moves only on final releases from `main`, after the
   downstream React on Rails release gate has accepted the candidate. That gate
-  is the rollout PR in
+  is the `Downstream E2E (React on Rails Pro dummy)` workflow in this repository
+  and, when a React on Rails rollout branch is needed, the rollout PR in
   [shakacode/react_on_rails](https://github.com/shakacode/react_on_rails) that
   pins `react-on-rails-rsc@X.Y.Z-rc.N` and confirms the downstream app release
-  path is ready. `latest` must not advance until that rollout PR is merged to
-  `main` in `react_on_rails`.
+  path is ready. `latest` must not advance until the workflow is green for the
+  candidate and any required rollout PR is merged to `main` in `react_on_rails`.
 
 ## Prerequisites
 
@@ -106,7 +107,45 @@ readiness without publishing. In dry-run mode, missing npm or GitHub auth is a
 warning instead of a release blocker, and no npm publish, git tag, tag push, or
 GitHub release is created.
 
-### 3. Publish From GitHub Actions
+### 3. Run The Downstream React On Rails Gate
+
+Before promoting a candidate to `latest`, dispatch `Downstream E2E (React on
+Rails Pro dummy)` from GitHub Actions. Use these inputs:
+
+1. `rsc_ref`: the `react_on_rails_rsc` candidate ref to test. Use the release
+   candidate tag, release branch, or exact SHA.
+2. `react_on_rails_ref`: the downstream React on Rails ref to test. Use `main`
+   by default, or the rollout PR branch when the downstream package pin is being
+   changed there.
+
+The workflow builds and packs this package, installs the tarball into the
+downstream `shakacode/react_on_rails` checkout, builds the Pro dummy app, starts
+the Rails server and Pro node renderer, and runs the maintained RSC Playwright
+subset:
+
+- `e2e-tests/rsc_echo_props.spec.ts`: verifies server-rendered RSC props with
+  special characters while blocking client fallback payload requests, so SSR
+  serialization failures cannot be masked.
+- `e2e-tests/rsc_route_ssr_false.spec.ts`: verifies `RSCRoute ssr={false}`
+  payload fetching, lazy client roots, streamed roots, and that a normal
+  client-rendered page does not load the RSC fetch runtime.
+
+The subset intentionally matches the downstream dummy app's `e2e-test:rsc`
+script. Broader Playwright specs such as streaming, refetch stress, async props,
+and JSON parse race coverage remain downstream React on Rails responsibilities;
+they exercise Pro renderer, Redis, or app-level behavior that is useful but not
+specific to the `react-on-rails-rsc` package boundary.
+
+For local maintainer debugging, run the same gate from this repository:
+
+```bash
+yarn test:e2e:downstream -- --react-on-rails-ref main
+```
+
+The script also accepts `--react-on-rails-dir PATH` for testing an existing
+downstream checkout or rollout branch.
+
+### 4. Publish From GitHub Actions
 
 After the changelog/version PR lands on `main`, open GitHub Actions and run
 `Release package` from the `main` branch.
@@ -140,7 +179,7 @@ Prereleases such as `X.Y.Z-rc.N` publish with the npm `next` dist-tag. Final
 versions publish with `latest`; dispatch a final release only after the
 downstream React on Rails release gate has accepted the candidate.
 
-### 4. Maintainer-Only Local Fallback
+### 5. Maintainer-Only Local Fallback
 
 Use the local publish path only if the GitHub Actions release path is blocked
 and a maintainer explicitly chooses to publish from a trusted workstation:
@@ -159,7 +198,7 @@ The script will:
 6. Run `release-it` to commit any needed version bump, tag, and publish to npm.
 7. Create a GitHub release from the matching `CHANGELOG.md` section.
 
-### 5. Verify
+### 6. Verify
 
 #### Release Artifact Parity Checklist
 
@@ -233,8 +272,10 @@ the exact target version, including any `-rc.N` prerelease suffix.
 
 #### Promote latest after a final release
 
-After checklist items 1-6 pass for a final release and the downstream React on
-Rails rollout PR is merged to `main`, first confirm the current dist-tag state:
+After checklist items 1-6 pass for a final release, the `Downstream E2E (React
+on Rails Pro dummy)` workflow is green for the candidate, and any downstream
+React on Rails rollout PR is merged to `main`, first confirm the current
+dist-tag state:
 
 ```bash
 npm view react-on-rails-rsc dist-tags --json

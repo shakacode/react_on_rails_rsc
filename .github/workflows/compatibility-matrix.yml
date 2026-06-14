@@ -71,6 +71,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: yarn
       - name: Install matrix packages without changing yarn.lock
+        id: compatibility-install
         env:
           COMPAT_LABEL: ${{ matrix.label }}
           COMPAT_REACT: ${{ matrix.react-version }}
@@ -82,10 +83,12 @@ jobs:
           COMPAT_RSPACK: ${{ matrix.rspack-version }}
         run: node scripts/prepare-compatibility-install.cjs
       - name: Build package artifacts
+        if: steps.compatibility-install.outputs.skip != '1'
         env:
           NODE_OPTIONS: ${{ matrix.node-options || '' }}
         run: yarn build
       - name: Run unit and integration tests
+        if: steps.compatibility-install.outputs.skip != '1'
         env:
           NODE_OPTIONS: ${{ matrix.node-options || '' }}
         run: yarn test
@@ -95,7 +98,12 @@ jobs:
           {
             echo "### Test command"
             echo
-            echo "- Command: \`yarn build && yarn test\`"
+            if [[ "${{ steps.compatibility-install.outputs.skip }}" == "1" ]]; then
+              echo "- Command: \`skipped\`"
+              echo "- Skip reason: ${{ steps.compatibility-install.outputs.skip-reason }}"
+            else
+              echo "- Command: \`yarn build && yarn test\`"
+            fi
             echo "- Result: \`${{ job.status }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 

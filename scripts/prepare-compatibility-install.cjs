@@ -32,6 +32,19 @@ if (Object.keys(packageSpecs).length === 0) {
 
 validateRequestedSpecs(packageSpecs);
 
+const compatibilitySkipReason = getCompatibilitySkipReason(packageSpecs);
+if (compatibilitySkipReason) {
+  assertGitPathClean('package.json');
+  assertGitPathClean('yarn.lock');
+  setGithubOutput('skip', '1');
+  setGithubOutput('skip-reason', compatibilitySkipReason);
+  writeSummary(label, packageSpecs, {}, compatibilitySkipReason);
+  console.log(`[compat] ${label}: skipped because ${compatibilitySkipReason}`);
+  process.exit(0);
+}
+
+setGithubOutput('skip', '0');
+
 try {
   if (skipInstall) {
     console.log(`[compat] ${label}: skipping yarn install because COMPAT_SKIP_INSTALL=1`);
@@ -138,6 +151,70 @@ function validateRequestedSpecs(specs) {
       assertRspackSpec(spec);
     }
   }
+}
+
+function getCompatibilitySkipReason(specs) {
+  const incompatibleSpecs = [];
+  const packageFloors = {
+    react: packageJson.peerDependencies?.react,
+    'react-dom': packageJson.peerDependencies?.['react-dom'],
+    'react-server-dom-webpack': packageJson.dependencies?.['react-server-dom-webpack'],
+  };
+
+  for (const [packageName, floorSpec] of Object.entries(packageFloors)) {
+    const requestedSpec = specs[packageName];
+    if (!requestedSpec || !floorSpec) continue;
+    if (isCanarySpec(requestedSpec) || isCanarySpec(floorSpec)) continue;
+    if (!rangeCanSatisfyFloor(requestedSpec, floorSpec)) {
+      incompatibleSpecs.push(
+        `${packageName}@${requestedSpec} cannot satisfy package floor ${floorSpec}`
+      );
+    }
+  }
+
+  if (incompatibleSpecs.length === 0) return '';
+
+  return `requested matrix packages are outside this package release line: ${incompatibleSpecs.join(
+    '; '
+  )}`;
+}
+
+function rangeCanSatisfyFloor(requestedSpec, floorSpec) {
+  const requestedRange = getSimpleRangeBounds(requestedSpec);
+  const floorRange = getSimpleRangeBounds(floorSpec);
+
+  return (
+    compareVersions(requestedRange.lower, floorRange.upperExclusive) < 0 &&
+    compareVersions(floorRange.lower, requestedRange.upperExclusive) < 0
+  );
+}
+
+function getSimpleRangeBounds(spec) {
+  const lower = parseVersion(stripSimpleRangePrefix(spec));
+
+  if (spec.startsWith('^')) {
+    return {
+      lower,
+      upperExclusive:
+        lower.major > 0
+          ? { major: lower.major + 1, minor: 0, patch: 0 }
+          : lower.minor > 0
+            ? { major: 0, minor: lower.minor + 1, patch: 0 }
+            : { major: 0, minor: 0, patch: lower.patch + 1 },
+    };
+  }
+
+  if (spec.startsWith('~')) {
+    return {
+      lower,
+      upperExclusive: { major: lower.major, minor: lower.minor + 1, patch: 0 },
+    };
+  }
+
+  return {
+    lower,
+    upperExclusive: { major: lower.major, minor: lower.minor, patch: lower.patch + 1 },
+  };
 }
 
 function assertReactSpec(packageName, spec) {
@@ -257,14 +334,21 @@ function assertGitPathClean(relativePath) {
   }
 }
 
-function writeSummary(runLabel, requestedSpecs, installedVersions) {
+function setGithubOutput(name, value) {
+  if (!env.GITHUB_OUTPUT) return;
+  fs.appendFileSync(env.GITHUB_OUTPUT, `${name}=${value}\n`);
+}
+
+function writeSummary(runLabel, requestedSpecs, installedVersions, skipReason = '') {
   if (!env.GITHUB_STEP_SUMMARY) return;
 
   const rows = Object.keys(requestedSpecs)
     .sort()
     .map(
       (packageName) =>
-        `| \`${packageName}\` | \`${requestedSpecs[packageName]}\` | \`${installedVersions[packageName]}\` |`
+        `| \`${packageName}\` | \`${requestedSpecs[packageName]}\` | \`${
+          installedVersions[packageName] || 'not installed'
+        }\` |`
     );
 
   fs.appendFileSync(
@@ -276,8 +360,10 @@ function writeSummary(runLabel, requestedSpecs, installedVersions) {
       '| --- | --- | --- |',
       ...rows,
       '',
-      '- Install mode: `yarn install --pure-lockfile --non-interactive`',
-      '- `package.json` was restored after install.',
+      skipReason
+        ? `- Result: skipped. ${skipReason}`
+        : '- Install mode: `yarn install --pure-lockfile --non-interactive`',
+      skipReason ? '' : '- `package.json` was restored after install.',
       '- `git diff -- yarn.lock` remained clean after matrix prep.',
       '',
     ].join('\n')

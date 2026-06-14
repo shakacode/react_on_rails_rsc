@@ -80,7 +80,7 @@ describe('ReactFlightWebpackPlugin runtime detection', () => {
     ).toBe(false);
   });
 
-  it('rejects malformed stock runtime package metadata', () => {
+  it('returns false when only malformed stock runtime package metadata is nearby', () => {
     const runtimePath = createDoppelgangerRuntime({});
     fs.writeFileSync(path.join(path.dirname(runtimePath), 'package.json'), '{');
 

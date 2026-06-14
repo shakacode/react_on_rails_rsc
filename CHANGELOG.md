@@ -13,6 +13,7 @@ All notable changes to this package will be documented in this file.
   2. Keep importing `react-on-rails-rsc/server.node`, `react-on-rails-rsc/client.node`, and `react-on-rails-rsc/client.browser` through this package's public exports; direct paths under `dist/react-server-dom-webpack/` are no longer shipped.
   3. Use the `react-on-rails-rsc/server` export for raw Flight runtime helpers such as `registerClientReference`.
   4. Plain Node processes that import `react-on-rails-rsc/server` with `react-server` but without the `webpack` condition no longer provide unbundled server-action decoding APIs; those APIs now fail with an explicit migration error because React 19.2 removed the public unbundled runtime.
+  5. Keep RSC client and server bundles on the same React 19.2 runtime line; React 19.2 Flight stylesheet hint rows can use the bare `:HS[...]` format that older 19.0.x clients do not parse.
 
 ### Changed
 - Set the 19.0.x package line to maintenance mode after the 19.2.x line becomes `latest`; future 19.0.x releases should be limited to security fixes, severe regressions, release-artifact repairs, or downstream React on Rails support obligations. ([#102])

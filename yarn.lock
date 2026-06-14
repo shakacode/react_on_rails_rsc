@@ -1357,16 +1357,16 @@
   integrity sha512-NuHqBY1PB/D8xU6s/thBgOAiAP7HOYDQ32+BFZILJ8ivkUkAHQnWfn6WhL79Owj1qmUnoN/YPhktdIoucipkAQ==
 
 acorn-loose@^8.3.0:
-  version "8.5.0"
-  resolved "https://registry.yarnpkg.com/acorn-loose/-/acorn-loose-8.5.0.tgz#11fbd555827d551dd16ca812c078e382400b1bc7"
-  integrity sha512-ppga7pybjwX2HSJv5ayHe6QG4wmNS1RQ2wjBMFTVnOj0h8Rxsmtc6fnVzINqHSSRz23sTe9IL3UAt/PU9gc4FA==
+  version "8.5.2"
+  resolved "https://registry.yarnpkg.com/acorn-loose/-/acorn-loose-8.5.2.tgz#a7cc7dfbb7c8f3c2e55b055db640dc657e278d26"
+  integrity sha512-PPvV6g8UGMGgjrMu+n/f9E/tCSkNQ2Y97eFvuVdJfG11+xdIeDcLyNdC8SHcrHbRqkfwLASdplyR6B6sKM1U4A==
   dependencies:
-    acorn "^8.14.0"
+    acorn "^8.15.0"
 
-acorn@^8.14.0, acorn@^8.8.2:
-  version "8.14.0"
-  resolved "https://registry.yarnpkg.com/acorn/-/acorn-8.14.0.tgz#063e2c70cac5fb4f6467f0b11152e04c682795b0"
-  integrity sha512-cl669nCJTZBsL97OF4kUQm5g5hC2uihk0NxY3WENAC0TYdILVkAyHymAntgxGkl7K+t0cXIrH5siy5S4XkFycA==
+acorn@^8.14.0, acorn@^8.15.0, acorn@^8.8.2:
+  version "8.17.0"
+  resolved "https://registry.yarnpkg.com/acorn/-/acorn-8.17.0.tgz#1785adb84faf8d8add10369b93826fc2bd08f1fe"
+  integrity sha512-xRQbDb9BnwDafYNn6Vwl839DYVjqXYb1XVGtWAZ1kcDc6iwAL4hg3B1dZlRiuENFeO2H53gFG3in621AdERVAg==
 
 agent-base@8.0.0:
   version "8.0.0"

@@ -23,6 +23,7 @@ REACT_ON_RAILS_REF_EXPLICIT="0"
 if [[ -n "${RSC_DOWNSTREAM_REACT_ON_RAILS_REF:-}" ]]; then
   REACT_ON_RAILS_REF_EXPLICIT="1"
 fi
+PREBUILT_TARBALL="${RSC_DOWNSTREAM_TARBALL:-}"
 REACT_ON_RAILS_DIR="${RSC_DOWNSTREAM_REACT_ON_RAILS_DIR:-}"
 WORK_DIR="${RSC_DOWNSTREAM_WORK_DIR:-}"
 AUTO_WORK_DIR="0"
@@ -52,6 +53,8 @@ Options:
                              option or RSC_DOWNSTREAM_REACT_ON_RAILS_REF is set.
   --react-on-rails-repo URL  Downstream repository URL.
   --react-on-rails-dir PATH  Use an existing downstream checkout instead of cloning.
+  --tarball PATH             Use a prebuilt react-on-rails-rsc npm tarball instead
+                             of building and packing this checkout.
   --work-dir PATH            Directory for the packed tarball, logs, and clone.
                              User-supplied work dirs are preserved after exit.
   --keep                     Keep the generated work directory for debugging.
@@ -62,6 +65,7 @@ Environment:
   RSC_DOWNSTREAM_REACT_ON_RAILS_REPO      Downstream repository URL.
   RSC_DOWNSTREAM_REACT_ON_RAILS_REF       Downstream ref to test. Default: main for clones.
   RSC_DOWNSTREAM_REACT_ON_RAILS_DIR       Existing downstream checkout path.
+  RSC_DOWNSTREAM_TARBALL                  Prebuilt react-on-rails-rsc npm tarball.
   RSC_DOWNSTREAM_WORK_DIR                 Directory for packed tarball, logs, and clone.
   RSC_DOWNSTREAM_KEEP                     1 = preserve generated work dir.
   RSC_DOWNSTREAM_DUMMY_BUILD_SCRIPT       Dummy build script. Default: build:test:rspack.
@@ -93,6 +97,10 @@ while (($# > 0)); do
       ;;
     --react-on-rails-dir)
       REACT_ON_RAILS_DIR="${2:?--react-on-rails-dir requires a value}"
+      shift 2
+      ;;
+    --tarball)
+      PREBUILT_TARBALL="${2:?--tarball requires a value}"
       shift 2
       ;;
     --work-dir)
@@ -240,7 +248,7 @@ ensure_command() {
 
 configure_pnpm() {
   if command -v pnpm >/dev/null 2>&1; then
-    pnpm --version
+    (cd "$REACT_ON_RAILS_DIR" && pnpm --version)
     return
   fi
 
@@ -278,7 +286,7 @@ NODE
   )"
   corepack enable
   corepack prepare "$package_manager" --activate
-  pnpm --version
+  (cd "$REACT_ON_RAILS_DIR" && pnpm --version)
 }
 
 checkout_downstream() {
@@ -329,12 +337,35 @@ checkout_downstream() {
 }
 
 pack_local_package() {
+  if [[ -n "$PREBUILT_TARBALL" ]]; then
+    log_step "Using prebuilt react-on-rails-rsc tarball"
+    if [[ "$PREBUILT_TARBALL" != /* ]]; then
+      PREBUILT_TARBALL="$ROOT/$PREBUILT_TARBALL"
+    fi
+    if [[ ! -f "$PREBUILT_TARBALL" ]]; then
+      echo "Prebuilt tarball not found: $PREBUILT_TARBALL" >&2
+      return 1
+    fi
+    TARBALL="$PREBUILT_TARBALL"
+    echo "Using prebuilt tarball: $TARBALL"
+    return
+  fi
+
   log_step "Building and packing react-on-rails-rsc"
   yarn build
-  TARBALL="$PACKAGE_DIR/$(
+  local tarball_name
+  tarball_name="$(
     npm_config_cache="$NPM_CACHE_DIR" npm pack --loglevel=error --pack-destination "$PACKAGE_DIR" | tail -1
   )"
-  test -f "$TARBALL"
+  if [[ -z "$tarball_name" || "$tarball_name" != *.tgz ]]; then
+    echo "npm pack did not return a tarball filename: $tarball_name" >&2
+    return 1
+  fi
+  TARBALL="$PACKAGE_DIR/$tarball_name"
+  if [[ ! -f "$TARBALL" ]]; then
+    echo "Packed tarball not found: $TARBALL" >&2
+    return 1
+  fi
   echo "Packed tarball: $TARBALL"
 }
 

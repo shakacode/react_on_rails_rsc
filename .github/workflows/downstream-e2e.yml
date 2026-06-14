@@ -59,11 +59,25 @@ jobs:
             echo "::error::Expected $rortv not found in the downstream checkout." >&2
             exit 1
           fi
-          # Ruby intentionally runs at the downstream minimum supported version;
-          # Node uses the downstream exact toolchain version for JS build parity.
+          # Ruby intentionally runs at the downstream minimum supported version.
+          # The RSC install/pack phase runs on the current Node 22 line, then
+          # the downstream app is restored to its selected Node runtime.
+          validate_tool_version() {
+            local name="$1"
+            local value="$2"
+            if [[ ! "$value" =~ ^[0-9]+([.][0-9]+){0,2}([-+.][0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Unexpected $name version from downstream checkout: $value" >&2
+              exit 1
+            fi
+          }
+
+          ruby_version="$("$rortv" react_on_rails/.minimum.tool-versions ruby)"
+          downstream_node_version="$("$rortv" react_on_rails/.tool-versions nodejs)"
+          validate_tool_version "Ruby" "$ruby_version"
+          validate_tool_version "Node" "$downstream_node_version"
           {
-            echo "ruby-version=$("$rortv" react_on_rails/.minimum.tool-versions ruby)"
-            echo "node-version=$("$rortv" react_on_rails/.tool-versions nodejs)"
+            echo "ruby-version=$ruby_version"
+            echo "downstream-node-version=$downstream_node_version"
           } >> "$GITHUB_OUTPUT"
 
       - name: Setup Ruby
@@ -74,29 +88,68 @@ jobs:
           working-directory: react_on_rails/react_on_rails_pro/spec/dummy
           bundler-cache: true
 
-      - name: Setup Node
+      - name: Setup RSC Node
         # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: ${{ steps.downstream-versions.outputs.node-version }}
+          node-version: '22.x'
 
-      - name: Enable package managers
+      - name: Enable RSC package manager
         shell: bash
         run: |
           set -euo pipefail
           corepack enable
           corepack prepare "$(node -p "require('./package.json').packageManager")" --activate
-          corepack prepare "$(node -p "require('./react_on_rails/package.json').packageManager")" --activate
-          echo "Node: $(node --version)"
+          echo "RSC Node: $(node --version)"
           echo "Yarn: $(yarn --version)"
-          if command -v pnpm >/dev/null 2>&1; then
-            echo "pnpm: $(pnpm --version)"
-          fi
           echo "Ruby: $(ruby --version)"
           echo "Bundler: $(bundle --version)"
 
       - name: Install react-on-rails-rsc dependencies
         run: yarn --frozen-lockfile
+
+      - name: Pack react-on-rails-rsc
+        run: |
+          set -euo pipefail
+          pack_dir="${RUNNER_TEMP}/react-on-rails-rsc-downstream/package"
+          npm_cache_dir="${RUNNER_TEMP}/react-on-rails-rsc-downstream/npm-cache"
+          mkdir -p "$pack_dir" "$npm_cache_dir"
+          yarn build
+          tarball_name="$(
+            npm_config_cache="$npm_cache_dir" npm pack --loglevel=error --pack-destination "$pack_dir" | tail -1
+          )"
+          if [[ -z "$tarball_name" || "$tarball_name" != *.tgz ]]; then
+            echo "::error::npm pack did not return a tarball filename: $tarball_name" >&2
+            exit 1
+          fi
+          tarball_path="$pack_dir/$tarball_name"
+          if [[ ! -f "$tarball_path" ]]; then
+            echo "::error::Packed tarball not found: $tarball_path" >&2
+            exit 1
+          fi
+          echo "Packed tarball: $tarball_path"
+          echo "RSC_DOWNSTREAM_TARBALL=$tarball_path" >> "$GITHUB_ENV"
+
+      - name: Setup downstream Node
+        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ steps.downstream-versions.outputs.downstream-node-version }}
+
+      - name: Enable downstream package managers
+        env:
+          DOWNSTREAM_NODE_VERSION: ${{ steps.downstream-versions.outputs.downstream-node-version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare "$(node -p "require('./react_on_rails/package.json').packageManager")" --activate
+          echo "Downstream Node: $(node --version)"
+          echo "Yarn: $(yarn --version)"
+          if command -v pnpm >/dev/null 2>&1; then
+            echo "pnpm: $(pnpm --version)"
+          fi
+          echo "Downstream requested Node: $DOWNSTREAM_NODE_VERSION"
 
       - name: Run downstream RSC E2E
         env:

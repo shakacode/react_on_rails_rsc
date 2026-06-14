@@ -6,7 +6,7 @@
  *   - `buildServerRenderer(clientManifest)`
  *   - `renderToPipeableStream(model, clientManifest, options?)`
  *
- * Both wrap `renderToPipeableStream` from the vendored
+ * Both wrap `renderToPipeableStream` from stock
  * `react-server-dom-webpack/server.node`. The goal of this test is to
  * prove that:
  *
@@ -54,7 +54,7 @@ describe('server.node is rspack-compatible', () => {
 
   it('rspack can bundle the dist/server.node.js entry without errors', () => {
     // Bundle dist/server.node.js as the entry point.
-    // We mark react, react-dom, and the vendored react-server-dom-webpack as
+    // We mark react, react-dom, and stock react-server-dom-webpack as
     // external so the bundle stays small and doesn't duplicate React.
     const result = runRspack(
       {

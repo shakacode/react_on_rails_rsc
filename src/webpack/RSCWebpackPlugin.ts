@@ -4,7 +4,7 @@
  *
  * This is a faithful port of the previously vendored build of React's
  * reference `ReactFlightWebpackPlugin`
- * (`src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js`)
+ * (`src/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin.js`, now removed)
  * including every historical fork patch and in-repo edit that file accumulated:
  *
  *  - Server-build support: `isServer` option, server manifest emission
@@ -22,7 +22,7 @@
  *  - #43: duplicate-package-install runtime detection — the Flight client
  *    runtime is recognized by exact resolved path or by walking up from a
  *    `react-server-dom-webpack/client.*.js` resource to a `package.json`
- *    named `react-on-rails-rsc`.
+ *    named `react-server-dom-webpack`.
  *  - #23: manifest entries for a module recorded from several chunk groups
  *    merge their chunk lists (deduped by chunk id) and CSS lists (deduped
  *    by URL). The server build and the #54 fallback pass still rely on
@@ -74,8 +74,8 @@ export class ClientReferenceDependency extends ModuleDependency {
   }
 }
 
-const clientFileNameOnClient = require.resolve('../react-server-dom-webpack/client.browser.js');
-const clientFileNameOnServer = require.resolve('../react-server-dom-webpack/client.node.js');
+const clientFileNameOnClient = require.resolve('react-server-dom-webpack/client.browser');
+const clientFileNameOnServer = require.resolve('react-server-dom-webpack/client.node');
 
 const runtimeResourceDetectionCache = new Map<string, boolean>();
 
@@ -103,10 +103,10 @@ function detectReactOnRailsRSCRuntimeResource(
   }
   if (typeof resource !== 'string') return false;
 
-  // Duplicate-install path (#43): another copy of react-on-rails-rsc in the
+  // Duplicate-install path (#43): another copy of the stock Flight runtime in the
   // module graph still counts as the runtime. Recognize it by file-name
   // suffix, then confirm by walking up to a package.json whose `name` is
-  // `react-on-rails-rsc`.
+  // `react-server-dom-webpack`.
   const normalizedResource = path.normalize(resource);
   const expectedSuffix = path.join(
     'react-server-dom-webpack',
@@ -121,7 +121,7 @@ function detectReactOnRailsRSCRuntimeResource(
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
         name?: string;
       };
-      if (packageJson.name === 'react-on-rails-rsc') return true;
+      if (packageJson.name === 'react-server-dom-webpack') return true;
     } catch (x) {
       const code = (x as NodeJS.ErrnoException).code;
       if (!(x instanceof SyntaxError) && code !== 'ENOENT' && code !== 'ENOTDIR') {

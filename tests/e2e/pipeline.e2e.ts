@@ -27,8 +27,8 @@
  *   5. Hydrate in jsdom against the real client bundle served over HTTP:
  *      zero console errors/warnings, zero recoverable hydration errors,
  *      client components interactive, stylesheet links present, and the
- *      runtime's devtools-embedded version string matches the intended
- *      vendored runtime version (the rc.4 "runtime still reports 19.0.3" class
+ *      runtime's devtools-embedded version string matches the installed stock
+ *      Flight runtime version (the rc.4 "runtime still reports 19.0.3" class
  *      of incident).
  *
  * Known divergences of the rspack leg (current main behavior, asserted
@@ -118,13 +118,15 @@ const runNode = <T>(args: string[]): T => {
 const readJson = <T>(...segments: string[]): T =>
   JSON.parse(fs.readFileSync(path.join(...segments), 'utf8')) as T;
 
-// The intended vendored runtime version — the runtime everywhere in the packed
-// dist must report exactly this (devtools registration + embedded strings).
+const STOCK_RUNTIME_PACKAGE_JSON = require.resolve('react-server-dom-webpack/package.json', {
+  paths: [INSTALLED_PKG],
+});
+const STOCK_RUNTIME_DIR = path.dirname(STOCK_RUNTIME_PACKAGE_JSON);
+
+// The intended stock runtime version — the installed dependency and bundled
+// devtools registration must report exactly this.
 const INTENDED_RUNTIME_VERSION = readJson<{ version: string }>(
-  REPO_ROOT,
-  'src',
-  'react-server-dom-webpack',
-  'package.json',
+  STOCK_RUNTIME_PACKAGE_JSON,
 ).version;
 
 const componentUrl = (file: string): string =>
@@ -144,9 +146,9 @@ const importRows = (payload: string): [string, string[], string][] =>
     (m) => JSON.parse(m[1]!) as [string, string[], string],
   );
 
-/** Flight stylesheet hint rows look like `<row id>:HS["<href>","rsc-css"]`. */
+/** Flight stylesheet hint rows look like `<row id>:HS[...]` or `:HS[...]`. */
 const styleHintRows = (payload: string): [string, string][] =>
-  [...payload.matchAll(/^[0-9a-f]+:HS(\[.*\])$/gm)].map(
+  [...payload.matchAll(/^(?:[0-9a-f]+)?:HS(\[.*\])$/gm)].map(
     (m) => JSON.parse(m[1]!) as [string, string],
   );
 
@@ -369,10 +371,10 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       expect([...result.stylesheetLinks].sort()).toEqual([...expectedLinks].sort());
 
       // The runtime's embedded version string (captured from the devtools
-      // hook registration) must match the intended vendored runtime version — catches
+      // hook registration) must match the intended stock runtime version — catches
       // stale runtime builds like the rc.4 "still reports 19.0.3" incident.
       const flightRenderer = result.devtoolsRenderers.find(
-        (renderer) => renderer.rendererPackageName === 'react-on-rails-rsc',
+        (renderer) => renderer.rendererPackageName === 'react-server-dom-webpack',
       );
       expect(flightRenderer).toBeDefined();
       expect(flightRenderer!.version).toBe(INTENDED_RUNTIME_VERSION);
@@ -394,18 +396,14 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
 });
 
 describe('installed tarball version integrity', () => {
-  it('ships the intended vendored runtime version in the packed runtime', () => {
-    // The runtime package.json inside the installed dist…
+  it('installs the intended stock runtime version next to the packed package', () => {
     const installedRuntimeVersion = readJson<{ version: string }>(
-      INSTALLED_PKG,
-      'dist',
-      'react-server-dom-webpack',
-      'package.json',
+      STOCK_RUNTIME_PACKAGE_JSON,
     ).version;
     expect(installedRuntimeVersion).toBe(INTENDED_RUNTIME_VERSION);
 
-    // …and every version string embedded in the installed runtime sources.
-    const cjsDir = path.join(INSTALLED_PKG, 'dist', 'react-server-dom-webpack', 'cjs');
+    // And every version string embedded in the installed runtime sources.
+    const cjsDir = path.join(STOCK_RUNTIME_DIR, 'cjs');
     const embedded: Record<string, string[]> = {};
     for (const file of fs.readdirSync(cjsDir)) {
       if (!file.endsWith('.js')) continue;

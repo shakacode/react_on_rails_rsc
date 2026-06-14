@@ -43,7 +43,7 @@ import {
   type CompileResult,
 } from './webpack-plugin/helpers/compile';
 
-const { registerClientReference } = require('../src/react-server-dom-webpack/server.node') as {
+const { registerClientReference } = require('react-server-dom-webpack/server.node') as {
   registerClientReference: (
     proxyImplementation: () => never,
     id: string,

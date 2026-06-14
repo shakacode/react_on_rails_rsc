@@ -1,11 +1,11 @@
 # Eliminating the React Fork Repository
 
 **Issue:** [#31](https://github.com/shakacode/react_on_rails_rsc/issues/31), [#55](https://github.com/shakacode/react_on_rails_rsc/issues/55) (Option 5 spike)
-**Status:** Option 5 (stock npm runtime) selected — GO. As of 2026-06-13, `main` still carries the
-vendored runtime and legacy `scripts/react-upgrade/` helper after the interim 19.0.7 CVE patch
-([#86](https://github.com/shakacode/react_on_rails_rsc/pull/86)); the stock-runtime replacement
-itself remains outstanding. Option 4 (patch files) is the documented fallback. Fork patch history is
-archived in this repo; archiving `AbanoubGhadban/react` remains an owner/admin action.
+**Status:** Option 5 (stock npm runtime) selected — GO. The 19.2.0-rc.1 prep removes the published
+vendored runtime and depends on stock `react-server-dom-webpack@~19.2.7`. The legacy
+`scripts/react-upgrade/` helper remains archived for emergency maintenance of older vendored-runtime
+history only. Option 4 (patch files) is the documented fallback. Fork patch history is archived in
+this repo; archiving `AbanoubGhadban/react` remains an owner/admin action.
 **Date:** 2026-04-17 (Options 1–4), 2026-06-12 (Option 5 spike), 2026-06-13 (patch archive)
 
 ## Background
@@ -231,16 +231,16 @@ The current FOUC mechanism is server-side only, and the client half is already s
   `ReactDOM.preinit(href, { as: 'style', precedence: 'rsc-css' })` during a Flight render therefore
   produces wire-identical hints.
 
-Proposed wrapper-layer design (to prototype in #60): `src/server.node.ts` already owns the
-`filePathToModuleMetadata` object it passes to `renderToPipeableStream` as the `webpackMap`. Wrap it in
-a `Proxy` whose property getter — invoked by the stock runtime's client-reference metadata lookup
-(`config[modulePath]`, with `#`-suffix fallback) during serialization, i.e. inside the active request —
-calls `ReactDOM.preinit(...)` for each `css` entry of the resolved module before returning the
-metadata. This is request-scoped, preserves client-reference prop shapes (unlike the abandoned
-loader-wrapper approach from PR #35), and needs zero React changes. Duplicate `preinit` calls for the
-same href (e.g. the same client module referenced from two Suspense boundaries) are idempotent:
-`emitHint` deduplicates on the `"S|" + href` key. The existing
-`tests/react-flight-client-reference-css.rsc.test.ts` suite must pass against the new implementation.
+Implemented wrapper-layer design: the public `server.node` wrapper and the conditional `./server`
+Flight shims wrap the `filePathToModuleMetadata` / webpack map object in a `Proxy`. The property
+getter — invoked by the stock runtime's client-reference metadata lookup (`config[modulePath]`, with
+`#`-suffix fallback) during serialization, i.e. inside the active request — calls
+`ReactDOM.preinit(...)` for each `css` entry of the resolved module before returning the metadata.
+This is request-scoped, preserves client-reference prop shapes (unlike the abandoned loader-wrapper
+approach from PR #35), and needs zero React changes. Duplicate `preinit` calls for the same href
+(e.g. the same client module referenced from two Suspense boundaries) are idempotent: `emitHint`
+deduplicates on the `"S|" + href` key. The `tests/react-flight-client-reference-css*.rsc.test.ts`
+suites cover the node and edge render paths.
 
 If the proxy prototype fails (e.g. lookup happens outside the request context, or hint ordering
 regresses the `$RR` gating), fall back to Option 4 below.
@@ -276,19 +276,19 @@ unacceptable before 19.3, that triggers the Option 4 fallback instead.
 | `./client` (browser/default), `./client.browser` | wrapper → vendored `client.browser` | wrapper → `react-server-dom-webpack/client.browser` | ✓ 19.2.7 exports a superset (`createFromFetch`, `createFromReadableStream`, `createServerReference`, `createTemporaryReferenceSet`, `encodeReply` + new `registerServerReference`) |
 | `./client.node` | wrapper → vendored `client.node` | wrapper → stock `client.node` | ✓ |
 | `./server.node` | wrapper → vendored `server.node` | wrapper → stock `server.node` + wrapper-layer FOUC hints | ✓ `renderToPipeableStream(model, webpackMap, options)` unchanged; 19.2.7 adds `prerender`, `prerenderToNodeStream`, `renderToReadableStream`, `decodeReplyFromAsyncIterable` |
-| `./server` (conditional map) | re-exposes vendored condition map incl. `react-server`, `workerd`, `deno`, `edge-light`, `browser`, node `webpack`/`default` split | per-condition re-export shims of `react-server-dom-webpack/server.*` | ✓ with one caveat: stock ≥19.2.4 **removed the `*.unbundled` variants** and the node `webpack`/`default` split (upstream `378973b387b6a6f287e451dd0356099180684c3c`, [facebook/react#35290](https://github.com/facebook/react/pull/35290), 2025-12-05 — moved to private `react-server-dom-unbundled`). See below. |
+| `./server` (conditional map) | re-exposes vendored condition map incl. `react-server`, `workerd`, `deno`, `edge-light`, `browser`, node `webpack`/`default` split | per-condition shims of `react-server-dom-webpack/server.*` + wrapper-layer FOUC hints for render APIs | ✓ with one caveat: stock ≥19.2.4 **removed the `*.unbundled` variants** and the node `webpack`/`default` split (upstream `378973b387b6a6f287e451dd0356099180684c3c`, [facebook/react#35290](https://github.com/facebook/react/pull/35290), 2025-12-05 — moved to private `react-server-dom-unbundled`). See below. |
 | `./WebpackPlugin`, `./WebpackLoader`, `./RSCReferenceDiscoveryPlugin`, `./RspackPlugin`, `./RspackLoader` | in-repo TS (loader currently delegates to vendored `esm/` transform) | in-repo TS only (#56) | ✓ no stock-runtime dependency; loader-emitted code imports `react-on-rails-rsc/server` (`registerClientReference`/`registerServerReference`), which the re-export shims provide |
 | `.` (types) | in-repo `dist/types` | unchanged | ✓ |
 
-**Unbundled caveat:** today a plain-Node (no `webpack` resolve condition) `require('react-on-rails-rsc/server')`
-resolves to `server.node.unbundled.js` (module loading via `import(specifier)`); with stock ≥19.2.4 it
-would resolve to the webpack-flavored `server.node.js` (module loading via `__webpack_require__`).
-Webpack-bundled consumers are unaffected (webpack sets the `webpack` condition, and the loader-emitted
-imports are resolved at bundle time). Whether any downstream consumer (e.g. the react_on_rails_pro node
-renderer) plain-Node-requires `react-on-rails-rsc/server` *and* exercises server-reference loading
-through the unbundled path is **UNKNOWN** — verify in #60 before dropping the unbundled entries. Note
+**Unbundled caveat:** before the 19.2 runtime migration, a plain-Node (no `webpack` resolve condition)
+`require('react-on-rails-rsc/server')` resolved to `server.node.unbundled.js` (module loading via
+`import(specifier)`). Stock ≥19.2.4 removed that public runtime, so the 19.2 package line keeps a
+separate plain-Node shim for `react-on-rails-rsc/server`: registration and render helpers remain
+available, but server-action decode APIs fail with an explicit migration error instead of falling into
+the webpack-flavored `__webpack_require__` path. Webpack-bundled consumers are unaffected (webpack sets
+the `webpack` condition, and the loader-emitted imports are resolved at bundle time). Note
 `registerClientReference`/`registerServerReference` themselves do not touch webpack globals, so plain
-registration keeps working either way.
+registration keeps working.
 
 #### Webpack globals contract and SSR manifest formats (unchanged)
 
@@ -309,7 +309,7 @@ Diffed vendored (~19.0.4) vs stock 19.2.7 built files:
 
 #### Migration checklist for #60
 
-1. Add `react-server-dom-webpack@^19.2.7` as a dependency; delete `src/react-server-dom-webpack/`
+1. Add `react-server-dom-webpack@~19.2.7` as a dependency; delete `src/react-server-dom-webpack/`
    (after #56 has moved the plugin/loader in-repo and `WebpackLoader.ts` no longer imports the vendored
    `esm/` transform).
 2. Repoint wrapper imports (`src/client.browser.ts`, `src/client.node.ts`, `src/server.node.ts`) from
@@ -319,11 +319,9 @@ Diffed vendored (~19.0.4) vs stock 19.2.7 built files:
    design above); keep `tests/react-flight-client-reference-css.rsc.test.ts` green. **Gate: if the
    prototype fails, stop and take the Option 4 fallback.**
 4. Replace the `./server` export map with per-condition re-export shims of
-   `react-server-dom-webpack/server.*`; resolve the unbundled question (verify downstream plain-Node
-   `./server` usage — UNKNOWN above). **Gate: if any downstream consumer is found that requires the
-   removed unbundled semantics and cannot migrate to the webpack-flavored build, stop and take the
-   Option 4 fallback.** (A plain-Node consumer silently resolving to the webpack flavor fails at
-   runtime, not compile time, so this must be verified — not assumed — before merge.)
+   `react-server-dom-webpack/server.*`; preserve a distinct plain-Node branch that fails explicitly
+   for removed unbundled server-action decode APIs. **Gate: if any downstream consumer is found that
+   requires the removed unbundled semantics and cannot migrate, stop and take the Option 4 fallback.**
 5. Bump `react`/`react-dom` peerDependencies to `^19.2.7` (stock 19.2.7 peers on `^19.2.7`).
    Consumer-visible: apps must be on React ≥19.2.7 — a breaking change for consumers on React
    19.0.x/19.1.x. Version the release accordingly: this package's version tracks the bundled runtime

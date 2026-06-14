@@ -283,11 +283,10 @@ export class RSCRspackPlugin {
     // chunks are merged back into server-bundle.js by
     // LimitChunkCountPlugin, giving every module a proper numeric ID.
     {
-      const clientRuntimePath = path.resolve(
-        __dirname,
+      const clientRuntimePath = require.resolve(
         this.options.isServer
-          ? '../react-server-dom-webpack/client.node.js'
-          : '../react-server-dom-webpack/client.browser.js',
+          ? 'react-server-dom-webpack/client.node'
+          : 'react-server-dom-webpack/client.browser',
       );
 
       const moduleConfig = (compiler.options.module ??= {}) as { rules?: unknown[] };
@@ -531,8 +530,8 @@ export class RSCRspackPlugin {
     // Check if the client runtime module was found in this compilation.
     // The webpack plugin emits a warning and skips manifest emission if
     // the runtime is missing (likely a misconfiguration).
-    const clientFileNameOnClient = path.resolve(__dirname, '../react-server-dom-webpack/client.browser.js');
-    const clientFileNameOnServer = path.resolve(__dirname, '../react-server-dom-webpack/client.node.js');
+    const clientFileNameOnClient = require.resolve('react-server-dom-webpack/client.browser');
+    const clientFileNameOnServer = require.resolve('react-server-dom-webpack/client.node');
     const expectedRuntime = this.options.isServer ? clientFileNameOnServer : clientFileNameOnClient;
     let clientFileNameFound = false;
 

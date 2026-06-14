@@ -1,5 +1,6 @@
 import { BundleManifest } from './types';
-import { renderToPipeableStream as renderToPipeableStreamReact } from './react-server-dom-webpack/server.node';
+import { withStylesheetHints } from './flight-stylesheet-hints';
+import { renderToPipeableStream as renderToPipeableStreamReact } from 'react-server-dom-webpack/server.node';
 
 export interface Options {
   environmentName?: string;
@@ -8,13 +9,19 @@ export interface Options {
   identifierPrefix?: string;
 }
 
+export interface WritableStreamLike {
+  write?: (...args: any[]) => unknown;
+  end?: (...args: any[]) => unknown;
+  on?: (event: string | symbol, listener: (...args: any[]) => unknown) => unknown;
+}
+
 export interface PipeableStream {
   abort(reason: unknown): void;
-  pipe<Writable extends NodeJS.WritableStream>(destination: Writable): Writable;
+  pipe<Writable extends WritableStreamLike>(destination: Writable): Writable;
 }
 
 export const buildServerRenderer = (clientManifest: BundleManifest) => {
-  const { filePathToModuleMetadata } = clientManifest;
+  const filePathToModuleMetadata = withStylesheetHints(clientManifest.filePathToModuleMetadata);
   return {
     renderToPipeableStream: (
       // Note: ReactClientValue is likely what React uses internally for RSC
@@ -27,7 +34,11 @@ export const buildServerRenderer = (clientManifest: BundleManifest) => {
   };
 };
 
-export const renderToPipeableStream = (model: unknown, clientManifest: BundleManifest, options?: Options) => {
-  const { filePathToModuleMetadata } = clientManifest;
+export const renderToPipeableStream = (
+  model: unknown,
+  clientManifest: BundleManifest,
+  options?: Options
+) => {
+  const filePathToModuleMetadata = withStylesheetHints(clientManifest.filePathToModuleMetadata);
   return renderToPipeableStreamReact(model, filePathToModuleMetadata, options) as PipeableStream;
-}
+};

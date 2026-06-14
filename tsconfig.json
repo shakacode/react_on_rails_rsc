@@ -15,7 +15,7 @@
     "resolveJsonModule": true,
     "rootDir": "./src",
     "sourceMap": true,
-    "types": ["jest", "node"],
+    "types": ["jest", "node", "react-server-dom-webpack"],
     "typeRoots": ["./types", "./node_modules/@types"]
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.json"]

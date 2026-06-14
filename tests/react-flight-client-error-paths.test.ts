@@ -1,9 +1,5 @@
 import { PassThrough, Readable } from 'node:stream';
-import { createFromNodeStream } from '../src/react-server-dom-webpack/client.node';
-
-const { createFromNodeStream: createFromUnbundledNodeStream } = require('../src/react-server-dom-webpack/client.node.unbundled') as {
-  createFromNodeStream: typeof createFromNodeStream;
-};
+import { createFromNodeStream } from 'react-server-dom-webpack/client.node';
 
 const emptySSRManifest = {
   moduleLoading: { prefix: '', crossOrigin: null },
@@ -18,9 +14,6 @@ const encoder = new TextEncoder();
 
 const nodeFlight = (payload: string) =>
   createFromNodeStream(Readable.from([Buffer.from(payload)]), emptySSRManifest);
-
-const unbundledNodeFlight = (payload: string) =>
-  createFromUnbundledNodeStream(Readable.from([Buffer.from(payload)]), emptySSRManifest);
 
 const readableFlight = (payload: string) =>
   new ReadableStream<Uint8Array>({
@@ -55,7 +48,7 @@ const loadBrowserClient = (): { client: BrowserClient; restore: () => void } => 
   let client: BrowserClient | undefined;
   try {
     jest.isolateModules(() => {
-      client = require('../src/react-server-dom-webpack/client.browser') as BrowserClient;
+      client = require('react-server-dom-webpack/client.browser') as BrowserClient;
     });
     // jest.isolateModules is synchronous; keep an explicit failure if that contract changes.
     if (!client) {
@@ -89,22 +82,6 @@ describe('React Flight client stream error paths', () => {
     await expect(decoded).rejects.toThrow(/JSON|property name|Unexpected token/);
   });
 
-  it('keeps the parse reason when an unbundled node stream errors after malformed data', async () => {
-    const stream = new PassThrough();
-    const decoded = createFromUnbundledNodeStream(stream, emptySSRManifest);
-
-    stream.write(Buffer.from('0:{not-json}\n'));
-    stream.destroy(new Error('should not replace the parse reason'));
-
-    await expect(decoded).rejects.toThrow(/JSON|property name|Unexpected token/);
-  });
-
-  it('rejects malformed unbundled node Flight payloads with the parse reason', async () => {
-    await expect(unbundledNodeFlight('0:{not-json}\n')).rejects.toThrow(
-      /JSON|property name|Unexpected token/,
-    );
-  });
-
   it('rejects malformed readable-stream Flight payloads with the parse reason', async () => {
     const { client, restore } = loadBrowserClient();
     try {
@@ -118,10 +95,6 @@ describe('React Flight client stream error paths', () => {
 
   it('rejects truncated node Flight payloads with the connection-close reason', async () => {
     await expect(nodeFlight('0:"unterminated')).rejects.toThrow('Connection closed.');
-  });
-
-  it('rejects truncated unbundled node Flight payloads with the connection-close reason', async () => {
-    await expect(unbundledNodeFlight('0:"unterminated')).rejects.toThrow('Connection closed.');
   });
 
   it('rejects truncated readable-stream Flight payloads with the connection-close reason', async () => {
@@ -142,15 +115,6 @@ describe('React Flight client stream error paths', () => {
     stream.destroy(new Error('upstream Flight stream aborted for issue 64'));
 
     await expect(decoded).rejects.toThrow('upstream Flight stream aborted for issue 64');
-  });
-
-  it('propagates unbundled node stream abort reasons instead of hanging', async () => {
-    const stream = new PassThrough();
-    const decoded = createFromUnbundledNodeStream(stream, emptySSRManifest);
-
-    stream.destroy(new Error('unbundled Flight stream aborted for issue 64'));
-
-    await expect(decoded).rejects.toThrow('unbundled Flight stream aborted for issue 64');
   });
 
   it('propagates readable-stream abort reasons instead of hanging', async () => {

@@ -105,10 +105,10 @@ const compileClientReferenceFixture = (cwd: string): CompiledClientReferenceFixt
     throw new Error(`rspack build failed:\n${(result.errors || []).join('\n')}`);
   }
 
-  const rorServerDir = path.join(cwd, 'node_modules', 'react-on-rails-rsc');
-  fs.mkdirSync(rorServerDir, { recursive: true });
+  const rscServerDir = path.join(cwd, 'node_modules', 'react-on-rails-rsc');
+  fs.mkdirSync(rscServerDir, { recursive: true });
   fs.writeFileSync(
-    path.join(rorServerDir, 'server.js'),
+    path.join(rscServerDir, 'server.js'),
     `const tag = Symbol.for('react.client.reference');
 exports.registerClientReference = function(proxyImplementation, id, exportName) {
   return Object.defineProperties(proxyImplementation, {
@@ -202,6 +202,8 @@ describe('RSCWebpackLoader runs under rspack', () => {
     // Two exports in source → at least two calls.
     const registerCount = (bundle.match(/registerClientReference/g) || []).length;
     expect(registerCount).toBeGreaterThanOrEqual(2);
+    expect(bundle).toContain('react-on-rails-rsc/server');
+    expect(bundle).not.toContain('react-server-dom-webpack/server');
     // Loader must remove the original function bodies (user code must not run on server)
     expect(bundle).not.toContain('function Header() {\n  return null;\n}');
     expect(bundle).not.toContain('function HomePage() {\n  return null;\n}');

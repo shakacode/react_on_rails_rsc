@@ -34,6 +34,7 @@ INSTALL_PLAYWRIGHT="${RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT:-1}"
 INSTALL_PLAYWRIGHT_DEPS="${RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT_DEPS:-0}"
 REQUIRE_PRO_LICENSE="${RSC_DOWNSTREAM_REQUIRE_PRO_LICENSE:-0}"
 RENDERER_PORT="${RSC_DOWNSTREAM_RENDERER_PORT:-${RENDERER_PORT:-$DEFAULT_RENDERER_PORT}}"
+RENDERER_NODE_ENV="${RSC_DOWNSTREAM_RENDERER_NODE_ENV:-production}"
 RAILS_PORT="${RSC_DOWNSTREAM_RAILS_PORT:-${RAILS_PORT:-$DEFAULT_RAILS_PORT}}"
 RAILS_READY_PATH="${RSC_DOWNSTREAM_RAILS_READY_PATH:-$DEFAULT_RAILS_READY_PATH}"
 SPEC_ARGS=()
@@ -75,6 +76,7 @@ Environment:
   RSC_DOWNSTREAM_RAILS_PORT               Rails server port. Default: 3000.
   RSC_DOWNSTREAM_RAILS_READY_PATH         Rails readiness path. Default: /empty.
   RSC_DOWNSTREAM_RENDERER_PORT            Node renderer port. Default: 3800.
+  RSC_DOWNSTREAM_RENDERER_NODE_ENV        Node renderer NODE_ENV. Default: production.
   RENDERER_PORT                           Node renderer port fallback when RSC_DOWNSTREAM_RENDERER_PORT is unset.
   RAILS_PORT                              Rails server port fallback when RSC_DOWNSTREAM_RAILS_PORT is unset.
 
@@ -384,12 +386,20 @@ install_downstream_dependencies() {
   fi
 
   node - "$REACT_ON_RAILS_DIR" "$TARBALL" <<'NODE'
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const [root, tarball] = process.argv.slice(2);
 const dependencyName = 'react-on-rails-rsc';
 const tarballSpec = `file:${tarball}`;
+const rscPackageJson = JSON.parse(execFileSync('tar', ['-xOf', tarball, 'package/package.json'], {
+  encoding: 'utf8',
+}));
+const reactSpec = rscPackageJson.peerDependencies?.react;
+const reactDomSpec = rscPackageJson.peerDependencies?.['react-dom'] || reactSpec;
+const rscRuntimeSpec = rscPackageJson.dependencies?.['react-server-dom-webpack'];
+const reactTypesSpec = reactSpec ? toTypesMajorSpec(reactSpec) : undefined;
 const packageJsonPaths = [
   'package.json',
   'packages/react-on-rails-pro/package.json',
@@ -417,15 +427,49 @@ for (const relativePath of packageJsonPaths) {
     if (packageJson[sectionName]?.[dependencyName]) {
       packageJson[sectionName][dependencyName] = tarballSpec;
     }
+
+    if (reactSpec && packageJson[sectionName]?.react) {
+      packageJson[sectionName].react = reactSpec;
+    }
+
+    if (reactDomSpec && packageJson[sectionName]?.['react-dom']) {
+      packageJson[sectionName]['react-dom'] = reactDomSpec;
+    }
+
+    if (rscRuntimeSpec && packageJson[sectionName]?.['react-server-dom-webpack']) {
+      packageJson[sectionName]['react-server-dom-webpack'] = rscRuntimeSpec;
+    }
+
+    if (reactTypesSpec && packageJson[sectionName]?.['@types/react']) {
+      packageJson[sectionName]['@types/react'] = reactTypesSpec;
+    }
+
+    if (reactTypesSpec && packageJson[sectionName]?.['@types/react-dom']) {
+      packageJson[sectionName]['@types/react-dom'] = reactTypesSpec;
+    }
   }
 
   if (relativePath === 'package.json') {
     packageJson.pnpm ||= {};
     packageJson.pnpm.overrides ||= {};
     packageJson.pnpm.overrides[dependencyName] = tarballSpec;
+    if (rscRuntimeSpec) {
+      packageJson.pnpm.overrides['react-server-dom-webpack'] = rscRuntimeSpec;
+    }
   }
 
   fs.writeFileSync(fullPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+}
+
+console.log(
+  `Installed ${dependencyName}@${rscPackageJson.version} tarball with React peer floor ` +
+    `${reactSpec || '<unspecified>'} / ${reactDomSpec || '<unspecified>'}.`
+);
+
+function toTypesMajorSpec(spec) {
+  const version = spec.replace(/^[~^]/, '');
+  const match = /^(\d+)\./.exec(version);
+  return match ? `^${match[1]}.0.0` : undefined;
 }
 NODE
 
@@ -476,7 +520,7 @@ start_background_services() {
 
   (
     cd "$dummy_dir"
-    RENDERER_PORT="$RENDERER_PORT" pnpm run node-renderer
+    NODE_ENV="$RENDERER_NODE_ENV" RENDERER_PORT="$RENDERER_PORT" pnpm run node-renderer
   ) >"$LOG_DIR/node-renderer.log" 2>&1 &
   NODE_RENDERER_PID="$!"
 
@@ -702,6 +746,7 @@ write_github_summary() {
       echo "- Tarball: $(basename "$TARBALL")"
     fi
     echo "- Dummy build script: $DUMMY_BUILD_SCRIPT"
+    echo "- Node renderer NODE_ENV: $RENDERER_NODE_ENV"
     echo "- Specs:"
     for spec in "${SPEC_ARGS[@]}"; do
       echo "  - $spec"

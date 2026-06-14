@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { PassThrough } from 'node:stream';
 import { text } from 'node:stream/consumers';
-import { createFromNodeStream } from '../src/react-server-dom-webpack/client.node';
+import { createFromNodeStream } from 'react-server-dom-webpack/client.node';
 import { renderToPipeableStream } from '../src/server.node';
 
-const { registerClientReference } = require('../src/react-server-dom-webpack/server.node') as {
+const { registerClientReference } = require('react-server-dom-webpack/server.node') as {
   registerClientReference: (
     proxyImplementation: () => never,
     id: string,

@@ -5,7 +5,7 @@
  * `client.node` exports:
  *   - `buildClientRenderer(clientManifest, serverManifest)` → { createFromNodeStream, ssrManifest }
  *
- * The underlying `createFromNodeStream` from the vendored
+ * The underlying `createFromNodeStream` from stock
  * `react-server-dom-webpack/client.node` uses `__webpack_require__` and
  * `__webpack_chunk_load__` to load client-component implementations during
  * SSR. When rspack bundles `client.node`, it emits those globals into the
@@ -83,7 +83,7 @@ describe('client.node is rspack-compatible', () => {
     bundleClientNode();
     const bundle = fs.readFileSync(path.join(tmpDir, 'client.bundle.js'), 'utf8');
     // The bundled output defines __webpack_require__ locally so the
-    // vendored react-server-dom-webpack code resolves its runtime globals.
+    // stock react-server-dom-webpack code resolves its runtime globals.
     expect(bundle).toMatch(/__webpack_require__/);
   });
 

@@ -35,6 +35,9 @@ Each runtime line owns its peer dependency policy:
   packaged `react-server-dom-webpack` runtime version. For example, a root peer
   of `^19.0.4` covers a packaged `19.0.7` runtime because the range minimum is
   in the same major line and is not higher than the packaged runtime.
+- The root `react-server-dom-webpack` dependency should stay bounded to the
+  package runtime minor, such as `~19.2.7`, so a 19.2 package line cannot float
+  to a later Flight runtime minor without a new package minor line.
 - The packaged runtime's own `react` and `react-dom` peers should match its
   exact version as `^<runtimeVersion>`.
 - `scripts/verify-release.sh` enforces both contracts: root peer ranges must

@@ -175,7 +175,7 @@ only 2 runtime patches stand between this repo and a stock upstream runtime
 
 ```text
 react-on-rails-rsc =
-  dependency: react-server-dom-webpack: "^19.2.7"        (stock npm; caret range matching runtime peer floor; bump package floor when upstream floor rises)
+  dependency: react-server-dom-webpack: "~19.2.7"        (stock npm; bounded to the 19.2 runtime line; bump package floor when upstream floor rises)
   src/webpack/RSCWebpackPlugin.ts                (owned TS; #56)
   src/react-server-dom-rspack/                   (already owned)
   client/server wrappers                         (import the real package)

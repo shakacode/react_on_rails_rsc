@@ -1,6 +1,6 @@
 {
   "name": "react-on-rails-rsc",
-  "version": "19.0.5",
+  "version": "19.2.0-rc.1",
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
     "./client": {
@@ -51,16 +51,35 @@
     },
     "./server": {
       "react-server": {
-        "workerd": "./dist/react-server-dom-webpack/server.edge.js",
-        "deno": "./dist/react-server-dom-webpack/server.browser.js",
-        "node": {
-          "webpack": "./dist/react-server-dom-webpack/server.node.js",
-          "default": "./dist/react-server-dom-webpack/server.node.unbundled.js"
+        "workerd": {
+          "types": "./dist/flight-server.edge.d.ts",
+          "default": "./dist/flight-server.edge.js"
         },
-        "edge-light": "./dist/react-server-dom-webpack/server.edge.js",
-        "browser": "./dist/react-server-dom-webpack/server.browser.js"
+        "deno": {
+          "types": "./dist/flight-server.browser.d.ts",
+          "default": "./dist/flight-server.browser.js"
+        },
+        "edge-light": {
+          "types": "./dist/flight-server.edge.d.ts",
+          "default": "./dist/flight-server.edge.js"
+        },
+        "browser": {
+          "types": "./dist/flight-server.browser.d.ts",
+          "default": "./dist/flight-server.browser.js"
+        },
+        "node": {
+          "webpack": {
+            "types": "./dist/flight-server.node.d.ts",
+            "default": "./dist/flight-server.node.js"
+          },
+          "types": "./dist/flight-server.node.unbundled.d.ts",
+          "default": "./dist/flight-server.node.unbundled.js"
+        }
       },
-      "default": "./dist/react-server-dom-webpack/server.js"
+      "default": {
+        "types": "./dist/flight-server.d.ts",
+        "default": "./dist/flight-server.js"
+      }
     },
     ".": {
       "types": "./dist/types.d.ts",
@@ -84,7 +103,7 @@
     "prepublishOnly": "yarn run build",
     "release": "bash scripts/release.sh",
     "release:dry-run": "bash scripts/release.sh --dry-run",
-    "build-if-needed": "test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js -a -f dist/webpack/RSCWebpackPlugin.js || (yarn run build && test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js -a -f dist/webpack/RSCWebpackPlugin.js)",
+    "build-if-needed": "test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/flight-server.js -a -f dist/flight-server.browser.js -a -f dist/flight-server.edge.js -a -f dist/flight-server.node.js -a -f dist/flight-server.node.unbundled.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js -a -f dist/webpack/RSCWebpackPlugin.js || (yarn run build && test -f dist/client.browser.js -a -f dist/client.node.js -a -f dist/server.node.js -a -f dist/flight-server.js -a -f dist/flight-server.browser.js -a -f dist/flight-server.edge.js -a -f dist/flight-server.node.js -a -f dist/flight-server.node.unbundled.js -a -f dist/RSCReferenceDiscoveryPlugin.js -a -f dist/RSCReferenceDiscoveryPlugin.d.ts -a -f dist/react-server-dom-rspack/plugin.js -a -f dist/react-server-dom-rspack/loader.js -a -f dist/webpack/RSCWebpackPlugin.js)",
     "prepack": "yarn run build-if-needed",
     "prepare": "yarn run build-if-needed"
   },
@@ -99,21 +118,22 @@
     "jest": "^29.7.0",
     "mini-css-extract-plugin": "^2.10.2",
     "publint": "0.3.21",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "release-it": "20.2.0",
     "ts-jest": "^29.4.5",
     "typescript": "^5.4.3",
     "webpack": "^5.98.0"
   },
   "peerDependencies": {
-    "react": "^19.0.4",
-    "react-dom": "^19.0.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "webpack": "^5.59.0"
   },
   "dependencies": {
     "acorn-loose": "^8.3.0",
     "neo-async": "^2.6.1",
+    "react-server-dom-webpack": "~19.2.7",
     "webpack-sources": "^3.2.0"
   },
   "repository": {

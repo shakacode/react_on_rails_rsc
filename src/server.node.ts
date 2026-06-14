@@ -1,5 +1,6 @@
 import { BundleManifest } from './types';
-import { renderToPipeableStream as renderToPipeableStreamReact } from './react-server-dom-webpack/server.node';
+import { preinit } from 'react-dom';
+import { renderToPipeableStream as renderToPipeableStreamReact } from 'react-server-dom-webpack/server.node';
 
 export interface Options {
   environmentName?: string;
@@ -8,13 +9,41 @@ export interface Options {
   identifierPrefix?: string;
 }
 
-export interface PipeableStream {
-  abort(reason: unknown): void;
-  pipe<Writable extends NodeJS.WritableStream>(destination: Writable): Writable;
+export interface WritableStreamLike {
+  write?: (...args: any[]) => unknown;
+  end?: (...args: any[]) => unknown;
+  on?: (event: string | symbol, listener: (...args: any[]) => unknown) => unknown;
 }
 
+export interface PipeableStream {
+  abort(reason: unknown): void;
+  pipe<Writable extends WritableStreamLike>(destination: Writable): Writable;
+}
+
+type ClientReferenceMetadata = BundleManifest['filePathToModuleMetadata'][string];
+
+const RSC_CSS_PRECEDENCE = 'rsc-css';
+
+const preinitStylesheetsForClientReference = (metadata: ClientReferenceMetadata | undefined) => {
+  if (!metadata?.css) return;
+  for (const href of metadata.css) {
+    preinit(href, { as: 'style', precedence: RSC_CSS_PRECEDENCE });
+  }
+};
+
+const withStylesheetHints = (
+  filePathToModuleMetadata: BundleManifest['filePathToModuleMetadata'],
+) =>
+  new Proxy(filePathToModuleMetadata, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver) as ClientReferenceMetadata | undefined;
+      preinitStylesheetsForClientReference(value);
+      return value;
+    },
+  });
+
 export const buildServerRenderer = (clientManifest: BundleManifest) => {
-  const { filePathToModuleMetadata } = clientManifest;
+  const filePathToModuleMetadata = withStylesheetHints(clientManifest.filePathToModuleMetadata);
   return {
     renderToPipeableStream: (
       // Note: ReactClientValue is likely what React uses internally for RSC
@@ -28,6 +57,6 @@ export const buildServerRenderer = (clientManifest: BundleManifest) => {
 };
 
 export const renderToPipeableStream = (model: unknown, clientManifest: BundleManifest, options?: Options) => {
-  const { filePathToModuleMetadata } = clientManifest;
+  const filePathToModuleMetadata = withStylesheetHints(clientManifest.filePathToModuleMetadata);
   return renderToPipeableStreamReact(model, filePathToModuleMetadata, options) as PipeableStream;
 }

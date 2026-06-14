@@ -105,10 +105,10 @@ const compileClientReferenceFixture = (cwd: string): CompiledClientReferenceFixt
     throw new Error(`rspack build failed:\n${(result.errors || []).join('\n')}`);
   }
 
-  const rorServerDir = path.join(cwd, 'node_modules', 'react-on-rails-rsc');
-  fs.mkdirSync(rorServerDir, { recursive: true });
+  const rscServerDir = path.join(cwd, 'node_modules', 'react-server-dom-webpack');
+  fs.mkdirSync(rscServerDir, { recursive: true });
   fs.writeFileSync(
-    path.join(rorServerDir, 'server.js'),
+    path.join(rscServerDir, 'server.js'),
     `const tag = Symbol.for('react.client.reference');
 exports.registerClientReference = function(proxyImplementation, id, exportName) {
   return Object.defineProperties(proxyImplementation, {

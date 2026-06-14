@@ -31,7 +31,7 @@ const emitManifestMetadata = ({
   const clientFile = '/app/components/ClientComponent.js';
   // The plugin matches this specific runtime resource to inject client-reference dependency blocks.
   const runtimeFile = require.resolve(
-    isServer ? '../src/react-server-dom-webpack/client.node.js' : '../src/react-server-dom-webpack/client.browser.js',
+    isServer ? 'react-server-dom-webpack/client.node' : 'react-server-dom-webpack/client.browser',
   );
   const plugin = new ReactFlightWebpackPlugin({
     isServer,

@@ -1,11 +1,11 @@
 # Eliminating the React Fork Repository
 
 **Issue:** [#31](https://github.com/shakacode/react_on_rails_rsc/issues/31), [#55](https://github.com/shakacode/react_on_rails_rsc/issues/55) (Option 5 spike)
-**Status:** Option 5 (stock npm runtime) selected — GO. As of 2026-06-13, `main` still carries the
-vendored runtime and legacy `scripts/react-upgrade/` helper after the interim 19.0.7 CVE patch
-([#86](https://github.com/shakacode/react_on_rails_rsc/pull/86)); the stock-runtime replacement
-itself remains outstanding. Option 4 (patch files) is the documented fallback. Fork patch history is
-archived in this repo; archiving `AbanoubGhadban/react` remains an owner/admin action.
+**Status:** Option 5 (stock npm runtime) selected — GO. The 19.2.0-rc.1 prep removes the published
+vendored runtime and depends on stock `react-server-dom-webpack@^19.2.7`. The legacy
+`scripts/react-upgrade/` helper remains archived for emergency maintenance of older vendored-runtime
+history only. Option 4 (patch files) is the documented fallback. Fork patch history is archived in
+this repo; archiving `AbanoubGhadban/react` remains an owner/admin action.
 **Date:** 2026-04-17 (Options 1–4), 2026-06-12 (Option 5 spike), 2026-06-13 (patch archive)
 
 ## Background

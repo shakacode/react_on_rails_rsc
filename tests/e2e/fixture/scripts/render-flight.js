@@ -27,13 +27,9 @@ const buildDir = path.join(projectRoot, 'build', bundlerName);
 
 // The public wrapper (exports-map entry)…
 const { renderToPipeableStream } = require('react-on-rails-rsc/server.node');
-// …and registerClientReference from the SAME runtime module instance the
-// wrapper uses internally (dist/react-server-dom-webpack/server.node.js);
-// resolving the same file path hits the same require-cache entry.
-const pkgDir = path.dirname(require.resolve('react-on-rails-rsc/package.json'));
-const { registerClientReference } = require(
-  path.join(pkgDir, 'dist', 'react-server-dom-webpack', 'server.node.js'),
-);
+// …and registerClientReference from the raw Flight runtime export, which
+// re-exports the same stock react-server-dom-webpack runtime the wrapper uses.
+const { registerClientReference } = require('react-on-rails-rsc/server');
 
 const createApp = require('../src/server/App.js');
 

@@ -1,5 +1,53 @@
-import { createFromNodeStream } from './react-server-dom-webpack/client.node';
+import { createFromNodeStream as originalCreateFromNodeStream } from 'react-server-dom-webpack/client.node';
 import { BundleManifest } from './types';
+
+export interface NodeReadableStream {
+  on(event: string | symbol, listener: (...args: any[]) => unknown): unknown;
+}
+
+type NodeReadableWithDestroy = NodeReadableStream & {
+  destroy?: (error?: unknown) => void;
+};
+
+const withStreamDataErrorForwarding = (stream: NodeReadableStream): NodeReadableStream => {
+  const readable = stream as NodeReadableWithDestroy;
+  const originalOn = readable.on.bind(readable);
+
+  return new Proxy(readable, {
+    get(target, property, receiver) {
+      if (property !== 'on') {
+        return Reflect.get(target, property, receiver);
+      }
+
+      return (event: string | symbol, listener: (...args: any[]) => unknown) => {
+        if (event !== 'data' || typeof listener !== 'function') {
+          return originalOn(event, listener);
+        }
+
+        return originalOn(event, function forwardDataErrors(this: unknown, ...args: unknown[]) {
+          try {
+            return listener.apply(this, args);
+          } catch (error) {
+            if (typeof target.destroy === 'function') {
+              target.destroy(error);
+              return undefined;
+            }
+            throw error;
+          }
+        });
+      };
+    },
+  }) as NodeReadableStream;
+};
+
+const createFromNodeStream = <T>(
+  stream: NodeReadableStream,
+  ssrManifest: unknown,
+) =>
+  originalCreateFromNodeStream<T>(
+    withStreamDataErrorForwarding(stream) as NodeJS.ReadableStream,
+    ssrManifest,
+  );
 
 const createSSRManifest = (clientManifest: BundleManifest, serverManifest: BundleManifest) => {
   const { filePathToModuleMetadata: clientFilePathToModuleMetadata, moduleLoading: clientModuleLoading } = clientManifest;
@@ -36,7 +84,7 @@ export const buildClientRenderer = (clientManifest: BundleManifest, serverManife
   const ssrManifest = createSSRManifest(clientManifest, serverManifest);
   return {
     createFromNodeStream: <T>(
-      stream: NodeJS.ReadableStream,
+      stream: NodeReadableStream,
     ) => createFromNodeStream(stream, ssrManifest) as Promise<T>,
     ssrManifest,
   }

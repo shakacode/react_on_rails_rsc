@@ -75,70 +75,52 @@ describe('Static analysis: no webpack-specific runtime imports', () => {
     expect(raw).not.toMatch(/\bwebpack\.[A-Za-z]/);
   });
 
-  it('server.node.ts only imports from its own module tree and types', () => {
+  it('server.node.ts imports only package types, react-dom hints, and stock Flight server runtime', () => {
     const raw = readSource('server.node.ts');
-    // Sanity: imports only from `./types` and `./react-server-dom-webpack/server.node`
     const importLines = raw
       .split('\n')
       .filter((line) => /^\s*import\s/.test(line))
       .map((line) => line.trim());
 
+    const allowedBareImports = new Set(['react-dom', 'react-server-dom-webpack/server.node']);
     for (const line of importLines) {
       const match = line.match(/from\s+['"]([^'"]+)['"]/);
       if (!match) continue;
-      const source = match[1];
-      // All imports must be relative (starting with ./ or ../) — no bare module specifiers
-      expect(source).toMatch(/^\.\.?\//);
+      const source = match[1]!;
+      expect(source.match(/^\.\.?\//) || allowedBareImports.has(source)).toBeTruthy();
     }
   });
 
-  it('client.node.ts only imports from its own module tree and types', () => {
+  it('client.node.ts imports only package types and stock Flight client runtime', () => {
     const raw = readSource('client.node.ts');
     const importLines = raw
       .split('\n')
       .filter((line) => /^\s*import\s/.test(line))
       .map((line) => line.trim());
 
+    const allowedBareImports = new Set(['react-server-dom-webpack/client.node']);
     for (const line of importLines) {
       const match = line.match(/from\s+['"]([^'"]+)['"]/);
       if (!match) continue;
-      const source = match[1];
-      expect(source).toMatch(/^\.\.?\//);
+      const source = match[1]!;
+      expect(source.match(/^\.\.?\//) || allowedBareImports.has(source)).toBeTruthy();
     }
   });
 
-  it('client.browser.ts only imports from its own module tree', () => {
+  it('client.browser.ts imports only stock Flight browser runtime', () => {
     const raw = readSource('client.browser.ts');
     const importLines = raw
       .split('\n')
       .filter((line) => /^\s*import\s/.test(line))
       .map((line) => line.trim());
 
+    const allowedBareImports = new Set(['react-server-dom-webpack/client.browser']);
     for (const line of importLines) {
       const match = line.match(/from\s+['"]([^'"]+)['"]/);
       if (!match) continue;
-      const source = match[1];
-      expect(source).toMatch(/^\.\.?\//);
+      const source = match[1]!;
+      expect(source.match(/^\.\.?\//) || allowedBareImports.has(source)).toBeTruthy();
     }
-  });
-
-  it('vendored react-server-dom-webpack-node-loader is free of bundler API usage', () => {
-    const loaderPath = path.join(
-      SRC_DIR,
-      'react-server-dom-webpack/esm/react-server-dom-webpack-node-loader.production.js',
-    );
-    const raw = fs.readFileSync(loaderPath, 'utf8');
-    // The node-loader must not touch webpack internals — it's pure source transformation
-    expect(raw).not.toMatch(/webpack\/lib\//);
-    expect(raw).not.toMatch(/from\s+['"]webpack['"]/);
-    // It DOES use webpack-sources — that's an independent npm package, not a webpack internal
-    // so we allow it explicitly by name
-    const disallowedImports = raw
-      .split('\n')
-      .filter((line) => /^\s*(import|require)/.test(line))
-      .filter((line) => /webpack/.test(line))
-      .filter((line) => !/webpack-sources/.test(line));
-    expect(disallowedImports).toEqual([]);
   });
 });
 

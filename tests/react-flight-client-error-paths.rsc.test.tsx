@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { PassThrough, Readable } from 'node:stream';
-import { createFromNodeStream } from '../src/react-server-dom-webpack/client.node';
+import { buildClientRenderer } from '../src/client.node';
 import { renderToPipeableStream } from '../src/server.node';
 import type { BundleManifest } from '../src/types';
 
-const { registerClientReference } = require('../src/react-server-dom-webpack/server.node') as {
+const { registerClientReference } = require('react-server-dom-webpack/server.node') as {
   registerClientReference: (
     proxyImplementation: () => never,
     id: string,
@@ -29,11 +29,6 @@ const clientManifest: BundleManifest = {
 const emptyClientManifest: BundleManifest = {
   filePathToModuleMetadata: {},
   moduleLoading: { prefix: '', crossOrigin: null },
-};
-
-const emptySSRManifest = {
-  moduleLoading: { prefix: '', crossOrigin: null },
-  moduleMap: {},
 };
 
 const webpackGlobal = globalThis as unknown as {
@@ -74,12 +69,9 @@ const renderFlightPayload = async (model: unknown): Promise<Buffer> => {
 
 const decodeElementType = async (
   payload: Buffer,
-  ssrManifest: unknown,
+  createFromNodeStream: (stream: NodeJS.ReadableStream) => Promise<unknown>,
 ): Promise<unknown> => {
-  const decoded = (await createFromNodeStream(
-    Readable.from([payload]),
-    ssrManifest,
-  )) as React.ReactElement;
+  const decoded = (await createFromNodeStream(Readable.from([payload]))) as React.ReactElement;
 
   expect(React.isValidElement(decoded)).toBe(true);
   // This intentionally probes React 19.x lazy chunks
@@ -130,8 +122,12 @@ describe('React Flight client error paths', () => {
     const payload = await renderFlightPayload(
       React.createElement(ClientWidget, { label: 'missing manifest entry' }),
     );
+    const { createFromNodeStream } = buildClientRenderer(
+      emptyClientManifest,
+      emptyClientManifest,
+    );
 
-    await expect(decodeElementType(payload, emptySSRManifest)).rejects.toThrow(
+    await expect(decodeElementType(payload, createFromNodeStream)).rejects.toThrow(
       `Could not find the module "${CLIENT_MODULE_ID}" in the React Server Consumer Manifest.`,
     );
   });
@@ -145,20 +141,32 @@ describe('React Flight client error paths', () => {
     const payload = await renderFlightPayload(
       React.createElement(ClientWidget, { label: 'chunk failure' }),
     );
-    const ssrManifest = {
-      moduleLoading: { prefix: '', crossOrigin: null },
-      moduleMap: {
-        [CLIENT_MODULE_ID]: {
-          Widget: {
-            id: CLIENT_MODULE_ID,
-            chunks: [failingChunkId, `${failingChunkId}.js`],
-            name: 'Widget',
-          },
+    const decoderClientManifest: BundleManifest = {
+      filePathToModuleMetadata: {
+        [CLIENT_MODULE_URL]: {
+          id: CLIENT_MODULE_ID,
+          chunks: [],
+          name: '*',
         },
       },
+      moduleLoading: { prefix: '', crossOrigin: null },
     };
+    const decoderServerManifest: BundleManifest = {
+      filePathToModuleMetadata: {
+        [CLIENT_MODULE_URL]: {
+          id: CLIENT_MODULE_ID,
+          chunks: [failingChunkId, `${failingChunkId}.js`],
+          name: '*',
+        },
+      },
+      moduleLoading: { prefix: '', crossOrigin: null },
+    };
+    const { createFromNodeStream } = buildClientRenderer(
+      decoderClientManifest,
+      decoderServerManifest,
+    );
 
-    await expect(decodeElementType(payload, ssrManifest)).rejects.toThrow(chunkError.message);
+    await expect(decodeElementType(payload, createFromNodeStream)).rejects.toThrow(chunkError.message);
     expect(chunkLoader).toHaveBeenCalledWith(failingChunkId);
   });
 
@@ -188,7 +196,11 @@ describe('React Flight client error paths', () => {
       },
     );
     const readable = new PassThrough();
-    const decoded = createFromNodeStream(readable, emptySSRManifest);
+    const { createFromNodeStream } = buildClientRenderer(
+      emptyClientManifest,
+      emptyClientManifest,
+    );
+    const decoded = createFromNodeStream(readable);
 
     try {
       flightStream.pipe(readable);

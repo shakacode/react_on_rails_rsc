@@ -30,7 +30,7 @@ const buildManifest = ({
   clientFiles?: string[];
 }) => {
   const runtimeFile = require.resolve(
-    isServer ? '../src/react-server-dom-webpack/client.node.js' : '../src/react-server-dom-webpack/client.browser.js',
+    isServer ? 'react-server-dom-webpack/client.node' : 'react-server-dom-webpack/client.browser',
   );
   const plugin = new ReactFlightWebpackPlugin({
     isServer,

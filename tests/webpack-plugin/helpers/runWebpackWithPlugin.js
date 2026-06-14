@@ -9,11 +9,10 @@
  * child Node process so Jest's VM sandbox never interferes with webpack's
  * module resolution or loader execution.
  *
- * The entry always includes the real Flight client runtime
- * (src/react-server-dom-webpack/client.browser.js, or client.node.js for
- * server builds). The plugin keys its AsyncDependenciesBlock injection on
- * that module resource (the exact path, or a copy inside a package named
- * react-on-rails-rsc), so the runtime must be part of the bundle for
+ * The entry always includes the real stock Flight client runtime
+ * (react-server-dom-webpack/client.browser, or client.node for server
+ * builds). The plugin keys its AsyncDependenciesBlock injection on that
+ * module resource, so the runtime must be part of the bundle for
  * client-reference chunk groups to exist.
  *
  * Args shape (from compile.ts):
@@ -84,11 +83,8 @@ const {
   exposeClientRuntime,
 } = args;
 
-const runtimeEntry = path.resolve(
-  __dirname,
-  isServer
-    ? '../../../src/react-server-dom-webpack/client.node.js'
-    : '../../../src/react-server-dom-webpack/client.browser.js',
+const runtimeEntry = require.resolve(
+  isServer ? 'react-server-dom-webpack/client.node' : 'react-server-dom-webpack/client.browser',
 );
 
 const clientReferences = reviveFromRunner(rawClientReferences);

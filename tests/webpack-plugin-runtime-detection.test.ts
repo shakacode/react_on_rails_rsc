@@ -11,26 +11,23 @@ const { RSCWebpackPlugin: ReactFlightWebpackPlugin } = require('../src/webpack/R
 const tempRoots: string[] = [];
 
 const createDoppelgangerRuntime = ({
-  packageName = 'react-on-rails-rsc',
+  packageName = 'react-server-dom-webpack',
   runtimeFile = 'client.browser.js',
-  runtimeDirectory = 'react-server-dom-webpack',
 }: {
   packageName?: string;
   runtimeFile?: string;
-  runtimeDirectory?: string;
 }) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ror-rsc-doppelganger-'));
   tempRoots.push(root);
 
   const packageRoot = path.join(
     root,
-    'node_modules/.pnpm/react-on-rails-rsc@19.0.4_webpack@5.103.0/node_modules/react-on-rails-rsc',
+    'node_modules/.pnpm/react-server-dom-webpack@19.2.7_webpack@5.103.0/node_modules/react-server-dom-webpack',
   );
-  const runtimeDir = path.join(packageRoot, 'dist', runtimeDirectory);
-  fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.mkdirSync(packageRoot, { recursive: true });
   fs.writeFileSync(path.join(packageRoot, 'package.json'), JSON.stringify({ name: packageName }));
 
-  const runtimePath = path.join(runtimeDir, runtimeFile);
+  const runtimePath = path.join(packageRoot, runtimeFile);
   fs.writeFileSync(runtimePath, '');
 
   return runtimePath;
@@ -44,14 +41,14 @@ afterEach(() => {
 
 describe('ReactFlightWebpackPlugin runtime detection', () => {
   it('keeps recognizing the plugin package runtime by exact path', () => {
-    const runtimePath = path.resolve(__dirname, '../src/react-server-dom-webpack/client.browser.js');
+    const runtimePath = require.resolve('react-server-dom-webpack/client.browser');
 
     expect(
       ReactFlightWebpackPlugin.__internal_isReactOnRailsRSCRuntimeResource(runtimePath, false),
     ).toBe(true);
   });
 
-  it('recognizes a client runtime from a separate react-on-rails-rsc package instance', () => {
+  it('recognizes a client runtime from a separate react-server-dom-webpack package instance', () => {
     const runtimePath = createDoppelgangerRuntime({});
 
     expect(
@@ -59,7 +56,7 @@ describe('ReactFlightWebpackPlugin runtime detection', () => {
     ).toBe(true);
   });
 
-  it('recognizes a server runtime from a separate react-on-rails-rsc package instance', () => {
+  it('recognizes a server runtime from a separate react-server-dom-webpack package instance', () => {
     const runtimePath = createDoppelgangerRuntime({ runtimeFile: 'client.node.js' });
 
     expect(
@@ -68,7 +65,7 @@ describe('ReactFlightWebpackPlugin runtime detection', () => {
   });
 
   it('rejects runtime-shaped paths from other packages', () => {
-    const runtimePath = createDoppelgangerRuntime({ packageName: 'not-react-on-rails-rsc' });
+    const runtimePath = createDoppelgangerRuntime({ packageName: 'not-react-server-dom-webpack' });
 
     expect(
       ReactFlightWebpackPlugin.__internal_isReactOnRailsRSCRuntimeResource(runtimePath, false),
@@ -83,22 +80,12 @@ describe('ReactFlightWebpackPlugin runtime detection', () => {
     ).toBe(false);
   });
 
-  it('rejects runtime-like directory names that only end with the expected runtime directory', () => {
-    const runtimePath = createDoppelgangerRuntime({
-      runtimeDirectory: 'evil-react-server-dom-webpack',
-    });
-
-    expect(
-      ReactFlightWebpackPlugin.__internal_isReactOnRailsRSCRuntimeResource(runtimePath, false),
-    ).toBe(false);
-  });
-
-  it('continues walking when an intermediate package.json is malformed', () => {
+  it('rejects malformed stock runtime package metadata', () => {
     const runtimePath = createDoppelgangerRuntime({});
     fs.writeFileSync(path.join(path.dirname(runtimePath), 'package.json'), '{');
 
     expect(
       ReactFlightWebpackPlugin.__internal_isReactOnRailsRSCRuntimeResource(runtimePath, false),
-    ).toBe(true);
+    ).toBe(false);
   });
 });

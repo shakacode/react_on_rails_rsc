@@ -13,4 +13,4 @@
 
 'use strict';
 
-module.exports = require('../../../src/react-server-dom-webpack/client.node.js');
+module.exports = require('react-server-dom-webpack/client.node');

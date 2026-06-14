@@ -223,14 +223,17 @@ const fs = require('fs');
 const path = require('path');
 
 const packageDir = process.argv[2];
-const runtimePackagePath = path.join(packageDir, 'dist/react-server-dom-webpack/package.json');
+const runtimePackagePath = require.resolve('react-server-dom-webpack/package.json', {
+  paths: [packageDir],
+});
+const runtimePackageDir = path.dirname(runtimePackagePath);
 
 function readFileSafe(filePath, context) {
   try {
     return fs.readFileSync(filePath, 'utf8');
   } catch (error) {
     throw new Error(
-      `verify-runtime-version: cannot read ${filePath} (${context}); has the vendored runtime layout changed?\n` +
+      `verify-runtime-version: cannot read ${filePath} (${context}); is the stock runtime dependency installed?\n` +
       `  ${error.message}`
     );
   }
@@ -273,10 +276,15 @@ function assertCaretRangeIncludesVersion(range, version, label) {
   const minimum = parseVersion(match[1], label);
   const target = parseVersion(version, 'runtime version');
   if (minimum.major !== target.major || compareVersions(minimum, target) > 0) {
-    throw new Error(`${label} ${range} does not include vendored runtime ${version}`);
+    throw new Error(`${label} ${range} does not include stock runtime ${version}`);
   }
 }
 
+assertCaretRangeIncludesVersion(
+  rootPackage.dependencies?.['react-server-dom-webpack'],
+  runtimeVersion,
+  'root dependencies.react-server-dom-webpack'
+);
 assertCaretRangeIncludesVersion(
   rootPackage.peerDependencies?.react,
   runtimeVersion,
@@ -292,8 +300,8 @@ assertEqual(runtimePackage.peerDependencies?.['react-dom'], expectedPeerRange, '
 
 const runtimeDevelopmentBundle = readFileSafe(
   path.join(
-    packageDir,
-    'dist/react-server-dom-webpack/cjs/react-server-dom-webpack-client.browser.development.js'
+    runtimePackageDir,
+    'cjs/react-server-dom-webpack-client.browser.development.js'
   ),
   'development bundle'
 );
@@ -305,11 +313,11 @@ for (const marker of [`version: "${runtimeVersion}"`, `reconcilerVersion: "${run
 }
 
 console.log(
-  `  - Runtime version ${runtimeVersion} is included by root peers and matches runtime peer policy ${expectedPeerRange}`
+  `  - Stock runtime version ${runtimeVersion} is included by package dependencies, root peers, and runtime peer policy ${expectedPeerRange}`
 );
 NODE
 
-log "Verifying embedded React runtime version policy"
+log "Verifying stock React runtime version policy"
 node "$TMP_DIR/verify-runtime-version.cjs" "$PACKAGE_DIR"
 
 log "Running publint"

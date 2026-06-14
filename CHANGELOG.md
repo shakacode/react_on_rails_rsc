@@ -2,6 +2,20 @@
 
 All notable changes to this package will be documented in this file.
 
+## [19.2.0-rc.1] - 2026-06-14
+
+### Breaking Changes
+- Moved the package to the React 19.2 runtime line by depending on stock `react-server-dom-webpack@^19.2.7`, removing the published vendored Flight runtime, and raising the `react` and `react-dom` peer dependency floor to `^19.2.7`. ([#66])
+
+  **Migration Guide:**
+
+  1. Upgrade application `react` and `react-dom` dependencies to `19.2.7` or newer within the React 19.x line.
+  2. Keep importing `react-on-rails-rsc/server.node`, `react-on-rails-rsc/client.node`, and `react-on-rails-rsc/client.browser` through this package's public exports; direct paths under `dist/react-server-dom-webpack/` are no longer shipped.
+  3. Use the `react-on-rails-rsc/server` export for raw Flight runtime helpers such as `registerClientReference`.
+
+### Changed
+- Set the 19.0.x package line to maintenance mode after the 19.2.x line becomes `latest`; future 19.0.x releases should be limited to security fixes, severe regressions, release-artifact repairs, or downstream React on Rails support obligations. ([#66])
+
 ## [19.0.5] - 2026-06-13
 
 ### Added
@@ -20,8 +34,10 @@ All notable changes to this package will be documented in this file.
 ### Security
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
+[19.2.0-rc.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0-rc.1
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
+[#66]: https://github.com/shakacode/react_on_rails_rsc/issues/66
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23
 [#29]: https://github.com/shakacode/react_on_rails_rsc/pull/29
 [#33]: https://github.com/shakacode/react_on_rails_rsc/pull/33

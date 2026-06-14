@@ -1,5 +1,11 @@
 # react-on-rails-rsc
 
+[![npm version](https://img.shields.io/npm/v/react-on-rails-rsc.svg)](https://www.npmjs.com/package/react-on-rails-rsc)
+[![npm next](https://img.shields.io/npm/v/react-on-rails-rsc/next.svg?label=next)](https://www.npmjs.com/package/react-on-rails-rsc?activeTab=versions)
+[![license](https://img.shields.io/npm/l/react-on-rails-rsc.svg)](https://www.npmjs.com/package/react-on-rails-rsc)
+
+[**npm: react-on-rails-rsc**](https://www.npmjs.com/package/react-on-rails-rsc)
+
 This package provides React Server Components (RSC) support for the [`react-on-rails-pro`](https://github.com/shakacode/react_on_rails_pro) Ruby gem. 
 
 ⚠️ **IMPORTANT: This package is for internal use only** ⚠️

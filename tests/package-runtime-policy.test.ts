@@ -69,7 +69,14 @@ describe('19.2 runtime release policy', () => {
       expect.objectContaining({
         browser: expect.objectContaining({ types: './dist/flight-server.browser.d.ts' }),
         'edge-light': expect.objectContaining({ types: './dist/flight-server.edge.d.ts' }),
-        node: expect.objectContaining({ types: './dist/flight-server.node.d.ts' }),
+        node: expect.objectContaining({
+          default: './dist/flight-server.node.unbundled.js',
+          types: './dist/flight-server.node.unbundled.d.ts',
+          webpack: expect.objectContaining({
+            default: './dist/flight-server.node.js',
+            types: './dist/flight-server.node.d.ts',
+          }),
+        }),
         workerd: expect.objectContaining({ types: './dist/flight-server.edge.d.ts' }),
       })
     );
@@ -79,12 +86,20 @@ describe('19.2 runtime release policy', () => {
       'src/flight-server.browser.ts',
       'src/flight-server.edge.ts',
       'src/flight-server.node.ts',
+      'src/flight-server.node.unbundled.ts',
     ]) {
       const source = fs.readFileSync(path.join(repoRoot, fileName), 'utf8');
 
       expect(source).toContain('registerClientReference');
       expect(source).not.toMatch(/export\s+\*\s+from\s+['"]react-server-dom-webpack\/server/);
     }
+
+    const plainNodeServerSource = fs.readFileSync(
+      path.join(repoRoot, 'src/flight-server.node.unbundled.ts'),
+      'utf8'
+    );
+    expect(plainNodeServerSource).toContain('React 19.2 removed the public unbundled');
+    expect(plainNodeServerSource).toContain('unsupportedPlainNodeDecode');
 
     const runtimeTypes = fs.readFileSync(
       path.join(repoRoot, 'types/react-server-dom-webpack/index.d.ts'),

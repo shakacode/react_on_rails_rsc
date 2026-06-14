@@ -280,15 +280,15 @@ unacceptable before 19.3, that triggers the Option 4 fallback instead.
 | `./WebpackPlugin`, `./WebpackLoader`, `./RSCReferenceDiscoveryPlugin`, `./RspackPlugin`, `./RspackLoader` | in-repo TS (loader currently delegates to vendored `esm/` transform) | in-repo TS only (#56) | ✓ no stock-runtime dependency; loader-emitted code imports `react-on-rails-rsc/server` (`registerClientReference`/`registerServerReference`), which the re-export shims provide |
 | `.` (types) | in-repo `dist/types` | unchanged | ✓ |
 
-**Unbundled caveat:** today a plain-Node (no `webpack` resolve condition) `require('react-on-rails-rsc/server')`
-resolves to `server.node.unbundled.js` (module loading via `import(specifier)`); with stock ≥19.2.4 it
-would resolve to the webpack-flavored `server.node.js` (module loading via `__webpack_require__`).
-Webpack-bundled consumers are unaffected (webpack sets the `webpack` condition, and the loader-emitted
-imports are resolved at bundle time). Whether any downstream consumer (e.g. the react_on_rails_pro node
-renderer) plain-Node-requires `react-on-rails-rsc/server` *and* exercises server-reference loading
-through the unbundled path is **UNKNOWN** — verify in #60 before dropping the unbundled entries. Note
+**Unbundled caveat:** before the 19.2 runtime migration, a plain-Node (no `webpack` resolve condition)
+`require('react-on-rails-rsc/server')` resolved to `server.node.unbundled.js` (module loading via
+`import(specifier)`). Stock ≥19.2.4 removed that public runtime, so the 19.2 package line keeps a
+separate plain-Node shim for `react-on-rails-rsc/server`: registration and render helpers remain
+available, but server-action decode APIs fail with an explicit migration error instead of falling into
+the webpack-flavored `__webpack_require__` path. Webpack-bundled consumers are unaffected (webpack sets
+the `webpack` condition, and the loader-emitted imports are resolved at bundle time). Note
 `registerClientReference`/`registerServerReference` themselves do not touch webpack globals, so plain
-registration keeps working either way.
+registration keeps working.
 
 #### Webpack globals contract and SSR manifest formats (unchanged)
 
@@ -319,11 +319,9 @@ Diffed vendored (~19.0.4) vs stock 19.2.7 built files:
    design above); keep `tests/react-flight-client-reference-css.rsc.test.ts` green. **Gate: if the
    prototype fails, stop and take the Option 4 fallback.**
 4. Replace the `./server` export map with per-condition re-export shims of
-   `react-server-dom-webpack/server.*`; resolve the unbundled question (verify downstream plain-Node
-   `./server` usage — UNKNOWN above). **Gate: if any downstream consumer is found that requires the
-   removed unbundled semantics and cannot migrate to the webpack-flavored build, stop and take the
-   Option 4 fallback.** (A plain-Node consumer silently resolving to the webpack flavor fails at
-   runtime, not compile time, so this must be verified — not assumed — before merge.)
+   `react-server-dom-webpack/server.*`; preserve a distinct plain-Node branch that fails explicitly
+   for removed unbundled server-action decode APIs. **Gate: if any downstream consumer is found that
+   requires the removed unbundled semantics and cannot migrate, stop and take the Option 4 fallback.**
 5. Bump `react`/`react-dom` peerDependencies to `^19.2.7` (stock 19.2.7 peers on `^19.2.7`).
    Consumer-visible: apps must be on React ≥19.2.7 — a breaking change for consumers on React
    19.0.x/19.1.x. Version the release accordingly: this package's version tracks the bundled runtime

@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [19.2.0-rc.1] - 2026-06-14
 
 ### Breaking Changes
-- Moved the package to the React 19.2 runtime line by depending on stock `react-server-dom-webpack@^19.2.7`, removing the published vendored Flight runtime, and raising the `react` and `react-dom` peer dependency floor to `^19.2.7`. ([#102])
+- Moved the package to the React 19.2 runtime line by depending on stock `react-server-dom-webpack@~19.2.7`, removing the published vendored Flight runtime, and raising the `react` and `react-dom` peer dependency floor to `^19.2.7`. ([#102])
 
   **Migration Guide:**
 

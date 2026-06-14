@@ -22,6 +22,7 @@ const withStreamDataErrorForwarding = (stream: NodeReadableStream): NodeReadable
       return (event: string | symbol, listener: (...args: any[]) => unknown) => {
         if (event !== 'data' || typeof listener !== 'function') {
           originalOn(event, listener);
+          // Keep chained .on() calls on the proxy so data listeners remain wrapped.
           return receiver;
         }
 

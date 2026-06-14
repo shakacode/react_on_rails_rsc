@@ -2,7 +2,7 @@
 
 **Issue:** [#31](https://github.com/shakacode/react_on_rails_rsc/issues/31), [#55](https://github.com/shakacode/react_on_rails_rsc/issues/55) (Option 5 spike)
 **Status:** Option 5 (stock npm runtime) selected — GO. The 19.2.0-rc.1 prep removes the published
-vendored runtime and depends on stock `react-server-dom-webpack@^19.2.7`. The legacy
+vendored runtime and depends on stock `react-server-dom-webpack@~19.2.7`. The legacy
 `scripts/react-upgrade/` helper remains archived for emergency maintenance of older vendored-runtime
 history only. Option 4 (patch files) is the documented fallback. Fork patch history is archived in
 this repo; archiving `AbanoubGhadban/react` remains an owner/admin action.
@@ -309,7 +309,7 @@ Diffed vendored (~19.0.4) vs stock 19.2.7 built files:
 
 #### Migration checklist for #60
 
-1. Add `react-server-dom-webpack@^19.2.7` as a dependency; delete `src/react-server-dom-webpack/`
+1. Add `react-server-dom-webpack@~19.2.7` as a dependency; delete `src/react-server-dom-webpack/`
    (after #56 has moved the plugin/loader in-repo and `WebpackLoader.ts` no longer imports the vendored
    `esm/` transform).
 2. Repoint wrapper imports (`src/client.browser.ts`, `src/client.node.ts`, `src/server.node.ts`) from

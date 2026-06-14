@@ -1,5 +1,7 @@
 import * as server from 'react-server-dom-webpack/server.node';
 
+// Plain Node can reuse stock render/registration helpers; decode APIs below
+// still fail explicitly because they need the removed unbundled loader runtime.
 type ServerFunction = (...args: unknown[]) => unknown;
 type RegisterClientReference = (
   proxyImplementation: unknown,

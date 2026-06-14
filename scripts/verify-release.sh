@@ -243,6 +243,7 @@ const rootPackage = JSON.parse(readFileSafe(path.join(packageDir, 'package.json'
 const runtimePackage = JSON.parse(readFileSafe(runtimePackagePath, 'runtime package.json'));
 const runtimeVersion = runtimePackage.version;
 const expectedPeerRange = `^${runtimeVersion}`;
+const expectedRuntimeDependencyRange = `~${runtimeVersion}`;
 
 function assertEqual(actual, expected, label) {
   if (actual !== expected) {
@@ -280,9 +281,9 @@ function assertCaretRangeIncludesVersion(range, version, label) {
   }
 }
 
-assertCaretRangeIncludesVersion(
+assertEqual(
   rootPackage.dependencies?.['react-server-dom-webpack'],
-  runtimeVersion,
+  expectedRuntimeDependencyRange,
   'root dependencies.react-server-dom-webpack'
 );
 assertCaretRangeIncludesVersion(
@@ -313,7 +314,7 @@ for (const marker of [`version: "${runtimeVersion}"`, `reconcilerVersion: "${run
 }
 
 console.log(
-  `  - Stock runtime version ${runtimeVersion} is included by package dependencies, root peers, and runtime peer policy ${expectedPeerRange}`
+  `  - Stock runtime version ${runtimeVersion} is pinned by package dependency ${expectedRuntimeDependencyRange}, root peers, and runtime peer policy ${expectedPeerRange}`
 );
 NODE
 

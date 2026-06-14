@@ -11,6 +11,7 @@ throw new Error(
     'You must configure Node.js using the `--conditions react-server` flag.'
 );
 
+// Unreachable at runtime; present so tsc emits the public default type surface.
 export const renderToReadableStream: ServerFunction = undefined as never;
 export const renderToPipeableStream: ServerFunction = undefined as never;
 export const decodeReply: ServerFunction = undefined as never;

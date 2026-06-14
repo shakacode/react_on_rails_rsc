@@ -6,6 +6,8 @@ const STOCK_SERVER_IMPORT = 'react-server-dom-webpack/server';
 const PUBLIC_SERVER_IMPORT = 'react-on-rails-rsc/server';
 
 const rewriteStockServerImport = (source: string | Buffer) => {
+  // The stock node-loader emits static ESM imports from react-server-dom-webpack/server.
+  // Keep generated references on this package's public export map for PnP/nested installs.
   const text = typeof source === 'string' ? source : source.toString('utf8');
   return text
     .split(`"${STOCK_SERVER_IMPORT}"`)

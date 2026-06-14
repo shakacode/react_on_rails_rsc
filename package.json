@@ -50,18 +50,33 @@
       "default": "./dist/react-server-dom-rspack/loader.js"
     },
     "./server": {
-      "types": "./dist/flight-server.d.ts",
       "react-server": {
-        "workerd": "./dist/flight-server.edge.js",
-        "deno": "./dist/flight-server.browser.js",
+        "workerd": {
+          "types": "./dist/flight-server.edge.d.ts",
+          "default": "./dist/flight-server.edge.js"
+        },
+        "deno": {
+          "types": "./dist/flight-server.browser.d.ts",
+          "default": "./dist/flight-server.browser.js"
+        },
+        "edge-light": {
+          "types": "./dist/flight-server.edge.d.ts",
+          "default": "./dist/flight-server.edge.js"
+        },
+        "browser": {
+          "types": "./dist/flight-server.browser.d.ts",
+          "default": "./dist/flight-server.browser.js"
+        },
         "node": {
+          "types": "./dist/flight-server.node.d.ts",
           "webpack": "./dist/flight-server.node.js",
           "default": "./dist/flight-server.node.js"
-        },
-        "edge-light": "./dist/flight-server.edge.js",
-        "browser": "./dist/flight-server.browser.js"
+        }
       },
-      "default": "./dist/flight-server.js"
+      "default": {
+        "types": "./dist/flight-server.d.ts",
+        "default": "./dist/flight-server.js"
+      }
     },
     ".": {
       "types": "./dist/types.d.ts",

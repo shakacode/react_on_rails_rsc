@@ -57,9 +57,22 @@ describe('19.2 runtime release policy', () => {
 
   it('publishes self-contained raw Flight server types instead of re-exporting untyped stock modules', () => {
     const pkg = readJson<PackageJson>('package.json');
-    const serverExport = pkg.exports?.['./server'];
+    const serverExport = pkg.exports?.['./server'] as {
+      default?: { types?: string };
+      'react-server'?: Record<string, unknown>;
+    };
 
-    expect(serverExport).toEqual(expect.objectContaining({ types: './dist/flight-server.d.ts' }));
+    expect(serverExport.default).toEqual(
+      expect.objectContaining({ types: './dist/flight-server.d.ts' })
+    );
+    expect(serverExport['react-server']).toEqual(
+      expect.objectContaining({
+        browser: expect.objectContaining({ types: './dist/flight-server.browser.d.ts' }),
+        'edge-light': expect.objectContaining({ types: './dist/flight-server.edge.d.ts' }),
+        node: expect.objectContaining({ types: './dist/flight-server.node.d.ts' }),
+        workerd: expect.objectContaining({ types: './dist/flight-server.edge.d.ts' }),
+      })
+    );
 
     for (const fileName of [
       'src/flight-server.ts',
@@ -72,5 +85,13 @@ describe('19.2 runtime release policy', () => {
       expect(source).toContain('registerClientReference');
       expect(source).not.toMatch(/export\s+\*\s+from\s+['"]react-server-dom-webpack\/server/);
     }
+
+    const runtimeTypes = fs.readFileSync(
+      path.join(repoRoot, 'types/react-server-dom-webpack/index.d.ts'),
+      'utf8'
+    );
+    expect(runtimeTypes).not.toMatch(
+      /declare module 'react-server-dom-webpack\/server\.(browser|edge)' \{\s*export \* from 'react-server-dom-webpack\/server\.node';\s*\}/
+    );
   });
 });

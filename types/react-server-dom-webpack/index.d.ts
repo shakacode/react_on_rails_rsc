@@ -1,3 +1,11 @@
+type RSCServerFunction = (...args: unknown[]) => unknown;
+type RSCRegisterClientReference = (
+  proxyImplementation: unknown,
+  id: string,
+  exportName: string
+) => unknown;
+type RSCRegisterServerReference = (reference: unknown, id: string, exportName: string) => unknown;
+
 declare module 'react-server-dom-webpack/client.browser' {
   export const createFromFetch: <T = unknown>(res: Promise<Response>, options?: {}) => Promise<T>;
   export const createFromReadableStream: <T = unknown>(
@@ -32,35 +40,42 @@ declare module 'react-server-dom-webpack/server' {
 }
 
 declare module 'react-server-dom-webpack/server.browser' {
-  export * from 'react-server-dom-webpack/server.node';
+  export const createClientModuleProxy: (moduleId: string) => unknown;
+  export const createTemporaryReferenceSet: () => unknown;
+  export const decodeAction: RSCServerFunction;
+  export const decodeFormState: RSCServerFunction;
+  export const decodeReply: RSCServerFunction;
+  export const registerClientReference: RSCRegisterClientReference;
+  export const registerServerReference: RSCRegisterServerReference;
+  export const renderToReadableStream: RSCServerFunction;
 }
 
 declare module 'react-server-dom-webpack/server.edge' {
-  export * from 'react-server-dom-webpack/server.node';
+  export const createClientModuleProxy: (moduleId: string) => unknown;
+  export const createTemporaryReferenceSet: () => unknown;
+  export const decodeAction: RSCServerFunction;
+  export const decodeFormState: RSCServerFunction;
+  export const decodeReply: RSCServerFunction;
+  export const decodeReplyFromAsyncIterable: RSCServerFunction;
+  export const registerClientReference: RSCRegisterClientReference;
+  export const registerServerReference: RSCRegisterServerReference;
+  export const renderToReadableStream: RSCServerFunction;
 }
 
 declare module 'react-server-dom-webpack/server.node' {
   export const createClientModuleProxy: (moduleId: string) => unknown;
   export const createTemporaryReferenceSet: () => unknown;
-  export const decodeAction: (...args: unknown[]) => unknown;
-  export const decodeFormState: (...args: unknown[]) => unknown;
-  export const decodeReply: (...args: unknown[]) => unknown;
-  export const decodeReplyFromAsyncIterable: (...args: unknown[]) => unknown;
-  export const decodeReplyFromBusboy: (...args: unknown[]) => unknown;
-  export const registerClientReference: (
-    proxyImplementation: unknown,
-    id: string,
-    exportName: string
-  ) => unknown;
-  export const registerServerReference: (
-    reference: unknown,
-    id: string,
-    exportName: string
-  ) => unknown;
+  export const decodeAction: RSCServerFunction;
+  export const decodeFormState: RSCServerFunction;
+  export const decodeReply: RSCServerFunction;
+  export const decodeReplyFromAsyncIterable: RSCServerFunction;
+  export const decodeReplyFromBusboy: RSCServerFunction;
+  export const registerClientReference: RSCRegisterClientReference;
+  export const registerServerReference: RSCRegisterServerReference;
   export const renderToPipeableStream: (
     model: unknown,
     webpackMap: unknown,
     options?: unknown
   ) => unknown;
-  export const renderToReadableStream: (...args: unknown[]) => unknown;
+  export const renderToReadableStream: RSCServerFunction;
 }

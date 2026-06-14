@@ -21,10 +21,11 @@ const withStreamDataErrorForwarding = (stream: NodeReadableStream): NodeReadable
 
       return (event: string | symbol, listener: (...args: any[]) => unknown) => {
         if (event !== 'data' || typeof listener !== 'function') {
-          return originalOn(event, listener);
+          originalOn(event, listener);
+          return receiver;
         }
 
-        return originalOn(event, function forwardDataErrors(this: unknown, ...args: unknown[]) {
+        originalOn(event, function forwardDataErrors(this: unknown, ...args: unknown[]) {
           try {
             return listener.apply(this, args);
           } catch (error) {
@@ -35,6 +36,7 @@ const withStreamDataErrorForwarding = (stream: NodeReadableStream): NodeReadable
             throw error;
           }
         });
+        return receiver;
       };
     },
   }) as NodeReadableStream;

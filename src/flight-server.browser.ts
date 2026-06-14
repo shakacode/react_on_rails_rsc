@@ -1,4 +1,5 @@
 import * as server from 'react-server-dom-webpack/server.browser';
+import { withStylesheetHints } from './flight-stylesheet-hints';
 
 type ServerFunction = (...args: unknown[]) => unknown;
 type RegisterClientReference = (
@@ -8,8 +9,10 @@ type RegisterClientReference = (
 ) => unknown;
 type RegisterServerReference = (reference: unknown, id: string, exportName: string) => unknown;
 
-export const renderToReadableStream: ServerFunction =
-  server.renderToReadableStream as ServerFunction;
+const renderToReadableStreamReact = server.renderToReadableStream as ServerFunction;
+
+export const renderToReadableStream: ServerFunction = (model, webpackMap, options) =>
+  renderToReadableStreamReact(model, withStylesheetHints(webpackMap), options);
 export const decodeReply: ServerFunction = server.decodeReply as ServerFunction;
 export const decodeAction: ServerFunction = server.decodeAction as ServerFunction;
 export const decodeFormState: ServerFunction = server.decodeFormState as ServerFunction;

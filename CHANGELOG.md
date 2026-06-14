@@ -18,6 +18,9 @@ All notable changes to this package will be documented in this file.
 ### Changed
 - Set the 19.0.x package line to maintenance mode after the 19.2.x line becomes `latest`; future 19.0.x releases should be limited to security fixes, severe regressions, release-artifact repairs, or downstream React on Rails support obligations. ([#102])
 
+### Fixed
+- Preserved wrapper-layer RSC stylesheet hints for conditional `react-on-rails-rsc/server` Flight renderers, including edge/workerd, while using the stock React 19.2 runtime. ([#102])
+
 ## [19.0.5] - 2026-06-13
 
 ### Added

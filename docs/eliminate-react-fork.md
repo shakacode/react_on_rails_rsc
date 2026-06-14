@@ -231,16 +231,16 @@ The current FOUC mechanism is server-side only, and the client half is already s
   `ReactDOM.preinit(href, { as: 'style', precedence: 'rsc-css' })` during a Flight render therefore
   produces wire-identical hints.
 
-Proposed wrapper-layer design (to prototype in #60): `src/server.node.ts` already owns the
-`filePathToModuleMetadata` object it passes to `renderToPipeableStream` as the `webpackMap`. Wrap it in
-a `Proxy` whose property getter — invoked by the stock runtime's client-reference metadata lookup
-(`config[modulePath]`, with `#`-suffix fallback) during serialization, i.e. inside the active request —
-calls `ReactDOM.preinit(...)` for each `css` entry of the resolved module before returning the
-metadata. This is request-scoped, preserves client-reference prop shapes (unlike the abandoned
-loader-wrapper approach from PR #35), and needs zero React changes. Duplicate `preinit` calls for the
-same href (e.g. the same client module referenced from two Suspense boundaries) are idempotent:
-`emitHint` deduplicates on the `"S|" + href` key. The existing
-`tests/react-flight-client-reference-css.rsc.test.ts` suite must pass against the new implementation.
+Implemented wrapper-layer design: the public `server.node` wrapper and the conditional `./server`
+Flight shims wrap the `filePathToModuleMetadata` / webpack map object in a `Proxy`. The property
+getter — invoked by the stock runtime's client-reference metadata lookup (`config[modulePath]`, with
+`#`-suffix fallback) during serialization, i.e. inside the active request — calls
+`ReactDOM.preinit(...)` for each `css` entry of the resolved module before returning the metadata.
+This is request-scoped, preserves client-reference prop shapes (unlike the abandoned loader-wrapper
+approach from PR #35), and needs zero React changes. Duplicate `preinit` calls for the same href
+(e.g. the same client module referenced from two Suspense boundaries) are idempotent: `emitHint`
+deduplicates on the `"S|" + href` key. The `tests/react-flight-client-reference-css*.rsc.test.ts`
+suites cover the node and edge render paths.
 
 If the proxy prototype fails (e.g. lookup happens outside the request context, or hint ordering
 regresses the `$RR` gating), fall back to Option 4 below.
@@ -276,7 +276,7 @@ unacceptable before 19.3, that triggers the Option 4 fallback instead.
 | `./client` (browser/default), `./client.browser` | wrapper → vendored `client.browser` | wrapper → `react-server-dom-webpack/client.browser` | ✓ 19.2.7 exports a superset (`createFromFetch`, `createFromReadableStream`, `createServerReference`, `createTemporaryReferenceSet`, `encodeReply` + new `registerServerReference`) |
 | `./client.node` | wrapper → vendored `client.node` | wrapper → stock `client.node` | ✓ |
 | `./server.node` | wrapper → vendored `server.node` | wrapper → stock `server.node` + wrapper-layer FOUC hints | ✓ `renderToPipeableStream(model, webpackMap, options)` unchanged; 19.2.7 adds `prerender`, `prerenderToNodeStream`, `renderToReadableStream`, `decodeReplyFromAsyncIterable` |
-| `./server` (conditional map) | re-exposes vendored condition map incl. `react-server`, `workerd`, `deno`, `edge-light`, `browser`, node `webpack`/`default` split | per-condition re-export shims of `react-server-dom-webpack/server.*` | ✓ with one caveat: stock ≥19.2.4 **removed the `*.unbundled` variants** and the node `webpack`/`default` split (upstream `378973b387b6a6f287e451dd0356099180684c3c`, [facebook/react#35290](https://github.com/facebook/react/pull/35290), 2025-12-05 — moved to private `react-server-dom-unbundled`). See below. |
+| `./server` (conditional map) | re-exposes vendored condition map incl. `react-server`, `workerd`, `deno`, `edge-light`, `browser`, node `webpack`/`default` split | per-condition shims of `react-server-dom-webpack/server.*` + wrapper-layer FOUC hints for render APIs | ✓ with one caveat: stock ≥19.2.4 **removed the `*.unbundled` variants** and the node `webpack`/`default` split (upstream `378973b387b6a6f287e451dd0356099180684c3c`, [facebook/react#35290](https://github.com/facebook/react/pull/35290), 2025-12-05 — moved to private `react-server-dom-unbundled`). See below. |
 | `./WebpackPlugin`, `./WebpackLoader`, `./RSCReferenceDiscoveryPlugin`, `./RspackPlugin`, `./RspackLoader` | in-repo TS (loader currently delegates to vendored `esm/` transform) | in-repo TS only (#56) | ✓ no stock-runtime dependency; loader-emitted code imports `react-on-rails-rsc/server` (`registerClientReference`/`registerServerReference`), which the re-export shims provide |
 | `.` (types) | in-repo `dist/types` | unchanged | ✓ |
 

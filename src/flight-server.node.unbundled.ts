@@ -1,4 +1,5 @@
 import * as server from 'react-server-dom-webpack/server.node';
+import { withStylesheetHints } from './flight-stylesheet-hints';
 
 // Plain Node can reuse stock render/registration helpers; decode APIs below
 // still fail explicitly because they need the removed unbundled loader runtime.
@@ -26,10 +27,13 @@ const unsupportedPlainNodeDecode = (apiName: string): ServerFunction => {
   };
 };
 
-export const renderToReadableStream: ServerFunction =
-  server.renderToReadableStream as ServerFunction;
-export const renderToPipeableStream: ServerFunction =
-  server.renderToPipeableStream as ServerFunction;
+const renderToReadableStreamReact = server.renderToReadableStream as ServerFunction;
+const renderToPipeableStreamReact = server.renderToPipeableStream as ServerFunction;
+
+export const renderToReadableStream: ServerFunction = (model, webpackMap, options) =>
+  renderToReadableStreamReact(model, withStylesheetHints(webpackMap), options);
+export const renderToPipeableStream: ServerFunction = (model, webpackMap, options) =>
+  renderToPipeableStreamReact(model, withStylesheetHints(webpackMap), options);
 export const decodeReply: ServerFunction = unsupportedPlainNodeDecode('decodeReply');
 export const decodeReplyFromBusboy: ServerFunction =
   unsupportedPlainNodeDecode('decodeReplyFromBusboy');

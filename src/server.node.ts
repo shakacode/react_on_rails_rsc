@@ -1,5 +1,5 @@
 import { BundleManifest } from './types';
-import { preinit } from 'react-dom';
+import { withStylesheetHints } from './flight-stylesheet-hints';
 import { renderToPipeableStream as renderToPipeableStreamReact } from 'react-server-dom-webpack/server.node';
 
 export interface Options {
@@ -20,28 +20,6 @@ export interface PipeableStream {
   pipe<Writable extends WritableStreamLike>(destination: Writable): Writable;
 }
 
-type ClientReferenceMetadata = BundleManifest['filePathToModuleMetadata'][string];
-
-const RSC_CSS_PRECEDENCE = 'rsc-css';
-
-const preinitStylesheetsForClientReference = (metadata: ClientReferenceMetadata | undefined) => {
-  if (!metadata?.css) return;
-  for (const href of metadata.css) {
-    preinit(href, { as: 'style', precedence: RSC_CSS_PRECEDENCE });
-  }
-};
-
-const withStylesheetHints = (
-  filePathToModuleMetadata: BundleManifest['filePathToModuleMetadata'],
-) =>
-  new Proxy(filePathToModuleMetadata, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver) as ClientReferenceMetadata | undefined;
-      preinitStylesheetsForClientReference(value);
-      return value;
-    },
-  });
-
 export const buildServerRenderer = (clientManifest: BundleManifest) => {
   const filePathToModuleMetadata = withStylesheetHints(clientManifest.filePathToModuleMetadata);
   return {
@@ -56,7 +34,11 @@ export const buildServerRenderer = (clientManifest: BundleManifest) => {
   };
 };
 
-export const renderToPipeableStream = (model: unknown, clientManifest: BundleManifest, options?: Options) => {
+export const renderToPipeableStream = (
+  model: unknown,
+  clientManifest: BundleManifest,
+  options?: Options
+) => {
   const filePathToModuleMetadata = withStylesheetHints(clientManifest.filePathToModuleMetadata);
   return renderToPipeableStreamReact(model, filePathToModuleMetadata, options) as PipeableStream;
-}
+};

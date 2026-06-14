@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [19.2.0-rc.1] - 2026-06-14
 
 ### Breaking Changes
-- Moved the package to the React 19.2 runtime line by depending on stock `react-server-dom-webpack@^19.2.7`, removing the published vendored Flight runtime, and raising the `react` and `react-dom` peer dependency floor to `^19.2.7`. ([#66])
+- Moved the package to the React 19.2 runtime line by depending on stock `react-server-dom-webpack@^19.2.7`, removing the published vendored Flight runtime, and raising the `react` and `react-dom` peer dependency floor to `^19.2.7`. ([#102])
 
   **Migration Guide:**
 
@@ -14,7 +14,7 @@ All notable changes to this package will be documented in this file.
   3. Use the `react-on-rails-rsc/server` export for raw Flight runtime helpers such as `registerClientReference`.
 
 ### Changed
-- Set the 19.0.x package line to maintenance mode after the 19.2.x line becomes `latest`; future 19.0.x releases should be limited to security fixes, severe regressions, release-artifact repairs, or downstream React on Rails support obligations. ([#66])
+- Set the 19.0.x package line to maintenance mode after the 19.2.x line becomes `latest`; future 19.0.x releases should be limited to security fixes, severe regressions, release-artifact repairs, or downstream React on Rails support obligations. ([#102])
 
 ## [19.0.5] - 2026-06-13
 
@@ -37,7 +37,7 @@ All notable changes to this package will be documented in this file.
 [19.2.0-rc.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0-rc.1
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
-[#66]: https://github.com/shakacode/react_on_rails_rsc/issues/66
+[#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23
 [#29]: https://github.com/shakacode/react_on_rails_rsc/pull/29
 [#33]: https://github.com/shakacode/react_on_rails_rsc/pull/33

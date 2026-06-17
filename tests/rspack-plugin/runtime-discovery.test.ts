@@ -37,8 +37,19 @@ interface RunResult {
   clientEntryKeys: string[];
   pluginResolvedRuntime: string;
   appRuntimeResource: string;
+  // The runtime resource rspack actually recorded in the module graph (read
+  // back from stats), as opposed to the synthesized `appRuntimeResource`.
+  recordedRuntimeResource?: string;
   manifestEmitted: boolean;
 }
+
+// Asserts the duplicate-install topology genuinely produced a divergent runtime
+// path — grounded in what rspack RECORDED, not a constructed path — so the
+// regression cannot pass vacuously if resolution ever collapses to one install.
+const expectDivergentRuntime = (result: RunResult): void => {
+  expect(result.recordedRuntimeResource).toBeTruthy();
+  expect(result.recordedRuntimeResource).not.toBe(result.pluginResolvedRuntime);
+};
 
 const runDuplicateRuntime = (isServer: boolean): RunResult => {
   const argsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ror-rsc-dup-args-'));
@@ -79,7 +90,7 @@ describe('RSCRspackPlugin runtime discovery (issue #105)', () => {
     // plugin's resolved path actually diverge. Folded into this build rather
     // than a separate `it` so we do not run an extra full rspack compile just
     // for the divergence assertion.
-    expect(result.appRuntimeResource).not.toBe(result.pluginResolvedRuntime);
+    expectDivergentRuntime(result);
 
     expect(result.ok).toBe(true);
     const notFound = result.warnings.find((w) => RUNTIME_NOT_FOUND.test(w));
@@ -100,6 +111,7 @@ describe('RSCRspackPlugin runtime discovery (issue #105)', () => {
 
   it('finds the client runtime when rspack records a duplicate-install path (server build)', () => {
     const result = runDuplicateRuntime(true);
+    expectDivergentRuntime(result);
     expect(result.ok).toBe(true);
     const notFound = result.warnings.find((w) => RUNTIME_NOT_FOUND.test(w));
     expect(notFound).toBeUndefined();

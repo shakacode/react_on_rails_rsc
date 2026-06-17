@@ -146,7 +146,7 @@ rspack(config, (err, stats) => {
     process.exit(1);
     return;
   }
-  const info = stats.toJson({ errors: true, warnings: true, assets: true });
+  const info = stats.toJson({ errors: true, warnings: true, assets: true, modules: true });
   if (stats.hasErrors()) {
     finish({
       ok: false,
@@ -167,6 +167,29 @@ rspack(config, (err, stats) => {
     clientEntryKeys = Object.keys(manifest.filePathToModuleMetadata || {});
   }
 
+  // The runtime resource rspack ACTUALLY recorded in the module graph, read
+  // back from stats rather than synthesized — so the test's divergence check
+  // proves a genuinely divergent `mod.resource`, not a constructed path that
+  // could look divergent even if resolution collapsed to a single install.
+  const expectedSuffix = path.sep + path.join(
+    'react-server-dom-webpack',
+    isServer ? 'client.node.js' : 'client.browser.js',
+  );
+  const findRecordedRuntime = (modules) => {
+    for (const m of modules || []) {
+      const identifier = m.identifier || '';
+      const afterLoaders = identifier.includes('!')
+        ? identifier.slice(identifier.lastIndexOf('!') + 1)
+        : identifier;
+      const resource = afterLoaders.split('?')[0];
+      if (resource.endsWith(expectedSuffix)) return resource;
+      const nested = findRecordedRuntime(m.modules);
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+  const recordedRuntimeResource = findRecordedRuntime(info.modules);
+
   finish({
     ok: true,
     warnings: (info.warnings || []).map((w) => w.message),
@@ -174,6 +197,7 @@ rspack(config, (err, stats) => {
     // Diagnostics so the test failure message is actionable.
     pluginResolvedRuntime,
     appRuntimeResource,
+    recordedRuntimeResource,
     manifestEmitted: fs.existsSync(manifestPath),
   });
 });

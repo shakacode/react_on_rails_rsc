@@ -48,6 +48,7 @@ const runDuplicateRuntime = (isServer: boolean): RunResult => {
     const out = execFileSync('node', [RUNNER, argsFile], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 120_000,
     });
     return JSON.parse(out) as RunResult;
   } catch (e) {
@@ -71,19 +72,30 @@ describe('RSCRspackPlugin runtime discovery (issue #105)', () => {
     }
   });
 
-  it('reproduces the divergent runtime path the fix must tolerate', () => {
-    const result = runDuplicateRuntime(false);
-    // Sanity: the test is only meaningful if the two paths actually diverge.
-    expect(result.appRuntimeResource).not.toBe(result.pluginResolvedRuntime);
-  });
-
   it('finds the client runtime when rspack records a duplicate-install path (client build)', () => {
     const result = runDuplicateRuntime(false);
+
+    // Sanity: the test is only meaningful if the recorded runtime path and the
+    // plugin's resolved path actually diverge. Folded into this build rather
+    // than a separate `it` so we do not run an extra full rspack compile just
+    // for the divergence assertion.
+    expect(result.appRuntimeResource).not.toBe(result.pluginResolvedRuntime);
+
     expect(result.ok).toBe(true);
     const notFound = result.warnings.find((w) => RUNTIME_NOT_FOUND.test(w));
     expect(notFound).toBeUndefined();
     expect(result.manifestEmitted).toBe(true);
+
+    // A client component directly imported by the entry graph.
     expect(result.clientEntryKeys.some((k) => k.endsWith('ClientButton.js'))).toBe(true);
+
+    // A "use client" component reached ONLY through the plugin's filesystem
+    // discovery (never imported by the entry). This requires the injection
+    // loader to run on the duplicate-install runtime module — the part the
+    // detection-only fix missed. Detection alone suppresses the warning but
+    // leaves this entry out of the manifest, so this is the assertion that
+    // catches the incomplete module map.
+    expect(result.clientEntryKeys.some((k) => k.endsWith('FsDiscoveredClient.js'))).toBe(true);
   });
 
   it('finds the client runtime when rspack records a duplicate-install path (server build)', () => {
@@ -93,5 +105,6 @@ describe('RSCRspackPlugin runtime discovery (issue #105)', () => {
     expect(notFound).toBeUndefined();
     expect(result.manifestEmitted).toBe(true);
     expect(result.clientEntryKeys.some((k) => k.endsWith('ClientButton.js'))).toBe(true);
+    expect(result.clientEntryKeys.some((k) => k.endsWith('FsDiscoveredClient.js'))).toBe(true);
   });
 });

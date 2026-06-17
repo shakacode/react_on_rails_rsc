@@ -15,6 +15,14 @@
  * under `node_modules`, plus a runtime entry that imports the runtime so rspack
  * resolves it against the APP copy — not the package copy the plugin resolves.
  *
+ * It also writes a `FsDiscoveredClient.js` "use client" component that is NOT
+ * imported by the entry graph. The plugin reaches it only through its
+ * filesystem `resolveAllClientFiles` walk and must inject an `import()` for it
+ * via the injection loader on the runtime module. If the injection-loader rule
+ * matches only the plugin's own resolved runtime path (strict equality), it
+ * never matches the duplicate-install runtime module, so this file never
+ * reaches the manifest — the incomplete-module-map half of #105.
+ *
  * Args JSON shape:
  *   { isServer: boolean }
  *
@@ -75,6 +83,16 @@ fs.writeFileSync(
 fs.writeFileSync(
   path.join(appDir, 'ClientButton.js'),
   `'use client';\nexport default function ClientButton() { return 'client-button'; }\n`,
+);
+// A "use client" component that is NOT imported anywhere in the entry graph.
+// The plugin discovers it through its filesystem `resolveAllClientFiles` walk
+// and must inject an import() for it via the injection loader on the runtime
+// module. If the injection-loader rule does not match the (duplicate-install)
+// runtime module, this file never becomes an async chunk and never reaches the
+// manifest — the incomplete-module-map symptom of #105.
+fs.writeFileSync(
+  path.join(appDir, 'FsDiscoveredClient.js'),
+  `'use client';\nexport default function FsDiscoveredClient() { return 'fs-discovered'; }\n`,
 );
 fs.writeFileSync(
   path.join(appDir, 'index.js'),

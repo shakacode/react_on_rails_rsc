@@ -49,7 +49,7 @@ All notable changes to this package will be documented in this file.
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
-[#105]: https://github.com/shakacode/react_on_rails_rsc/issues/105
+[#105]: https://github.com/shakacode/react_on_rails_rsc/pull/106
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23
 [#29]: https://github.com/shakacode/react_on_rails_rsc/pull/29
 [#33]: https://github.com/shakacode/react_on_rails_rsc/pull/33

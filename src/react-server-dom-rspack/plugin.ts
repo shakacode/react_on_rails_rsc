@@ -530,9 +530,12 @@ export class RSCRspackPlugin {
     // Check if the client runtime module was found in this compilation.
     // The webpack plugin emits a warning and skips manifest emission if
     // the runtime is missing (likely a misconfiguration).
-    const clientFileNameOnClient = require.resolve('react-server-dom-webpack/client.browser');
-    const clientFileNameOnServer = require.resolve('react-server-dom-webpack/client.node');
-    const expectedRuntime = this.options.isServer ? clientFileNameOnServer : clientFileNameOnClient;
+    //
+    // The runtime is recognized by `isRuntimeResource` rather than strict
+    // path equality so a duplicate `react-server-dom-webpack` install — a
+    // second copy in the app's node_modules, a pnpm/yarn symlink store, or a
+    // hoisted-vs-nested layout — still counts as the runtime (#105). This
+    // mirrors the webpack plugin's `isReactOnRailsRSCRuntimeResource` (#43).
     let clientFileNameFound = false;
 
     const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
@@ -555,13 +558,13 @@ export class RSCRspackPlugin {
         for (const m of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
           const mod = m as AnyModule;
 
-          if (mod.resource === expectedRuntime) clientFileNameFound = true;
+          if (isRuntimeResource(mod.resource, this.options.isServer)) clientFileNameFound = true;
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
           this.recordModule(mod, moduleId, groupChunks, resolvedClientFiles, filePathToModuleMetadata);
           if (mod.modules) {
             for (const inner of mod.modules) {
-              if (inner.resource === expectedRuntime) clientFileNameFound = true;
+              if (isRuntimeResource(inner.resource, this.options.isServer)) clientFileNameFound = true;
               this.recordModule(inner, moduleId, groupChunks, resolvedClientFiles, filePathToModuleMetadata);
             }
           }
@@ -697,4 +700,84 @@ function isBundler(b: unknown): b is Bundler {
 function exactResourceRegexp(resourcePath: string): RegExp {
   // Escape all regex metacharacters so an absolute file path is matched literally.
   return new RegExp(`^${resourcePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+}
+
+// The runtime module the plugin keys client-reference detection on, resolved
+// from THIS package install. Used as the fast-path match for the common
+// single-install layout.
+const clientFileNameOnClient = tryResolveRuntime('react-server-dom-webpack/client.browser');
+const clientFileNameOnServer = tryResolveRuntime('react-server-dom-webpack/client.node');
+
+const runtimeResourceDetectionCache = new Map<string, boolean>();
+
+function tryResolveRuntime(request: string): string | undefined {
+  try {
+    return require.resolve(request);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Detects whether `resource` is the react-on-rails-rsc Flight client runtime
+ * the plugin keys its client-reference injection on.
+ *
+ * A strict `resource === require.resolve(...)` check is not enough: rspack
+ * records `mod.resource` from the bundle's own resolution, which can be a
+ * DIFFERENT install path than the plugin's `require.resolve` returns — a
+ * second `react-server-dom-webpack` copy in the app's node_modules, a
+ * pnpm/yarn symlink store, or a hoisted-vs-nested layout. When the paths
+ * diverge the strict check fails and the module map is skipped (#105).
+ *
+ * This mirrors the webpack plugin's `isReactOnRailsRSCRuntimeResource` (#43):
+ * the fast path matches the resolved runtime of this install, then a
+ * duplicate-install path recognizes the runtime by file-name suffix confirmed
+ * by walking up to a `react-server-dom-webpack` package.json. Results are
+ * memoized because this runs for every module in the compilation.
+ */
+function isRuntimeResource(resource: string | undefined, isServer: boolean): boolean {
+  if (typeof resource !== 'string') return false;
+  const cacheKey = `${isServer}\0${resource}`;
+  const cached = runtimeResourceDetectionCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const result = detectRuntimeResource(resource, isServer);
+  runtimeResourceDetectionCache.set(cacheKey, result);
+  return result;
+}
+
+function detectRuntimeResource(resource: string, isServer: boolean): boolean {
+  // Fast path: the runtime module of THIS package install.
+  const expected = isServer ? clientFileNameOnServer : clientFileNameOnClient;
+  if (expected !== undefined && resource === expected) return true;
+
+  // Duplicate-install path: another copy of the stock Flight runtime in the
+  // module graph still counts as the runtime. Recognize it by file-name
+  // suffix, then confirm by walking up to a package.json whose `name` is
+  // `react-server-dom-webpack`.
+  const normalizedResource = path.normalize(resource);
+  const expectedSuffix = path.join(
+    'react-server-dom-webpack',
+    isServer ? 'client.node.js' : 'client.browser.js',
+  );
+  if (!normalizedResource.endsWith(path.sep + expectedSuffix)) return false;
+
+  let dir = path.dirname(normalizedResource);
+  for (let i = 0; i < 20; i++) {
+    const packageJsonPath = path.join(dir, 'package.json');
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
+        name?: string;
+      };
+      if (packageJson.name === 'react-server-dom-webpack') return true;
+    } catch (x) {
+      const code = (x as NodeJS.ErrnoException).code;
+      if (!(x instanceof SyntaxError) && code !== 'ENOENT' && code !== 'ENOTDIR') {
+        return false;
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+  return false;
 }

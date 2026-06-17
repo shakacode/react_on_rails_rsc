@@ -2,6 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Fixed the Rspack RSC build skipping the client-references module map on the 19.2 line when `react-server-dom-webpack` resolves to a different install path than the plugin's own copy (duplicate installs, pnpm/yarn symlink stores, hoisted-vs-nested layouts). The plugin now recognizes the Flight client runtime by file-name suffix confirmed through a `react-server-dom-webpack` `package.json` walk instead of strict resolved-path equality, matching the Webpack plugin's duplicate-install handling, so the module map is emitted and Rspack-rendered RSC client content works again. ([#105])
+
 ## [19.2.0-rc.1] - 2026-06-14
 
 ### Breaking Changes
@@ -39,10 +44,12 @@ All notable changes to this package will be documented in this file.
 ### Security
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
+[Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.0-rc.1...HEAD
 [19.2.0-rc.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0-rc.1
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
+[#105]: https://github.com/shakacode/react_on_rails_rsc/issues/105
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23
 [#29]: https://github.com/shakacode/react_on_rails_rsc/pull/29
 [#33]: https://github.com/shakacode/react_on_rails_rsc/pull/33

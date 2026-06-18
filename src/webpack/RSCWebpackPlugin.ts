@@ -190,6 +190,9 @@ type FlightBlock = {
 
 type FlightEntrypoint = {
   getRuntimeChunk(): { files: Iterable<string> } | null;
+  // An entrypoint's own chunks are exactly the chunks the page loads
+  // initially (vendor/common/styleguide splits + the entry chunk).
+  chunks: Iterable<FlightChunk>;
 };
 
 type FlightCompilation = {
@@ -475,6 +478,25 @@ export class RSCWebpackPlugin {
             }
           });
 
+          // Initial-chunk CSS filtering (#108, the follow-up to #52's
+          // runtime-chunk filtering): a client reference's chunk group pulls in
+          // the shared *initial* chunks it depends on (vendor/common/styleguide
+          // etc.). Those chunks' stylesheets are already loaded by the page's
+          // own entry as ordinary `<link>`s, so re-emitting them here — once per
+          // client reference, at `rsc-css` precedence (end of <head>) — is
+          // redundant render-blocking work and the dominant FCP/LCP regression
+          // when a real page is converted to RSC. Collect every initial chunk's
+          // files so the client build can exclude their CSS from per-module CSS
+          // lists; the server manifest is unaffected (`this.isServer`).
+          const initialChunkFiles = new Set<string>();
+          compilation.entrypoints.forEach((entrypoint) => {
+            for (const chunk of entrypoint.chunks ?? []) {
+              for (const file of chunk.files) {
+                initialChunkFiles.add(file);
+              }
+            }
+          });
+
           let cssPrefix =
             typeof compilation.outputOptions.publicPath === 'string' &&
             compilation.outputOptions.publicPath !== 'auto'
@@ -539,7 +561,8 @@ export class RSCWebpackPlugin {
                   file.endsWith('.css') &&
                   !file.endsWith('.hot-update.css') &&
                   cssPrefix !== null &&
-                  (this.isServer || !runtimeChunkFiles.has(file))
+                  (this.isServer ||
+                    (!runtimeChunkFiles.has(file) && !initialChunkFiles.has(file)))
                 ) {
                   cssFiles.add(cssPrefix + file);
                 } else if (

@@ -45,12 +45,12 @@ const asyncLib = require('neo-async') as {
   map<T, R>(
     arr: ReadonlyArray<T>,
     iterator: (item: T, callback: (err: Error | null, result?: R) => void) => void,
-    callback: (err: Error | null, results?: R[]) => void,
+    callback: (err: Error | null, results?: R[]) => void
   ): void;
   filter<T>(
     arr: ReadonlyArray<T>,
     iterator: (item: T, callback: (err: Error | null, keep?: boolean) => void) => void,
-    callback: (err: Error | null, results?: T[]) => void,
+    callback: (err: Error | null, results?: T[]) => void
   ): void;
 };
 
@@ -84,7 +84,10 @@ const runtimeResourceDetectionCache = new Map<string, boolean>();
  * the plugin keys its client-reference injection on. Results are memoized
  * because the parser hook runs for every module in the compilation.
  */
-function isReactOnRailsRSCRuntimeResource(resource: string | undefined, isServer: boolean): boolean {
+function isReactOnRailsRSCRuntimeResource(
+  resource: string | undefined,
+  isServer: boolean
+): boolean {
   const cacheKey = `${isServer}\0${resource}`;
   const cached = runtimeResourceDetectionCache.get(cacheKey);
   if (cached !== undefined) return cached;
@@ -95,7 +98,7 @@ function isReactOnRailsRSCRuntimeResource(resource: string | undefined, isServer
 
 function detectReactOnRailsRSCRuntimeResource(
   resource: string | undefined,
-  isServer: boolean,
+  isServer: boolean
 ): boolean {
   // Fast path: the runtime module of THIS package install.
   if (resource === (isServer ? clientFileNameOnServer : clientFileNameOnClient)) {
@@ -110,7 +113,7 @@ function detectReactOnRailsRSCRuntimeResource(
   const normalizedResource = path.normalize(resource);
   const expectedSuffix = path.join(
     'react-server-dom-webpack',
-    isServer ? 'client.node.js' : 'client.browser.js',
+    isServer ? 'client.node.js' : 'client.browser.js'
   );
   if (!normalizedResource.endsWith(path.sep + expectedSuffix)) return false;
 
@@ -150,6 +153,16 @@ export type Options = {
   chunkName?: string;
   clientManifestFilename?: string;
   serverConsumerManifestFilename?: string;
+  /**
+   * SPIKE (#4049): module file paths of Server Components (NOT 'use client')
+   * whose imported CSS should be delivered to the browser. On the CLIENT
+   * build, each is injected as a CSS-only async block so MiniCssExtractPlugin
+   * extracts its CSS sibling into a real browser asset, and the resulting
+   * href is recorded under `serverComponentCss` keyed by the module file URL.
+   * Render-side code fires `preinit` for the server components actually
+   * rendered on a page (scoping avoids the #3211 over-linking pitfall).
+   */
+  serverComponentCssReferences?: ReadonlyArray<string>;
 };
 
 type ModuleMetadata = {
@@ -235,7 +248,7 @@ type FlightResolver = {
     basePath: string,
     request: string,
     resolveContext: object,
-    callback: (err: Error | null, result?: unknown) => void,
+    callback: (err: Error | null, result?: unknown) => void
   ): void;
 };
 
@@ -250,7 +263,7 @@ type FlightContextModuleFactory = {
       include: undefined;
       exclude: RegExp | undefined;
     },
-    callback: (err: Error | null, dependencies?: Array<{ userRequest: string }>) => void,
+    callback: (err: Error | null, dependencies?: Array<{ userRequest: string }>) => void
   ): void;
 };
 
@@ -266,8 +279,8 @@ type FlightCompiler = {
         name: string,
         fn: (
           params: { contextModuleFactory: FlightContextModuleFactory },
-          callback: (err?: Error | null) => void,
-        ) => void,
+          callback: (err?: Error | null) => void
+        ) => void
       ): void;
     };
     thisCompilation: {
@@ -275,8 +288,8 @@ type FlightCompiler = {
         name: string,
         fn: (
           compilation: FlightCompilation,
-          params: { normalModuleFactory: FlightNormalModuleFactory },
-        ) => void,
+          params: { normalModuleFactory: FlightNormalModuleFactory }
+        ) => void
       ): void;
     };
     make: {
@@ -289,11 +302,14 @@ type ReadFileFs = {
   readFile(
     filePath: string,
     encoding: string,
-    callback: (err: Error | null, content?: string) => void,
+    callback: (err: Error | null, content?: string) => void
   ): void;
 };
 
 const PLUGIN_NAME = 'React Server Plugin';
+
+/** SPIKE (#4049): chunk-name prefix for Server-Component CSS-only blocks. */
+const SC_CSS_CHUNK_PREFIX = 'rsc-sc-css-';
 
 export class RSCWebpackPlugin {
   readonly isServer: boolean;
@@ -311,13 +327,14 @@ export class RSCWebpackPlugin {
    */
   readonly serverConsumerManifestFilename: string;
 
+  /** SPIKE (#4049): Server-Component modules whose CSS to deliver. */
+  readonly serverComponentCssReferences: ReadonlyArray<string>;
+
   static __internal_isReactOnRailsRSCRuntimeResource = isReactOnRailsRSCRuntimeResource;
 
   constructor(options: Options) {
     if (!options || typeof options.isServer !== 'boolean') {
-      throw new Error(
-        'React Server Plugin: You must specify the isServer option as a boolean.',
-      );
+      throw new Error('React Server Plugin: You must specify the isServer option as a boolean.');
     }
     this.isServer = options.isServer;
 
@@ -347,10 +364,10 @@ export class RSCWebpackPlugin {
     const defaultClientManifestFilename = this.isServer
       ? 'react-server-client-manifest.json'
       : 'react-client-manifest.json';
-    this.clientManifestFilename =
-      options.clientManifestFilename || defaultClientManifestFilename;
+    this.clientManifestFilename = options.clientManifestFilename || defaultClientManifestFilename;
     this.serverConsumerManifestFilename =
       options.serverConsumerManifestFilename || 'react-ssr-manifest.json';
+    this.serverComponentCssReferences = options.serverComponentCssReferences || [];
   }
 
   apply(compiler: webpack.Compiler): void {
@@ -377,7 +394,7 @@ export class RSCWebpackPlugin {
           }
           resolvedClientReferences = resolvedClientRefs;
           callback();
-        },
+        }
       );
     });
 
@@ -387,10 +404,7 @@ export class RSCWebpackPlugin {
     flightCompiler.hooks.thisCompilation.tap(PLUGIN_NAME, (compilation, params) => {
       const normalModuleFactory = params.normalModuleFactory;
       compilation.dependencyFactories.set(ClientReferenceDependency, normalModuleFactory);
-      compilation.dependencyTemplates.set(
-        ClientReferenceDependency,
-        new NullDependency.Template(),
-      );
+      compilation.dependencyTemplates.set(ClientReferenceDependency, new NullDependency.Template());
 
       const handler = (parser: FlightParser) => {
         parser.hooks.program.tap(PLUGIN_NAME, () => {
@@ -399,19 +413,41 @@ export class RSCWebpackPlugin {
             return;
           }
           clientFileNameFound = true;
-          if (!resolvedClientReferences) return;
-          for (let i = 0; i < resolvedClientReferences.length; i++) {
-            const dep = resolvedClientReferences[i]!;
-            const chunkName = this.chunkName
-              .replace(/\[index\]/g, `${i}`)
-              .replace(/\[request\]/g, Template.toPath(dep.userRequest));
-            const block = new webpack.AsyncDependenciesBlock(
-              { name: chunkName },
-              undefined,
-              dep.request,
-            );
-            block.addDependency(dep);
-            module.addBlock!(block);
+          if (resolvedClientReferences) {
+            for (let i = 0; i < resolvedClientReferences.length; i++) {
+              const dep = resolvedClientReferences[i]!;
+              const chunkName = this.chunkName
+                .replace(/\[index\]/g, `${i}`)
+                .replace(/\[request\]/g, Template.toPath(dep.userRequest));
+              const block = new webpack.AsyncDependenciesBlock(
+                { name: chunkName },
+                undefined,
+                dep.request
+              );
+              block.addDependency(dep);
+              module.addBlock!(block);
+            }
+          }
+
+          // SPIKE (#4049): on the CLIENT build, inject one CSS-only async
+          // block per Server-Component reference. Importing the module pulls
+          // its CSS sibling into a dedicated chunk that MiniCssExtractPlugin
+          // emits as a real browser asset. The block is named with the
+          // SC_CSS_CHUNK_PREFIX so the manifest phase below can find it and
+          // record only its CSS (the JS is dead weight we ignore).
+          if (!this.isServer && this.serverComponentCssReferences.length > 0) {
+            for (let i = 0; i < this.serverComponentCssReferences.length; i++) {
+              const request = this.serverComponentCssReferences[i]!;
+              const dep = new ClientReferenceDependency(request);
+              dep.userRequest = request;
+              const block = new webpack.AsyncDependenciesBlock(
+                { name: `${SC_CSS_CHUNK_PREFIX}${i}` },
+                undefined,
+                request
+              );
+              block.addDependency(dep);
+              module.addBlock!(block);
+            }
           }
         });
       };
@@ -436,8 +472,8 @@ export class RSCWebpackPlugin {
               new webpack.WebpackError(
                 'Client runtime at react-on-rails-rsc/client was not found. React Server Components module map file ' +
                   this.clientManifestFilename +
-                  ' was not created.',
-              ),
+                  ' was not created.'
+              )
             );
             return;
           }
@@ -451,15 +487,19 @@ export class RSCWebpackPlugin {
               : null;
 
           const resolvedClientFiles = new Set(
-            (resolvedClientReferences || []).map((ref) => ref.request),
+            (resolvedClientReferences || []).map((ref) => ref.request)
           );
           const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
+          // SPIKE (#4049): server-component-module-URL -> css hrefs.
+          const serverComponentCss: Record<string, string[]> = {};
           const manifest = {
             moduleLoading: {
               prefix: compilation.outputOptions.publicPath || '',
               crossOrigin,
             },
             filePathToModuleMetadata,
+            // Only emitted when there are server-component CSS references.
+            ...(this.serverComponentCssReferences.length > 0 ? { serverComponentCss } : {}),
           };
 
           // Runtime-chunk filtering: collect the files of every
@@ -493,7 +533,7 @@ export class RSCWebpackPlugin {
           // URL) instead of overwriting it.
           const recordChunkGroup = (
             chunkGroup: FlightChunkGroup,
-            chunkResolvedClientFiles: Set<string>,
+            chunkResolvedClientFiles: Set<string>
           ): void => {
             const chunks: (string | number | null)[] = [];
             const cssFiles = new Set<string>();
@@ -595,8 +635,8 @@ export class RSCWebpackPlugin {
                   compilation.warnings.push(
                     new webpack.WebpackError(
                       'Client reference blocks were unavailable for one or more chunk groups. ' +
-                        'React Server Components client manifest entries for affected chunk groups were skipped.',
-                    ),
+                        'React Server Components client manifest entries for affected chunk groups were skipped.'
+                    )
                   );
                 }
                 continue;
@@ -611,8 +651,7 @@ export class RSCWebpackPlugin {
                   // duplicate copy of this plugin module (e.g. two
                   // node_modules instances), where `instanceof` fails.
                   if (
-                    (dep instanceof ClientReferenceDependency ||
-                      dep.type === 'client-reference') &&
+                    (dep instanceof ClientReferenceDependency || dep.type === 'client-reference') &&
                     typeof dep.request === 'string' &&
                     resolvedClientFiles.has(dep.request)
                   ) {
@@ -675,18 +714,69 @@ export class RSCWebpackPlugin {
                     'React Server Components: no client manifest entry could be created for ' +
                       missing.length +
                       ' client reference(s). Rendering them will fail at runtime with a missing manifest entry:\n  ' +
-                      missing.join('\n  '),
-                  ),
+                      missing.join('\n  ')
+                  )
                 );
+              }
+            }
+
+            // SPIKE (#4049): collect Server-Component CSS. Each CSS-only
+            // async block injected above produced a chunk group containing
+            // the server-component module. Find that group by locating the
+            // module among the group's chunks, then record only its `.css`
+            // files (deduped) keyed by the module's file URL. CSS shared with
+            // a client reference is recorded in BOTH places but points at the
+            // same href; render-side preinit dedupes by href + precedence.
+            if (this.serverComponentCssReferences.length > 0) {
+              const scRefSet = new Set(this.serverComponentCssReferences);
+              for (const chunkGroup of compilation.chunkGroups) {
+                // Determine which SC refs this chunk group carries.
+                const groupScRefs = new Set<string>();
+                for (const chunk of chunkGroup.chunks) {
+                  for (const module of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
+                    const candidates: (string | undefined)[] = [module.resource];
+                    if (module.modules) {
+                      for (const inner of module.modules) candidates.push(inner.resource);
+                    }
+                    for (const resource of candidates) {
+                      if (resource && scRefSet.has(resource)) groupScRefs.add(resource);
+                    }
+                  }
+                }
+                if (groupScRefs.size === 0) continue;
+
+                const cssFiles: string[] = [];
+                for (const chunk of chunkGroup.chunks) {
+                  for (const file of chunk.files) {
+                    if (
+                      file.endsWith('.css') &&
+                      !file.endsWith('.hot-update.css') &&
+                      cssPrefix !== null &&
+                      !runtimeChunkFiles.has(file)
+                    ) {
+                      const href = cssPrefix + file;
+                      if (cssFiles.indexOf(href) === -1) cssFiles.push(href);
+                    }
+                  }
+                }
+                if (cssFiles.length === 0) continue;
+
+                for (const resource of groupScRefs) {
+                  const key = url.pathToFileURL(resource).href;
+                  const existing = serverComponentCss[key] || (serverComponentCss[key] = []);
+                  for (const href of cssFiles) {
+                    if (existing.indexOf(href) === -1) existing.push(href);
+                  }
+                }
               }
             }
           }
 
           compilation.emitAsset(
             this.clientManifestFilename,
-            new webpack.sources.RawSource(JSON.stringify(manifest, null, 2), false),
+            new webpack.sources.RawSource(JSON.stringify(manifest, null, 2), false)
           );
-        },
+        }
       );
     });
   }
@@ -704,7 +794,7 @@ export class RSCWebpackPlugin {
     normalResolver: FlightResolver,
     fs: unknown,
     contextModuleFactory: FlightContextModuleFactory,
-    callback: (err: Error | null, result?: ClientReferenceDependency[]) => void,
+    callback: (err: Error | null, result?: ClientReferenceDependency[]) => void
   ): void {
     asyncLib.map<ClientReferencePath, ClientReferenceDependency[]>(
       this.clientReferences,
@@ -759,14 +849,14 @@ export class RSCWebpackPlugin {
                           }
                           filterCb(null, hasUseClientDirective(content));
                         });
-                      },
+                      }
                     );
                   },
-                  cb,
+                  cb
                 );
-              },
+              }
             );
-          },
+          }
         );
       },
       (err, result) => {
@@ -776,7 +866,7 @@ export class RSCWebpackPlugin {
           flattened.push(...deps);
         }
         callback(null, flattened);
-      },
+      }
     );
   }
 }

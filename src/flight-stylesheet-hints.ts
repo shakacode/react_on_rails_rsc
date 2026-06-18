@@ -28,3 +28,32 @@ export const withStylesheetHints = <Manifest>(filePathToModuleMetadata: Manifest
     },
   }) as Manifest;
 };
+
+/**
+ * SPIKE (#4049): emit stylesheet hints for Server-Component CSS.
+ *
+ * Unlike client references, Server Components never trigger a manifest lookup
+ * during Flight serialization (they execute on the server and emit plain
+ * markup), so the `withStylesheetHints` proxy never fires for them. Instead,
+ * the render orchestration calls this with the `serverComponentCss` map (from
+ * the client manifest) and the set of server-component module URLs ACTUALLY
+ * rendered on this page. Scoping to rendered components avoids over-linking
+ * other pages' CSS (the #3211 pitfall). `preinit` dedupes by href+precedence,
+ * so CSS shared across components links once.
+ */
+export const preinitServerComponentStylesheets = (
+  serverComponentCss: Record<string, string[]> | undefined,
+  renderedServerComponentUrls: Iterable<string>
+): void => {
+  if (!serverComponentCss || typeof serverComponentCss !== 'object') return;
+
+  for (const moduleUrl of renderedServerComponentUrls) {
+    const hrefs = serverComponentCss[moduleUrl];
+    if (!Array.isArray(hrefs)) continue;
+    for (const href of hrefs) {
+      if (typeof href === 'string') {
+        preinit(href, { as: 'style', precedence: RSC_CSS_PRECEDENCE });
+      }
+    }
+  }
+};

@@ -80,6 +80,7 @@ const {
   maxChunks,
   extraEntries,
   withCss,
+  serverComponentCssReferences,
   exposeClientRuntime,
 } = args;
 
@@ -97,6 +98,7 @@ const plugins = [
     clientManifestFilename,
     clientReferences,
     chunkName,
+    serverComponentCssReferences,
   }),
 ];
 if (typeof maxChunks === 'number') {

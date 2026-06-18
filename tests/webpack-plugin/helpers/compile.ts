@@ -33,6 +33,8 @@ export interface CompileOptions {
   extraEntries?: Record<string, string>;
   /** Wires css-loader + MiniCssExtractPlugin so fixtures can import CSS. */
   withCss?: boolean;
+  /** SPIKE (#4049): server-component module paths whose CSS to deliver. */
+  serverComponentCssReferences?: string[];
   /**
    * Appends a re-export of the Flight node client to `main` so a build with
    * `output.library` exposes `createFromNodeStream` from inside the bundle's
@@ -52,6 +54,8 @@ export interface CompileResult {
   manifest: {
     moduleLoading: { prefix: string; crossOrigin: string | null };
     filePathToModuleMetadata: Record<string, ModuleMetadata>;
+    /** SPIKE (#4049): server-component-module-URL -> css hrefs. */
+    serverComponentCss?: Record<string, string[]>;
   };
   manifestSource: string;
   manifestPath: string;
@@ -66,9 +70,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     throw new Error(`Fixture not found: ${context}`);
   }
 
-  const outputPath = fs.mkdtempSync(
-    path.join(os.tmpdir(), `ror-rsc-webpack-plugin-${fixture}-`),
-  );
+  const outputPath = fs.mkdtempSync(path.join(os.tmpdir(), `ror-rsc-webpack-plugin-${fixture}-`));
   try {
     return compileInto(context, outputPath, options);
   } catch (e) {
@@ -82,7 +84,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
 const compileInto = (
   context: string,
   outputPath: string,
-  options: CompileOptions,
+  options: CompileOptions
 ): CompileResult => {
   const runnerArgs = {
     context,
@@ -98,6 +100,7 @@ const compileInto = (
     maxChunks: options.maxChunks,
     extraEntries: options.extraEntries,
     withCss: options.withCss,
+    serverComponentCssReferences: options.serverComponentCssReferences,
     exposeClientRuntime: options.exposeClientRuntime,
   };
   const argsFile = path.join(outputPath, '__args__.json');
@@ -125,19 +128,18 @@ const compileInto = (
     const warningSuffix = result.warnings?.length
       ? `\n\nwarnings:\n${result.warnings.join('\n')}`
       : '';
-    throw new Error(
-      `webpack build errors:\n${(result.errors ?? []).join('\n')}${warningSuffix}`,
-    );
+    throw new Error(`webpack build errors:\n${(result.errors ?? []).join('\n')}${warningSuffix}`);
   }
 
-  const defaultFilename = (options.isServer ?? false)
-    ? 'react-server-client-manifest.json'
-    : 'react-client-manifest.json';
+  const defaultFilename =
+    (options.isServer ?? false)
+      ? 'react-server-client-manifest.json'
+      : 'react-client-manifest.json';
   const manifestFilename = options.clientManifestFilename ?? defaultFilename;
   const manifestPath = path.join(outputPath, manifestFilename);
   if (!fs.existsSync(manifestPath)) {
     throw new Error(
-      `Manifest not emitted at ${manifestPath}. Assets: ${(result.assets ?? []).join(', ')}`,
+      `Manifest not emitted at ${manifestPath}. Assets: ${(result.assets ?? []).join(', ')}`
     );
   }
   const manifestSource = fs.readFileSync(manifestPath, 'utf8');
@@ -156,15 +158,15 @@ const compileInto = (
 /** Find the manifest entry whose file:// key ends with the given suffix. */
 export const entryEndingWith = (
   manifest: CompileResult['manifest'],
-  suffix: string,
+  suffix: string
 ): ModuleMetadata => {
   const matches = Object.entries(manifest.filePathToModuleMetadata).filter(([key]) =>
-    key.endsWith(suffix),
+    key.endsWith(suffix)
   );
   if (matches.length !== 1) {
     throw new Error(
       `Expected exactly one manifest entry ending with "${suffix}", found ${matches.length}. ` +
-        `Keys: ${Object.keys(manifest.filePathToModuleMetadata).join(', ')}`,
+        `Keys: ${Object.keys(manifest.filePathToModuleMetadata).join(', ')}`
     );
   }
   return matches[0]![1];
@@ -212,7 +214,7 @@ const serializeForRunner = (value: unknown): unknown => {
   }
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([key, child]) => [key, serializeForRunner(child)]),
+      Object.entries(value).map(([key, child]) => [key, serializeForRunner(child)])
     );
   }
   return value;

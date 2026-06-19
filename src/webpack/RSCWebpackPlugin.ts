@@ -616,12 +616,17 @@ export class RSCWebpackPlugin {
               if (!moduleGraph || !getModuleChunksIterable || cssPrefix === null) return [];
               const files = new Set<string>();
               for (const connection of moduleGraph.getOutgoingConnections(module)) {
+                // `module` is the resolved destination for most connections;
+                // some dependency types leave it null with the target on
+                // `resolvedModule`, so fall back to it.
                 const depModule = connection.module ?? connection.resolvedModule;
                 // Match the style-import source (`.css` and the common
                 // preprocessor extensions); MiniCssExtract keeps the importing
                 // module's resource as the authored file even though the
-                // emitted chunk file is always `.css`.
-                if (!depModule || !depModule.resource || !STYLE_SOURCE_RE.test(depModule.resource)) {
+                // emitted chunk file is always `.css`. Strip any webpack
+                // resource query/fragment (`./Button.css?inline`) first.
+                const depResource = depModule?.resource?.replace(/[?#].*$/, '');
+                if (!depResource || !STYLE_SOURCE_RE.test(depResource)) {
                   continue;
                 }
                 for (const cssChunk of getModuleChunksIterable(depModule)) {

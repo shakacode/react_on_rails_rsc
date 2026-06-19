@@ -636,12 +636,19 @@ export class RSCWebpackPlugin {
               }
               for (const module of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
                 const moduleId = compilation.chunkGraph.getModuleId(module);
-                // Only client references (or concatenation roots that may wrap
-                // one) need sibling-CSS recovery; skip the graph walk for the
-                // many plain dependency modules `recordModule` would drop anyway.
+                // Only client references need sibling-CSS recovery; skip the
+                // graph walk for the many plain dependency modules
+                // `recordModule` would drop anyway. A client reference can also
+                // be the root of a ConcatenationModule — its external `.css`
+                // imports live on the root, so walking the root recovers them.
+                // (A client reference is an async boundary, so webpack does not
+                // fold it in as a concatenated *inner* module; inner-module CSS
+                // imports therefore aren't a case that arises here.)
+                const isResolvedClientRef = (m: FlightModule): boolean =>
+                  !!m.resource && chunkResolvedClientFiles.has(m.resource);
                 const mayBeClientRef =
-                  (!!module.resource && chunkResolvedClientFiles.has(module.resource)) ||
-                  !!module.modules;
+                  isResolvedClientRef(module) ||
+                  (!!module.modules && module.modules.some(isResolvedClientRef));
                 const siblingCss = mayBeClientRef ? directCssDepFiles(module) : [];
                 const moduleCss = siblingCss.length
                   ? [...new Set([...chunkCss, ...siblingCss])]

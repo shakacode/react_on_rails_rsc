@@ -248,6 +248,14 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(button.css ?? []).not.toContain('/assets/client-Other-js.chunk.css');
     });
 
+    it("attaches Other's own copy of the CSS to Other, not Button's", () => {
+      const other = entryEndingWith(result.manifest, '/Other.js');
+      // Other renders Button, so its chunk carries its own extracted copy of
+      // the styles; it must be hinted Other's copy and not Button's.
+      expect(other.css).toContain('/assets/client-Other-js.chunk.css');
+      expect(other.css ?? []).not.toContain('/assets/client-Button-js.chunk.css');
+    });
+
     it('produces no fallback warning', () => {
       expectNoWarnings(result);
     });

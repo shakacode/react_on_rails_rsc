@@ -79,6 +79,12 @@ const clientFileNameOnServer = require.resolve('react-server-dom-webpack/client.
 
 const runtimeResourceDetectionCache = new Map<string, boolean>();
 
+// Style-import source extensions a client reference may import directly and
+// have extracted into a sibling chunk (#112): plain CSS plus the common
+// preprocessors. MiniCssExtract preserves the authored resource extension on
+// the importing module even though the emitted chunk file is `.css`.
+const STYLE_SOURCE_RE = /\.(css|scss|sass|less|styl|pcss)$/i;
+
 /**
  * Detects whether `resource` is the react-on-rails-rsc Flight client runtime
  * the plugin keys its client-reference injection on. Results are memoized
@@ -599,23 +605,26 @@ export class RSCWebpackPlugin {
               compilation.chunkGraph.getModuleChunksIterable?.bind(compilation.chunkGraph);
             const directCssDepFiles = (module: FlightModule): string[] => {
               if (!moduleGraph || !getModuleChunksIterable || cssPrefix === null) return [];
-              const files: string[] = [];
+              const files = new Set<string>();
               for (const connection of moduleGraph.getOutgoingConnections(module)) {
                 const depModule = connection.module ?? connection.resolvedModule;
-                if (!depModule || !depModule.resource || !depModule.resource.endsWith('.css')) {
+                // Match the style-import source (`.css` and the common
+                // preprocessor extensions); MiniCssExtract keeps the importing
+                // module's resource as the authored file even though the
+                // emitted chunk file is always `.css`.
+                if (!depModule || !depModule.resource || !STYLE_SOURCE_RE.test(depModule.resource)) {
                   continue;
                 }
                 for (const cssChunk of getModuleChunksIterable(depModule)) {
                   if (!groupChunks.has(cssChunk)) continue;
                   for (const file of cssChunk.files) {
                     if (isRecordableCss(file)) {
-                      const cssUrl = cssPrefix + file;
-                      if (!files.includes(cssUrl)) files.push(cssUrl);
+                      files.add(cssPrefix + file);
                     }
                   }
                 }
               }
-              return files;
+              return [...files];
             };
 
             for (const chunk of chunkGroup.chunks) {

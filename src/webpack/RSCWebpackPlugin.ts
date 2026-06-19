@@ -537,7 +537,10 @@ export class RSCWebpackPlugin {
             // chunk loader needs each dependency chunk to run the module, and
             // it no-ops on chunks the page already installed. (CSS-before-JS
             // scan fix: the JS file is found regardless of its position in
-            // `chunk.files`.)
+            // `chunk.files`.) JS is intentionally group-wide while CSS below is
+            // per-chunk: every chunk must load before any module in the group
+            // runs, but a module only needs the CSS extracted from its own
+            // chunk. If that contract changes, both loops move together.
             for (const chunk of chunkGroup.chunks) {
               let recordedJS = false;
               for (const file of chunk.files) {

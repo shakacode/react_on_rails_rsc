@@ -192,6 +192,67 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
+  describe('sibling-chunk CSS recovery: own CSS split from its JS module (#112)', () => {
+    // Button ('use client') imports Button.css; Other ('use client') imports
+    // Button, so Button's JS is shared across two client-reference chunk
+    // groups. splitChunks (matching only Button.js) moves that JS into a shared
+    // chunk, while MiniCssExtract leaves Button.css in the per-reference
+    // sibling chunk — so Button's own CSS lives in a chunk that does not
+    // contain Button's module. The per-chunk pass alone would leave Button's
+    // entry with no CSS; the #112 recovery pass follows Button's direct
+    // Button.css import to its chunk (intersected with Button's group) and
+    // restores it.
+    let result: CompileResult;
+
+    beforeAll(() => {
+      result = run('split-js-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: {
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              sharedButtonJs: {
+                test: /Button\.js$/,
+                name: 'shared-button',
+                minChunks: 2,
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+    });
+
+    it("splits Button's JS into the shared chunk while its CSS stays in the sibling chunk (precondition)", () => {
+      expect(result.assets).toContain('shared-button.chunk.js');
+      expect(result.assets).toContain('client-Button-js.chunk.css');
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      // Button's JS module is in the shared chunk, which carries no CSS.
+      expect(chunkFiles(button)).toContain('shared-button.chunk.js');
+    });
+
+    it("recovers Button's own CSS from its sibling chunk", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(button.css).toContain('/assets/client-Button-js.chunk.css');
+    });
+
+    it("does not attach another group's copy of Button's CSS to Button", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      // Button.css is also extracted into Other's chunk, but that chunk is not
+      // in Button's chunk group, so its copy must not be hinted for Button.
+      expect(button.css ?? []).not.toContain('/assets/client-Other-js.chunk.css');
+    });
+
+    it('produces no fallback warning', () => {
+      expectNoWarnings(result);
+    });
+  });
+
   describe('duplicated module across chunk groups (issue #19 class, no splitChunks)', () => {
     // SettingsPage imports Button; with no splitChunks, Button's module is
     // duplicated into SettingsPage's chunk, so it appears in two chunk

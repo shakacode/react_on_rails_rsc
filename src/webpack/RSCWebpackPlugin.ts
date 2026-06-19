@@ -205,6 +205,16 @@ type FlightCompilation = {
   chunkGraph: {
     getChunkModulesIterable(chunk: FlightChunk): Iterable<FlightModule>;
     getModuleId(module: FlightModule): string | number | null;
+    // Real webpack only; absent in the unit-test mocks, which gate the
+    // sibling-chunk CSS recovery pass off this method's presence.
+    getModuleChunksIterable?(module: FlightModule): Iterable<FlightChunk>;
+  };
+  // Real webpack only; the unit-test mocks omit it, which disables the
+  // sibling-chunk CSS recovery pass (see #112).
+  moduleGraph?: {
+    getOutgoingConnections(
+      module: FlightModule,
+    ): Iterable<{ module?: FlightModule | null; resolvedModule?: FlightModule | null }>;
   };
   hooks: {
     processAssets: {
@@ -564,24 +574,73 @@ export class RSCWebpackPlugin {
             // reference as a render-blocking `<link precedence="rsc-css">` —
             // the dominant FCP/LCP regression on real pages. A reference's own
             // extracted CSS and the #52 runtime-chunk exclusion are preserved.
+            const groupChunks = new Set<FlightChunk>(chunkGroup.chunks);
+
+            const isRecordableCss = (file: string): boolean =>
+              file.endsWith('.css') &&
+              !file.endsWith('.hot-update.css') &&
+              cssPrefix !== null &&
+              (this.isServer || !runtimeChunkFiles.has(file));
+
+            // Sibling-chunk CSS recovery (#112): SplitChunks + MiniCssExtract
+            // can place a reference's *own* extracted CSS in a chunk separate
+            // from the one holding its JS module (e.g. a cache group that
+            // matches the JS file but not its `.css` sibling). That CSS chunk's
+            // only modules are CSS/shared modules, so the per-chunk pass alone
+            // would drop it. Follow the module's DIRECT `.css` imports to the
+            // chunk(s) that carry them, intersected with this chunk group, and
+            // merge that CSS. Only direct imports are followed, so CSS reached
+            // through a shared dependency (imported by another module, not the
+            // reference) is NOT picked up — the #108 broadcast stays fixed.
+            // Guarded on `moduleGraph`/`getModuleChunksIterable`, which the
+            // unit-test mocks omit (they exercise the per-chunk pass only).
+            const moduleGraph = compilation.moduleGraph;
+            const getModuleChunksIterable =
+              compilation.chunkGraph.getModuleChunksIterable?.bind(compilation.chunkGraph);
+            const directCssDepFiles = (module: FlightModule): string[] => {
+              if (!moduleGraph || !getModuleChunksIterable || cssPrefix === null) return [];
+              const files: string[] = [];
+              for (const connection of moduleGraph.getOutgoingConnections(module)) {
+                const depModule = connection.module ?? connection.resolvedModule;
+                if (!depModule || !depModule.resource || !depModule.resource.endsWith('.css')) {
+                  continue;
+                }
+                for (const cssChunk of getModuleChunksIterable(depModule)) {
+                  if (!groupChunks.has(cssChunk)) continue;
+                  for (const file of cssChunk.files) {
+                    if (isRecordableCss(file)) {
+                      const cssUrl = cssPrefix + file;
+                      if (!files.includes(cssUrl)) files.push(cssUrl);
+                    }
+                  }
+                }
+              }
+              return files;
+            };
+
             for (const chunk of chunkGroup.chunks) {
               const chunkCss: string[] = [];
               for (const file of chunk.files) {
-                if (
-                  file.endsWith('.css') &&
-                  !file.endsWith('.hot-update.css') &&
-                  cssPrefix !== null &&
-                  (this.isServer || !runtimeChunkFiles.has(file))
-                ) {
+                if (isRecordableCss(file)) {
                   chunkCss.push(cssPrefix + file);
                 }
               }
               for (const module of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
                 const moduleId = compilation.chunkGraph.getModuleId(module);
-                recordModule(moduleId, module, chunkCss);
+                // Only client references (or concatenation roots that may wrap
+                // one) need sibling-CSS recovery; skip the graph walk for the
+                // many plain dependency modules `recordModule` would drop anyway.
+                const mayBeClientRef =
+                  (!!module.resource && chunkResolvedClientFiles.has(module.resource)) ||
+                  !!module.modules;
+                const siblingCss = mayBeClientRef ? directCssDepFiles(module) : [];
+                const moduleCss = siblingCss.length
+                  ? [...new Set([...chunkCss, ...siblingCss])]
+                  : chunkCss;
+                recordModule(moduleId, module, moduleCss);
                 if (module.modules) {
                   for (const concatenatedMod of module.modules) {
-                    recordModule(moduleId, concatenatedMod, chunkCss);
+                    recordModule(moduleId, concatenatedMod, moduleCss);
                   }
                 }
               }

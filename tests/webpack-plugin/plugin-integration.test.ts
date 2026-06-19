@@ -134,6 +134,64 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
+  describe('per-chunk CSS scoping: a shared dependency chunk does not broadcast its CSS', () => {
+    // Button and SettingsPage are independent 'use client' components, each
+    // with its own CSS, that both import a non-client `shared` module carrying
+    // shared.css. splitChunks forces `shared` into a chunk present in both
+    // client-reference chunk groups. Per-chunk scoping attaches a chunk's CSS
+    // only to the client references that chunk contains: shared.css lives in
+    // the shared chunk (whose only module is the non-client `shared`), so it is
+    // attached to neither reference, while each component keeps its own CSS.
+    // The pre-fix group-wide collection attached shared.css to both references.
+    let result: CompileResult;
+
+    beforeAll(() => {
+      result = run('split-shared-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: {
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              shared: {
+                test: /shared\.(js|css)$/,
+                name: 'shared',
+                minChunks: 2,
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+    });
+
+    it('extracts the shared chunk CSS as its own asset (precondition)', () => {
+      expect(result.assets).toContain('shared.chunk.css');
+    });
+
+    it("keeps each client reference's own CSS", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(button.css).toContain('/assets/client-Button-js.chunk.css');
+      expect(settings.css).toContain('/assets/client-SettingsPage-js.chunk.css');
+    });
+
+    it("does not broadcast the shared chunk's CSS onto either reference", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(button.css ?? []).not.toContain('/assets/shared.chunk.css');
+      expect(settings.css ?? []).not.toContain('/assets/shared.chunk.css');
+    });
+
+    it('produces no fallback warning', () => {
+      expectNoWarnings(result);
+    });
+  });
+
   describe('duplicated module across chunk groups (issue #19 class, no splitChunks)', () => {
     // SettingsPage imports Button; with no splitChunks, Button's module is
     // duplicated into SettingsPage's chunk, so it appears in two chunk

@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- Scoped per-client-reference CSS to the chunk(s) that actually contain the reference instead of collecting it across the whole chunk group. Shared dependency chunks (`vendor`/`common`/styleguide) that the page entry already loads are no longer re-broadcast as a render-blocking `<link rel="stylesheet" precedence="rsc-css">` per client reference — the dominant FCP/LCP regression when a real page is converted to RSC — while a reference's own extracted CSS (including the entry chunk's CSS for an eagerly-imported component) and the `#52` runtime-chunk exclusion are preserved. ([#108]) ([#110])
+- Scoped per-client-reference CSS to the chunk(s) that actually contain the reference instead of collecting it across the whole chunk group. Shared dependency chunks (`vendor`/`common`/styleguide) that the page entry already loads are no longer re-broadcast as a render-blocking `<link rel="stylesheet" precedence="rsc-css">` per client reference — the dominant FCP/LCP regression when a real page is converted to RSC — while a reference's own extracted CSS (including the entry chunk's CSS for an eagerly-imported component) and the `#52` runtime-chunk exclusion are preserved. ([#110])
 
 ## [19.2.0-rc.2] - 2026-06-16
 
@@ -70,5 +70,4 @@ All notable changes to this package will be documented in this file.
 [#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52
 [#54]: https://github.com/shakacode/react_on_rails_rsc/pull/54
 [#86]: https://github.com/shakacode/react_on_rails_rsc/pull/86
-[#108]: https://github.com/shakacode/react_on_rails_rsc/issues/108
 [#110]: https://github.com/shakacode/react_on_rails_rsc/pull/110

@@ -496,9 +496,12 @@ export class RSCWebpackPlugin {
             chunkResolvedClientFiles: Set<string>,
           ): void => {
             const chunks: (string | number | null)[] = [];
-            const cssFiles = new Set<string>();
 
-            const recordModule = (id: string | number | null, module: FlightModule): void => {
+            const recordModule = (
+              id: string | number | null,
+              module: FlightModule,
+              moduleCss: readonly string[],
+            ): void => {
               if (!module.resource || !chunkResolvedClientFiles.has(module.resource)) {
                 return;
               }
@@ -515,7 +518,7 @@ export class RSCWebpackPlugin {
                   }
                 }
                 if (existing.css == null) existing.css = [];
-                for (const cssFile of cssFiles) {
+                for (const cssFile of moduleCss) {
                   if (existing.css.indexOf(cssFile) === -1) {
                     existing.css.push(cssFile);
                   }
@@ -524,25 +527,21 @@ export class RSCWebpackPlugin {
                 filePathToModuleMetadata[href] = {
                   id,
                   chunks: chunks.slice(),
-                  css: Array.from(cssFiles),
+                  css: [...moduleCss],
                   name: '*',
                 };
               }
             };
 
-            // CSS-before-JS scan fix: record CSS files and the chunk's JS
-            // file independently of their order inside `chunk.files`.
+            // Record the loadable JS file of every chunk in the group: the
+            // chunk loader needs each dependency chunk to run the module, and
+            // it no-ops on chunks the page already installed. (CSS-before-JS
+            // scan fix: the JS file is found regardless of its position in
+            // `chunk.files`.)
             for (const chunk of chunkGroup.chunks) {
               let recordedJS = false;
               for (const file of chunk.files) {
                 if (
-                  file.endsWith('.css') &&
-                  !file.endsWith('.hot-update.css') &&
-                  cssPrefix !== null &&
-                  (this.isServer || !runtimeChunkFiles.has(file))
-                ) {
-                  cssFiles.add(cssPrefix + file);
-                } else if (
                   (file.endsWith('.js') || file.endsWith('.mjs')) &&
                   !file.endsWith('.hot-update.js') &&
                   !file.endsWith('.hot-update.mjs') &&
@@ -555,13 +554,38 @@ export class RSCWebpackPlugin {
               }
             }
 
+            // CSS is recorded PER CHUNK and attached only to the client
+            // references that chunk actually contains (#108). Collecting CSS
+            // group-wide (the previous behaviour) attached every shared
+            // dependency chunk's CSS — vendor/common/styleguide that the page
+            // entry already loaded — to every client reference in the group,
+            // which the node loader then re-emitted as a render-blocking
+            // `<link precedence="rsc-css">` per reference: the dominant FCP/LCP
+            // regression on real pages. Per-chunk scoping keeps a reference's
+            // own extracted CSS (incl. the entry chunk's CSS for an
+            // eagerly-imported component) while dropping the shared-dependency
+            // broadcast. The #52 runtime-chunk exclusion still applies.
             for (const chunk of chunkGroup.chunks) {
+              const chunkCss: string[] = [];
+              for (const file of chunk.files) {
+                if (
+                  file.endsWith('.css') &&
+                  !file.endsWith('.hot-update.css') &&
+                  cssPrefix !== null &&
+                  (this.isServer || !runtimeChunkFiles.has(file))
+                ) {
+                  const cssUrl = cssPrefix + file;
+                  if (!chunkCss.includes(cssUrl)) {
+                    chunkCss.push(cssUrl);
+                  }
+                }
+              }
               for (const module of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
                 const moduleId = compilation.chunkGraph.getModuleId(module);
-                recordModule(moduleId, module);
+                recordModule(moduleId, module, chunkCss);
                 if (module.modules) {
                   for (const concatenatedMod of module.modules) {
-                    recordModule(moduleId, concatenatedMod);
+                    recordModule(moduleId, concatenatedMod, chunkCss);
                   }
                 }
               }

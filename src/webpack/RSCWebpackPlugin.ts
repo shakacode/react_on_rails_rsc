@@ -555,16 +555,12 @@ export class RSCWebpackPlugin {
             }
 
             // CSS is recorded PER CHUNK and attached only to the client
-            // references that chunk actually contains (#108). Collecting CSS
-            // group-wide (the previous behaviour) attached every shared
-            // dependency chunk's CSS — vendor/common/styleguide that the page
-            // entry already loaded — to every client reference in the group,
-            // which the node loader then re-emitted as a render-blocking
-            // `<link precedence="rsc-css">` per reference: the dominant FCP/LCP
-            // regression on real pages. Per-chunk scoping keeps a reference's
-            // own extracted CSS (incl. the entry chunk's CSS for an
-            // eagerly-imported component) while dropping the shared-dependency
-            // broadcast. The #52 runtime-chunk exclusion still applies.
+            // references that chunk contains (#108), instead of group-wide,
+            // which re-broadcast every shared dependency chunk's CSS
+            // (vendor/common already loaded by the page entry) onto every
+            // reference as a render-blocking `<link precedence="rsc-css">` —
+            // the dominant FCP/LCP regression on real pages. A reference's own
+            // extracted CSS and the #52 runtime-chunk exclusion are preserved.
             for (const chunk of chunkGroup.chunks) {
               const chunkCss: string[] = [];
               for (const file of chunk.files) {
@@ -574,10 +570,7 @@ export class RSCWebpackPlugin {
                   cssPrefix !== null &&
                   (this.isServer || !runtimeChunkFiles.has(file))
                 ) {
-                  const cssUrl = cssPrefix + file;
-                  if (!chunkCss.includes(cssUrl)) {
-                    chunkCss.push(cssUrl);
-                  }
+                  chunkCss.push(cssPrefix + file);
                 }
               }
               for (const module of compilation.chunkGraph.getChunkModulesIterable(chunk)) {

@@ -34,8 +34,8 @@ describe('19.2 runtime release policy', () => {
     const pkg = readJson<PackageJson>('package.json');
     const changelog = fs.readFileSync(path.join(repoRoot, 'CHANGELOG.md'), 'utf8');
 
-    expect(pkg.version).toBe('19.2.0-rc.1');
-    expect(changelog).toMatch(/^## \[19\.2\.0-rc\.1\] - \d{4}-\d{2}-\d{2}$/m);
+    expect(pkg.version).toBe('19.2.0-rc.2');
+    expect(changelog).toMatch(/^## \[19\.2\.0-rc\.2\] - \d{4}-\d{2}-\d{2}$/m);
   });
 
   it('depends on the stock React 19.2 Flight runtime and raises React peers to the runtime floor', () => {

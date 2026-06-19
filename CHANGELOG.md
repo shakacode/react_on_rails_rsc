@@ -6,6 +6,7 @@ All notable changes to this package will be documented in this file.
 
 ### Fixed
 - Scoped per-client-reference CSS to the chunk(s) that actually contain the reference instead of collecting it across the whole chunk group. Shared dependency chunks (`vendor`/`common`/styleguide) that the page entry already loads are no longer re-broadcast as a render-blocking `<link rel="stylesheet" precedence="rsc-css">` per client reference — the dominant FCP/LCP regression when a real page is converted to RSC — while a reference's own extracted CSS (including the entry chunk's CSS for an eagerly-imported component) and the `#52` runtime-chunk exclusion are preserved. ([#110])
+- Recovered a client reference's own extracted CSS when `SplitChunks` + `MiniCssExtractPlugin` place it in a chunk separate from the one holding the reference's JS module (e.g. a cache group that matches the JS file but not its `.css` sibling). The plugin now follows each reference's direct `.css` imports to the chunk(s) carrying them, intersected with the reference's chunk group, so the `rsc-css` hint is still emitted for those styles. Only direct imports are followed, so the per-chunk scoping from `#110` continues not to re-broadcast shared dependency CSS. ([#113])
 
 ## [19.2.0-rc.2] - 2026-06-16
 
@@ -71,3 +72,4 @@ All notable changes to this package will be documented in this file.
 [#54]: https://github.com/shakacode/react_on_rails_rsc/pull/54
 [#86]: https://github.com/shakacode/react_on_rails_rsc/pull/86
 [#110]: https://github.com/shakacode/react_on_rails_rsc/pull/110
+[#113]: https://github.com/shakacode/react_on_rails_rsc/pull/113

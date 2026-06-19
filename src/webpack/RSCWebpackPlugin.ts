@@ -79,6 +79,12 @@ const clientFileNameOnServer = require.resolve('react-server-dom-webpack/client.
 
 const runtimeResourceDetectionCache = new Map<string, boolean>();
 
+// Style-import source extensions a client reference may import directly and
+// have extracted into a sibling chunk (#112): plain CSS plus the common
+// preprocessors. MiniCssExtract preserves the authored resource extension on
+// the importing module even though the emitted chunk file is `.css`.
+const STYLE_SOURCE_RE = /\.(css|scss|sass|less|styl|pcss)$/i;
+
 /**
  * Detects whether `resource` is the react-on-rails-rsc Flight client runtime
  * the plugin keys its client-reference injection on. Results are memoized
@@ -205,6 +211,16 @@ type FlightCompilation = {
   chunkGraph: {
     getChunkModulesIterable(chunk: FlightChunk): Iterable<FlightModule>;
     getModuleId(module: FlightModule): string | number | null;
+    // Real webpack only; absent in the unit-test mocks, which gate the
+    // sibling-chunk CSS recovery pass off this method's presence.
+    getModuleChunksIterable?(module: FlightModule): Iterable<FlightChunk>;
+  };
+  // Real webpack only; the unit-test mocks omit it, which disables the
+  // sibling-chunk CSS recovery pass (see #112).
+  moduleGraph?: {
+    getOutgoingConnections(
+      module: FlightModule,
+    ): Iterable<{ module?: FlightModule | null; resolvedModule?: FlightModule | null }>;
   };
   hooks: {
     processAssets: {
@@ -497,6 +513,15 @@ export class RSCWebpackPlugin {
           ): void => {
             const chunks: (string | number | null)[] = [];
 
+            // `chunkGroup.chunks` is typed as `Iterable<FlightChunk>` and is
+            // walked several times below; materialize it once so a one-shot
+            // iterator (a non-webpack bundler) cannot silently yield nothing on
+            // the later passes.
+            const groupChunkList = [...chunkGroup.chunks];
+
+            const isResolvedClientRef = (module: FlightModule): boolean =>
+              !!module.resource && chunkResolvedClientFiles.has(module.resource);
+
             const recordModule = (
               id: string | number | null,
               module: FlightModule,
@@ -541,7 +566,7 @@ export class RSCWebpackPlugin {
             // per-chunk: every chunk must load before any module in the group
             // runs, but a module only needs the CSS extracted from its own
             // chunk. If that contract changes, both loops move together.
-            for (const chunk of chunkGroup.chunks) {
+            for (const chunk of groupChunkList) {
               let recordedJS = false;
               for (const file of chunk.files) {
                 if (
@@ -564,24 +589,85 @@ export class RSCWebpackPlugin {
             // reference as a render-blocking `<link precedence="rsc-css">` —
             // the dominant FCP/LCP regression on real pages. A reference's own
             // extracted CSS and the #52 runtime-chunk exclusion are preserved.
-            for (const chunk of chunkGroup.chunks) {
+            const groupChunks = new Set<FlightChunk>(groupChunkList);
+
+            const isRecordableCss = (file: string): boolean =>
+              file.endsWith('.css') &&
+              !file.endsWith('.hot-update.css') &&
+              cssPrefix !== null &&
+              (this.isServer || !runtimeChunkFiles.has(file));
+
+            // Sibling-chunk CSS recovery (#112): SplitChunks + MiniCssExtract
+            // can place a reference's *own* extracted CSS in a chunk separate
+            // from the one holding its JS module (e.g. a cache group that
+            // matches the JS file but not its `.css` sibling). That CSS chunk's
+            // only modules are CSS/shared modules, so the per-chunk pass alone
+            // would drop it. Follow the module's DIRECT `.css` imports to the
+            // chunk(s) that carry them, intersected with this chunk group, and
+            // merge that CSS. Only direct imports are followed, so CSS reached
+            // through a shared dependency (imported by another module, not the
+            // reference) is NOT picked up — the #108 broadcast stays fixed.
+            // Guarded on `moduleGraph`/`getModuleChunksIterable`, which the
+            // unit-test mocks omit (they exercise the per-chunk pass only).
+            const moduleGraph = compilation.moduleGraph;
+            const getModuleChunksIterable =
+              compilation.chunkGraph.getModuleChunksIterable?.bind(compilation.chunkGraph);
+            const directCssDepFiles = (module: FlightModule): string[] => {
+              if (!moduleGraph || !getModuleChunksIterable || cssPrefix === null) return [];
+              const files = new Set<string>();
+              for (const connection of moduleGraph.getOutgoingConnections(module)) {
+                // `module` is the resolved destination for most connections;
+                // some dependency types leave it null with the target on
+                // `resolvedModule`, so fall back to it.
+                const depModule = connection.module ?? connection.resolvedModule;
+                if (!depModule || !depModule.resource) continue;
+                // Match the style-import source (`.css` and the common
+                // preprocessor extensions); MiniCssExtract keeps the importing
+                // module's resource as the authored file even though the
+                // emitted chunk file is always `.css`. Strip any webpack
+                // resource query/fragment (`./Button.css?inline`) first.
+                const depResource = depModule.resource.replace(/[?#].*$/, '');
+                if (!STYLE_SOURCE_RE.test(depResource)) continue;
+                for (const cssChunk of getModuleChunksIterable(depModule)) {
+                  if (!groupChunks.has(cssChunk)) continue;
+                  for (const file of cssChunk.files) {
+                    if (isRecordableCss(file)) {
+                      files.add(cssPrefix + file);
+                    }
+                  }
+                }
+              }
+              return [...files];
+            };
+
+            for (const chunk of groupChunkList) {
               const chunkCss: string[] = [];
               for (const file of chunk.files) {
-                if (
-                  file.endsWith('.css') &&
-                  !file.endsWith('.hot-update.css') &&
-                  cssPrefix !== null &&
-                  (this.isServer || !runtimeChunkFiles.has(file))
-                ) {
+                if (isRecordableCss(file)) {
                   chunkCss.push(cssPrefix + file);
                 }
               }
               for (const module of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
                 const moduleId = compilation.chunkGraph.getModuleId(module);
-                recordModule(moduleId, module, chunkCss);
+                // Only client references need sibling-CSS recovery; skip the
+                // graph walk for the many plain dependency modules
+                // `recordModule` would drop anyway. A client reference can also
+                // be the root of a ConcatenationModule — its external `.css`
+                // imports live on the root, so walking the root recovers them.
+                // (A client reference is an async boundary, so webpack does not
+                // fold it in as a concatenated *inner* module; inner-module CSS
+                // imports therefore aren't a case that arises here.)
+                const mayBeClientRef =
+                  isResolvedClientRef(module) ||
+                  (!!module.modules && module.modules.some(isResolvedClientRef));
+                const siblingCss = mayBeClientRef ? directCssDepFiles(module) : [];
+                const moduleCss = siblingCss.length
+                  ? [...new Set([...chunkCss, ...siblingCss])]
+                  : chunkCss;
+                recordModule(moduleId, module, moduleCss);
                 if (module.modules) {
                   for (const concatenatedMod of module.modules) {
-                    recordModule(moduleId, concatenatedMod, chunkCss);
+                    recordModule(moduleId, concatenatedMod, moduleCss);
                   }
                 }
               }

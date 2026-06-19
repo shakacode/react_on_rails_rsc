@@ -513,6 +513,15 @@ export class RSCWebpackPlugin {
           ): void => {
             const chunks: (string | number | null)[] = [];
 
+            // `chunkGroup.chunks` is typed as `Iterable<FlightChunk>` and is
+            // walked several times below; materialize it once so a one-shot
+            // iterator (a non-webpack bundler) cannot silently yield nothing on
+            // the later passes.
+            const groupChunkList = [...chunkGroup.chunks];
+
+            const isResolvedClientRef = (module: FlightModule): boolean =>
+              !!module.resource && chunkResolvedClientFiles.has(module.resource);
+
             const recordModule = (
               id: string | number | null,
               module: FlightModule,
@@ -557,7 +566,7 @@ export class RSCWebpackPlugin {
             // per-chunk: every chunk must load before any module in the group
             // runs, but a module only needs the CSS extracted from its own
             // chunk. If that contract changes, both loops move together.
-            for (const chunk of chunkGroup.chunks) {
+            for (const chunk of groupChunkList) {
               let recordedJS = false;
               for (const file of chunk.files) {
                 if (
@@ -580,7 +589,7 @@ export class RSCWebpackPlugin {
             // reference as a render-blocking `<link precedence="rsc-css">` —
             // the dominant FCP/LCP regression on real pages. A reference's own
             // extracted CSS and the #52 runtime-chunk exclusion are preserved.
-            const groupChunks = new Set<FlightChunk>(chunkGroup.chunks);
+            const groupChunks = new Set<FlightChunk>(groupChunkList);
 
             const isRecordableCss = (file: string): boolean =>
               file.endsWith('.css') &&
@@ -627,7 +636,7 @@ export class RSCWebpackPlugin {
               return [...files];
             };
 
-            for (const chunk of chunkGroup.chunks) {
+            for (const chunk of groupChunkList) {
               const chunkCss: string[] = [];
               for (const file of chunk.files) {
                 if (isRecordableCss(file)) {
@@ -644,8 +653,6 @@ export class RSCWebpackPlugin {
                 // (A client reference is an async boundary, so webpack does not
                 // fold it in as a concatenated *inner* module; inner-module CSS
                 // imports therefore aren't a case that arises here.)
-                const isResolvedClientRef = (m: FlightModule): boolean =>
-                  !!m.resource && chunkResolvedClientFiles.has(m.resource);
                 const mayBeClientRef =
                   isResolvedClientRef(module) ||
                   (!!module.modules && module.modules.some(isResolvedClientRef));

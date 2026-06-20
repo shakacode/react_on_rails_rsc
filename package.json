@@ -1,6 +1,6 @@
 {
   "name": "react-on-rails-rsc",
-  "version": "19.2.0-rc.2",
+  "version": "19.2.0-rc.3",
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
     "./client": {

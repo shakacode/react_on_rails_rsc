@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Added a configurable client-build warning when a client reference appears in at least four client-reference chunk groups, helping surface cross-page JS/CSS duplication from chunk contamination. Set `chunkGroupWarningThreshold` to a positive number to tune the threshold, or to `0`/`false` to disable the warning. ([#117])
+- Added a configurable client-build warning when a client reference appears in at least four client-reference chunk groups, helping surface cross-page JS/CSS duplication from chunk contamination. Set `chunkGroupWarningThreshold` to a positive number to tune the threshold, or to `0`/`false` to disable the warning. ([#120])
 
 ## [19.2.0-rc.3] - 2026-06-19
 
@@ -61,7 +61,7 @@ All notable changes to this package will be documented in this file.
 [19.2.0-rc.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0-rc.1
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
-[#117]: https://github.com/shakacode/react_on_rails_rsc/issues/117
+[#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
 [#105]: https://github.com/shakacode/react_on_rails_rsc/pull/106
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23

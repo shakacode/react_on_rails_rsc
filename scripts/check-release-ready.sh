@@ -209,6 +209,8 @@ check_npm_unpublished() {
       return
     fi
 
+    # Attempts 1-4 retry transient network failures; attempt 5 falls through
+    # to the exhaustion check below.
     if [[ "$attempt" -lt 5 ]] && grep -Eiq 'ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|network|timeout' "$NPM_VIEW_OUTPUT_FILE"; then
       log_warn "npm view failed before publish; retrying in ${retry_delay}s (attempt ${attempt}/5):"
       cat "$NPM_VIEW_OUTPUT_FILE" >&2
@@ -216,6 +218,7 @@ check_npm_unpublished() {
       continue
     fi
 
+    # Attempt 5 exhausted; network uncertainty is now a hard release blocker.
     if grep -Eiq 'ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|network|timeout' "$NPM_VIEW_OUTPUT_FILE"; then
       record_error "npm view failed after 5 attempts due to a network error; publish state is UNKNOWN."
       cat "$NPM_VIEW_OUTPUT_FILE" >&2

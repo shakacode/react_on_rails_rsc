@@ -172,8 +172,10 @@ changes. When unsure whether a PR is low-risk, leave it ready and ask.
 **Releasing** is changelog-driven and the GitHub Actions workflow is canonical: stamp
 `CHANGELOG.md` and `package.json` to the same target version, merge that PR to `main`, run
 `yarn release:check` from a clean synced `main` checkout, then dispatch `Release package`
-using the command printed by the check. `yarn release` / `yarn release:dry-run` are
-maintainer-only local fallback paths when GitHub Actions is blocked. See
+using the command printed by the check. The Actions workflow runs `yarn build`,
+`yarn test`, and `yarn verify:artifacts` before publishing. `yarn release` /
+`yarn release:dry-run` are maintainer-only local fallback paths when GitHub Actions is blocked;
+run `yarn verify:artifacts` before `yarn release` on that fallback path. See
 `.agents/skills/update-changelog/SKILL.md` and `docs/releasing.md`.
 
 ## Review Workflow

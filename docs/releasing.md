@@ -234,6 +234,10 @@ yarn release:dry-run
 ```
 
 ```bash
+yarn verify:artifacts
+```
+
+```bash
 yarn release
 ```
 

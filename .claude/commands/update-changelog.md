@@ -105,7 +105,10 @@ Keep wording concise and focused on observable behavior.
    yarn release:check
    ```
 
-   Use `yarn release:dry-run` only for the maintainer-only local fallback path.
+   The Actions workflow runs `yarn build`, `yarn test`, and
+   `yarn verify:artifacts` before publishing. Use `yarn release:dry-run` only
+   for the maintainer-only local fallback path; run `yarn verify:artifacts`
+   before `yarn release` on that fallback path.
 
 ## rc.6 Example
 

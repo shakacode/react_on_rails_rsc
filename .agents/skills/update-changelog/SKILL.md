@@ -569,4 +569,4 @@ grep -A 3 "^### " CHANGELOG.md | head -30
 - Use past tense for the description
 - Be consistent with existing formatting in the changelog
 - Always ensure the file ends with a trailing newline
-- Before a release, sanity-check the canonical GitHub Actions path with `yarn release:check` from clean synced `main`; it prints the dispatch command on success. Use `yarn release:dry-run` only for the maintainer-only local fallback path. The GitHub Actions release verifies the build with `yarn test` and `yarn build` (tsc) before publishing.
+- Before a release, sanity-check the canonical GitHub Actions path with `yarn release:check` from clean synced `main`; it prints the dispatch command on success. Use `yarn release:dry-run` only for the maintainer-only local fallback path. The GitHub Actions release verifies the build with `yarn build`, `yarn test`, and `yarn verify:artifacts` before publishing; run `yarn verify:artifacts` before `yarn release` on the local fallback path.

@@ -43,8 +43,10 @@ then release from a clean, synced `main` checkout.
 1. Run `yarn release:check`.
 2. Run the `gh workflow run release.yml --ref main ...` command printed by the
    check.
-3. Use `yarn release:dry-run` and `yarn release` only as maintainer-only local
-   fallback paths when GitHub Actions is blocked.
+3. The Actions workflow runs `yarn build`, `yarn test`, and
+   `yarn verify:artifacts` before publishing.
+4. Use `yarn release:dry-run`, `yarn verify:artifacts`, and `yarn release` only
+   as maintainer-only local fallback paths when GitHub Actions is blocked.
 
 `yarn release:check` reads the target version from the first version header in
 `CHANGELOG.md`, verifies `package.json` matches it, checks that the unprefixed

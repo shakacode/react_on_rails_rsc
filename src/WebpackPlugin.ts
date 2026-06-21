@@ -18,6 +18,7 @@ export type Options = {
   isServer: boolean,
   clientReferences?: ClientReferencePath | ReadonlyArray<ClientReferencePath>,
   chunkName?: string,
+  chunkGroupWarningThreshold?: number | false,
   clientManifestFilename?: string,
   serverConsumerManifestFilename?: string,
 };

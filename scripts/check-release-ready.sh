@@ -174,6 +174,7 @@ check_npm_unpublished() {
   retry_delay="${RELEASE_CHECK_NPM_RETRY_DELAY:-10}"
   NPM_VIEW_OUTPUT_FILE=$(mktemp)
   cleanup_npm_view_output() {
+    # Bash inner functions are global; keep this helper name unique.
     if [[ -n "${NPM_VIEW_OUTPUT_FILE:-}" ]]; then
       rm -f "$NPM_VIEW_OUTPUT_FILE"
       NPM_VIEW_OUTPUT_FILE=
@@ -185,6 +186,7 @@ check_npm_unpublished() {
 
   local attempt
   local npm_exit
+  local error_code
   for attempt in 1 2 3 4 5; do
     npm_exit=0
     # Use the public registry without user .npmrc auth so public metadata reads
@@ -200,7 +202,6 @@ check_npm_unpublished() {
       return
     fi
 
-    local error_code
     error_code=$(npm_error_code "$NPM_VIEW_OUTPUT_FILE")
 
     if [[ "$error_code" == "E404" ]]; then
@@ -260,10 +261,13 @@ check_release_checkout() {
   fi
 
   local remote_main
+  local remote_output
   local remote_status=0
-  remote_main=$(git ls-remote origin refs/heads/main 2>/dev/null | awk '{print $1}') || remote_status=$?
+  remote_output=$(git ls-remote origin refs/heads/main 2>&1) || remote_status=$?
+  remote_main=$(printf '%s\n' "$remote_output" | awk '{print $1}')
   if [[ "$remote_status" -ne 0 || -z "$remote_main" ]]; then
     record_error "Unable to verify origin/main for sync check."
+    [[ -n "$remote_output" ]] && printf '%s\n' "$remote_output" >&2
     return
   fi
 

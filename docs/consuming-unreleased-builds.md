@@ -194,12 +194,30 @@ package in isolation.
 ## Downstream Verification Checklist
 
 Before reporting that the unreleased build works, verify the app is actually
-using the intended package and that the package has built files:
+using the intended package and that the package has the required built entry
+points and exported plugin/server files:
 
 ```bash
 node -p "require('react-on-rails-rsc/package.json').version"
 test -f node_modules/react-on-rails-rsc/dist/client.browser.js
+test -f node_modules/react-on-rails-rsc/dist/client.node.js
 test -f node_modules/react-on-rails-rsc/dist/server.node.js
+test -f node_modules/react-on-rails-rsc/dist/types.js
+test -f node_modules/react-on-rails-rsc/dist/types.d.ts
+test -f node_modules/react-on-rails-rsc/dist/WebpackPlugin.js
+test -f node_modules/react-on-rails-rsc/dist/WebpackPlugin.d.ts
+test -f node_modules/react-on-rails-rsc/dist/WebpackLoader.js
+test -f node_modules/react-on-rails-rsc/dist/WebpackLoader.d.ts
+test -f node_modules/react-on-rails-rsc/dist/flight-server.js
+test -f node_modules/react-on-rails-rsc/dist/flight-server.browser.js
+test -f node_modules/react-on-rails-rsc/dist/flight-server.edge.js
+test -f node_modules/react-on-rails-rsc/dist/flight-server.node.js
+test -f node_modules/react-on-rails-rsc/dist/flight-server.node.unbundled.js
+test -f node_modules/react-on-rails-rsc/dist/RSCReferenceDiscoveryPlugin.js
+test -f node_modules/react-on-rails-rsc/dist/RSCReferenceDiscoveryPlugin.d.ts
+test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/plugin.js
+test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/loader.js
+test -f node_modules/react-on-rails-rsc/dist/webpack/RSCWebpackPlugin.js
 ```
 
 Then run the downstream app's normal RSC build and test path. A package install

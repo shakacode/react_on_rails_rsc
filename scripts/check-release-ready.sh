@@ -128,6 +128,14 @@ check_npm_unpublished() {
   # Mirrors release.yml "Validate release ref and publish state".
   local npm_view_output
   npm_view_output=$(mktemp)
+  cleanup_npm_view_output() {
+    if [[ -n "${npm_view_output:-}" ]]; then
+      rm -f "$npm_view_output"
+    fi
+    trap - RETURN INT TERM
+  }
+  trap cleanup_npm_view_output RETURN
+  trap 'cleanup_npm_view_output; exit 130' INT TERM
 
   local attempt
   for attempt in 1 2 3 4 5; do
@@ -137,7 +145,6 @@ check_npm_unpublished() {
     if [[ "$npm_exit" -eq 0 ]]; then
       record_error "${PACKAGE_NAME}@${RELEASE_VERSION} is already published."
       cat "$npm_view_output" >&2
-      rm -f "$npm_view_output"
       return
     fi
 
@@ -152,9 +159,28 @@ try {
 NODE
     )
 
+    if [[ "$error_code" =~ ^(E401|E403|ENEEDAUTH)$ ]]; then
+      log_warn "npm metadata check hit ${error_code}; retrying anonymously against the public registry."
+      npm_exit=0
+      NPM_CONFIG_USERCONFIG=/dev/null npm --silent --registry=https://registry.npmjs.org/ view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >"$npm_view_output" 2>&1 || npm_exit=$?
+      if [[ "$npm_exit" -eq 0 ]]; then
+        record_error "${PACKAGE_NAME}@${RELEASE_VERSION} is already published."
+        cat "$npm_view_output" >&2
+        return
+      fi
+      error_code=$(node - "$npm_view_output" <<'NODE'
+const fs = require('node:fs');
+try {
+  const parsed = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  process.stdout.write(parsed.error?.code || '');
+} catch {
+}
+NODE
+      )
+    fi
+
     if [[ "$error_code" == "E404" ]]; then
       echo "  - npm version ${PACKAGE_NAME}@${RELEASE_VERSION} is unpublished"
-      rm -f "$npm_view_output"
       return
     fi
 
@@ -165,13 +191,16 @@ NODE
       continue
     fi
 
+    if grep -Eiq 'ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|network|timeout' "$npm_view_output"; then
+      record_error "npm view failed after 5 attempts due to a network error; publish state is UNKNOWN."
+      cat "$npm_view_output" >&2
+      return
+    fi
+
     record_error "Unexpected npm error (code: ${error_code:-unknown}) while checking publish state."
     cat "$npm_view_output" >&2
-    rm -f "$npm_view_output"
     return
   done
-
-  rm -f "$npm_view_output"
 }
 
 show_dist_tags() {

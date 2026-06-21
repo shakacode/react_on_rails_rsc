@@ -177,13 +177,8 @@ function normalizeChunkGroupWarningThreshold(
     typeof threshold !== 'number' ||
     !Number.isFinite(threshold) ||
     !Number.isInteger(threshold) ||
-    threshold < 0
+    threshold < 2
   ) {
-    throw new Error(
-      'React Server Plugin: chunkGroupWarningThreshold must be an integer at least 2, 0, or false.',
-    );
-  }
-  if (threshold < 2) {
     throw new Error(
       'React Server Plugin: chunkGroupWarningThreshold must be an integer at least 2, 0, or false.',
     );
@@ -603,6 +598,8 @@ export class RSCWebpackPlugin {
               if (!trackClientReferencePresence || this.chunkGroupWarningThreshold === false) {
                 return;
               }
+              // The warning is about physical chunk-group presence, including
+              // shared chunks, rather than only direct block dependencies.
               if (!module.resource || !resolvedClientFiles.has(module.resource)) {
                 return;
               }
@@ -845,13 +842,20 @@ export class RSCWebpackPlugin {
               }
             }
 
-            if (this.chunkGroupWarningThreshold !== false) {
+            const chunkGroupWarningThreshold = this.chunkGroupWarningThreshold;
+            if (chunkGroupWarningThreshold !== false) {
+              const chunkGroupWarningEntries = Array.from(clientReferenceChunkGroupsByResource)
+                .filter(([, chunkGroups]) => chunkGroups.size >= chunkGroupWarningThreshold)
+                .sort(
+                  ([leftResource, leftChunkGroups], [rightResource, rightChunkGroups]) =>
+                    rightChunkGroups.size - leftChunkGroups.size ||
+                    leftResource.localeCompare(rightResource)
+                );
               let emittedWarnings = 0;
               let suppressedWarnings = 0;
 
-              for (const [resource, chunkGroups] of clientReferenceChunkGroupsByResource) {
+              for (const [resource, chunkGroups] of chunkGroupWarningEntries) {
                 const groupCount = chunkGroups.size;
-                if (groupCount < this.chunkGroupWarningThreshold) continue;
 
                 if (emittedWarnings >= MAX_CHUNK_GROUP_WARNINGS) {
                   suppressedWarnings += 1;

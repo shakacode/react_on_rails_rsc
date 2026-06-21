@@ -27,7 +27,15 @@ record_error() {
 }
 
 metadata_value() {
-  node -e "const fs = require('node:fs'); const metadata = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(String(metadata[process.argv[2]]));" "$METADATA_JSON_FILE" "$1"
+  node - "$METADATA_JSON_FILE" "$1" <<'NODE'
+const fs = require('node:fs');
+const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const key = process.argv[3];
+if (!Object.hasOwn(metadata, key)) {
+  throw new Error(`Unknown release metadata key: ${key}`);
+}
+process.stdout.write(String(metadata[key]));
+NODE
 }
 
 cleanup_metadata_file() {
@@ -160,6 +168,7 @@ check_npm_unpublished() {
     fi
     trap - RETURN INT TERM
   }
+  # RETURN keeps this temp-file cleanup scoped to check_npm_unpublished.
   trap cleanup_npm_view_output RETURN
   trap 'cleanup_npm_view_output; exit 130' INT TERM
 
@@ -205,7 +214,10 @@ check_npm_unpublished() {
 
 show_dist_tags() {
   local dist_tags
-  if dist_tags=$(npm --silent view "${PACKAGE_NAME}" dist-tags --json 2>&1); then
+  if dist_tags=$(
+    NPM_CONFIG_USERCONFIG=/dev/null \
+      npm --silent --registry=https://registry.npmjs.org/ view "${PACKAGE_NAME}" dist-tags --json 2>&1
+  ); then
     echo "  - Current npm dist-tags: ${dist_tags}"
   else
     log_warn "Unable to read current npm dist-tags for ${PACKAGE_NAME}; publish-state check above is the release gate."

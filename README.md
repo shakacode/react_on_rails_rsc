@@ -16,6 +16,13 @@ This package is not intended to be used directly by end users. It is designed to
 
 Do not use this package's APIs directly in your application code. Instead use [`react_on_rails`](https://github.com/shakacode/react_on_rails) and [`react-on-rails-pro`](https://github.com/shakacode/react_on_rails_pro) gems and npm packages APIs to render or stream React Server Components.
 
+## Testing Unreleased Builds
+
+If a downstream app needs to test a `react-on-rails-rsc` fix before an npm
+release, see [`docs/consuming-unreleased-builds.md`](docs/consuming-unreleased-builds.md)
+for the yalc, canary publish, throwaway dist branch, and version-pairing
+workflows.
+
 ## Package Contents
 
 This package provides internal tooling for React Server Components integration:

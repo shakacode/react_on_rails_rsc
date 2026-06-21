@@ -111,6 +111,15 @@ the branch is intentionally carrying that version change:
 git restore package.json
 ```
 
+When testing is complete, remove the moving canary tag and deprecate the
+temporary version so future consumers do not discover it accidentally:
+
+```bash
+npm dist-tag rm react-on-rails-rsc canary
+npm deprecate react-on-rails-rsc@X.Y.Z-canary.<date>.<short-sha> \
+  "Temporary canary build; use a supported release instead."
+```
+
 From the downstream app, pin the exact canary version rather than the dist-tag:
 
 ```bash
@@ -236,15 +245,17 @@ for path in \
   node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/plugin.d.ts \
   node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/loader.js \
   node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/loader.d.ts \
-  node_modules/react-on-rails-rsc/dist/webpack/RSCWebpackPlugin.js
+  node_modules/react-on-rails-rsc/dist/webpack/RSCWebpackPlugin.js \
+  node_modules/react-on-rails-rsc/dist/webpack/RSCWebpackPlugin.d.ts
 do
   if test -f "$path"; then
     printf 'ok %s\n' "$path"
   else
     printf 'missing %s\n' "$path" >&2
-    exit 1
+    missing=1
   fi
 done
+test "${missing:-0}" -eq 0
 ```
 
 Then run the downstream app's normal RSC build and test path. A package install

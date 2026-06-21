@@ -182,7 +182,7 @@ function normalizeChunkGroupWarningThreshold(
     threshold < 2
   ) {
     throw new Error(
-      'React Server Components: chunkGroupWarningThreshold must be an integer at least 2, 0, or false.',
+      'React Server Components: chunkGroupWarningThreshold must be false/0 to disable, or an integer at least 2.',
     );
   }
   return threshold;
@@ -851,7 +851,7 @@ export class RSCWebpackPlugin {
                 .sort(
                   ([leftResource, leftChunkGroups], [rightResource, rightChunkGroups]) =>
                     rightChunkGroups.size - leftChunkGroups.size ||
-                    leftResource.localeCompare(rightResource)
+                    (leftResource < rightResource ? -1 : leftResource > rightResource ? 1 : 0)
                 );
               let emittedWarnings = 0;
               let suppressedWarnings = 0;

@@ -526,14 +526,14 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     },
   );
 
-  it.each([1, 2.5] as const)(
+  it.each([-1, 1, 2.5] as const)(
     'rejects an invalid warning threshold of %p',
     (chunkGroupWarningThreshold) => {
       expect(() =>
         buildDuplicateClientReferenceFixture(4, {
           chunkGroupWarningThreshold,
         }),
-      ).toThrow('chunkGroupWarningThreshold must be an integer at least 2');
+      ).toThrow('chunkGroupWarningThreshold must be false/0 to disable');
     },
   );
 

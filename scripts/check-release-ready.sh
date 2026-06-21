@@ -11,6 +11,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 ERROR_COUNT=0
+METADATA_JSON_FILE=
 
 # Keep npm usable in sandboxed shells where the default user cache can be
 # unwritable. User-provided cache settings still win.
@@ -26,12 +27,30 @@ record_error() {
 }
 
 metadata_value() {
-  node -e "const metadata = JSON.parse(process.argv[1]); process.stdout.write(String(metadata[process.argv[2]]));" "$METADATA_JSON" "$1"
+  node -e "const fs = require('node:fs'); const metadata = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(String(metadata[process.argv[2]]));" "$METADATA_JSON_FILE" "$1"
+}
+
+cleanup_metadata_file() {
+  if [[ -n "${METADATA_JSON_FILE:-}" ]]; then
+    rm -f "$METADATA_JSON_FILE"
+  fi
+}
+
+npm_error_code() {
+  node - "$1" <<'NODE'
+const fs = require('node:fs');
+try {
+  const parsed = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  process.stdout.write(parsed.error?.code || '');
+} catch {
+}
+NODE
 }
 
 read_release_metadata() {
   # Mirrors .github/workflows/release.yml "Read release metadata".
-  METADATA_JSON=$(
+  local metadata_json
+  metadata_json=$(
     node <<'NODE'
 const fs = require('node:fs');
 
@@ -44,6 +63,11 @@ if (!header) {
 }
 
 const [, changelogVersion, changelogDate] = header;
+const beforeReleaseHeader = changelog.slice(0, header.index ?? 0);
+const unreleased = beforeReleaseHeader.match(/^## \[Unreleased\]([\s\S]*)$/m);
+if (unreleased && unreleased[1].trim()) {
+  throw new Error('CHANGELOG.md has entries under ## [Unreleased]; stamp or move them before releasing.');
+}
 
 if (!/^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/.test(changelogVersion)) {
   throw new Error(`CHANGELOG.md version "${changelogVersion}" is not valid semver (expected X.Y.Z or X.Y.Z-pre.N).`);
@@ -86,6 +110,8 @@ console.log(JSON.stringify({
 }));
 NODE
   )
+  METADATA_JSON_FILE=$(mktemp)
+  printf '%s\n' "$metadata_json" >"$METADATA_JSON_FILE"
 
   PACKAGE_NAME=$(metadata_value packageName)
   RELEASE_VERSION=$(metadata_value version)
@@ -149,15 +175,7 @@ check_npm_unpublished() {
     fi
 
     local error_code
-    error_code=$(node - "$npm_view_output" <<'NODE'
-const fs = require('node:fs');
-try {
-  const parsed = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-  process.stdout.write(parsed.error?.code || '');
-} catch {
-}
-NODE
-    )
+    error_code=$(npm_error_code "$npm_view_output")
 
     if [[ "$error_code" =~ ^(E401|E403|ENEEDAUTH)$ ]]; then
       log_warn "npm metadata check hit ${error_code}; retrying anonymously against the public registry."
@@ -168,15 +186,7 @@ NODE
         cat "$npm_view_output" >&2
         return
       fi
-      error_code=$(node - "$npm_view_output" <<'NODE'
-const fs = require('node:fs');
-try {
-  const parsed = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-  process.stdout.write(parsed.error?.code || '');
-} catch {
-}
-NODE
-      )
+      error_code=$(npm_error_code "$npm_view_output")
     fi
 
     if [[ "$error_code" == "E404" ]]; then
@@ -223,11 +233,13 @@ check_release_checkout() {
     echo "  - Current branch is main"
   fi
 
-  if git diff --quiet && git diff --cached --quiet; then
+  local status_output
+  status_output=$(git status --porcelain)
+  if [[ -z "$status_output" ]]; then
     echo "  - Working tree is clean"
   else
     record_error "Working tree is not clean."
-    git status --short >&2
+    printf '%s\n' "$status_output" >&2
   fi
 
   local remote_main
@@ -282,4 +294,5 @@ main() {
   echo ""
 }
 
+trap cleanup_metadata_file EXIT
 main

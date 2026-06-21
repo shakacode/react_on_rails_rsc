@@ -56,23 +56,17 @@ yalc add react-on-rails-rsc
 yarn install
 ```
 
-After each change in this repository, rebuild and update the yalc package:
+After each change in this repository, rebuild and push the updated yalc package
+to linked downstream apps:
 
 ```bash
 yarn build
-yalc publish
+yalc push
 ```
 
-Then refresh the app copy:
-
-```bash
-yalc update react-on-rails-rsc
-yarn install
-```
-
-For a faster loop, yalc also supports `yalc push` after `yalc publish` has
-linked the package into the app. Use `yalc push --watch` when you want yalc to
-refresh the app copy automatically after each local rebuild.
+Use `yalc push --watch` when you want yalc to refresh the app copy
+automatically after each local rebuild. Rerun `yarn install` in the downstream
+app only when dependency metadata changes.
 
 Do not commit yalc artifacts such as `.yalc/`, `yalc.lock`, or temporary
 `package.json` dependency rewrites unless the downstream project deliberately
@@ -98,8 +92,8 @@ From this repository:
 git switch <fix-branch>
 yarn
 yarn build
-yarn version --new-version X.Y.Z-canary.<date>.<short-sha> --no-git-tag-version
 npm whoami
+yarn version --new-version X.Y.Z-canary.<date>.<short-sha> --no-git-tag-version
 npm publish --ignore-scripts --tag canary
 ```
 
@@ -213,35 +207,44 @@ points and exported plugin/server files:
 
 ```bash
 node -p "require('react-on-rails-rsc/package.json').version"
-test -f node_modules/react-on-rails-rsc/dist/client.browser.js
-test -f node_modules/react-on-rails-rsc/dist/client.browser.d.ts
-test -f node_modules/react-on-rails-rsc/dist/client.node.js
-test -f node_modules/react-on-rails-rsc/dist/client.node.d.ts
-test -f node_modules/react-on-rails-rsc/dist/server.node.js
-test -f node_modules/react-on-rails-rsc/dist/server.node.d.ts
-test -f node_modules/react-on-rails-rsc/dist/types.js
-test -f node_modules/react-on-rails-rsc/dist/types.d.ts
-test -f node_modules/react-on-rails-rsc/dist/WebpackPlugin.js
-test -f node_modules/react-on-rails-rsc/dist/WebpackPlugin.d.ts
-test -f node_modules/react-on-rails-rsc/dist/WebpackLoader.js
-test -f node_modules/react-on-rails-rsc/dist/WebpackLoader.d.ts
-test -f node_modules/react-on-rails-rsc/dist/flight-server.js
-test -f node_modules/react-on-rails-rsc/dist/flight-server.d.ts
-test -f node_modules/react-on-rails-rsc/dist/flight-server.browser.js
-test -f node_modules/react-on-rails-rsc/dist/flight-server.browser.d.ts
-test -f node_modules/react-on-rails-rsc/dist/flight-server.edge.js
-test -f node_modules/react-on-rails-rsc/dist/flight-server.edge.d.ts
-test -f node_modules/react-on-rails-rsc/dist/flight-server.node.js
-test -f node_modules/react-on-rails-rsc/dist/flight-server.node.d.ts
-test -f node_modules/react-on-rails-rsc/dist/flight-server.node.unbundled.js
-test -f node_modules/react-on-rails-rsc/dist/flight-server.node.unbundled.d.ts
-test -f node_modules/react-on-rails-rsc/dist/RSCReferenceDiscoveryPlugin.js
-test -f node_modules/react-on-rails-rsc/dist/RSCReferenceDiscoveryPlugin.d.ts
-test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/plugin.js
-test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/plugin.d.ts
-test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/loader.js
-test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/loader.d.ts
-test -f node_modules/react-on-rails-rsc/dist/webpack/RSCWebpackPlugin.js
+for path in \
+  node_modules/react-on-rails-rsc/dist/client.browser.js \
+  node_modules/react-on-rails-rsc/dist/client.browser.d.ts \
+  node_modules/react-on-rails-rsc/dist/client.node.js \
+  node_modules/react-on-rails-rsc/dist/client.node.d.ts \
+  node_modules/react-on-rails-rsc/dist/server.node.js \
+  node_modules/react-on-rails-rsc/dist/server.node.d.ts \
+  node_modules/react-on-rails-rsc/dist/types.js \
+  node_modules/react-on-rails-rsc/dist/types.d.ts \
+  node_modules/react-on-rails-rsc/dist/WebpackPlugin.js \
+  node_modules/react-on-rails-rsc/dist/WebpackPlugin.d.ts \
+  node_modules/react-on-rails-rsc/dist/WebpackLoader.js \
+  node_modules/react-on-rails-rsc/dist/WebpackLoader.d.ts \
+  node_modules/react-on-rails-rsc/dist/flight-server.js \
+  node_modules/react-on-rails-rsc/dist/flight-server.d.ts \
+  node_modules/react-on-rails-rsc/dist/flight-server.browser.js \
+  node_modules/react-on-rails-rsc/dist/flight-server.browser.d.ts \
+  node_modules/react-on-rails-rsc/dist/flight-server.edge.js \
+  node_modules/react-on-rails-rsc/dist/flight-server.edge.d.ts \
+  node_modules/react-on-rails-rsc/dist/flight-server.node.js \
+  node_modules/react-on-rails-rsc/dist/flight-server.node.d.ts \
+  node_modules/react-on-rails-rsc/dist/flight-server.node.unbundled.js \
+  node_modules/react-on-rails-rsc/dist/flight-server.node.unbundled.d.ts \
+  node_modules/react-on-rails-rsc/dist/RSCReferenceDiscoveryPlugin.js \
+  node_modules/react-on-rails-rsc/dist/RSCReferenceDiscoveryPlugin.d.ts \
+  node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/plugin.js \
+  node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/plugin.d.ts \
+  node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/loader.js \
+  node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/loader.d.ts \
+  node_modules/react-on-rails-rsc/dist/webpack/RSCWebpackPlugin.js
+do
+  if test -f "$path"; then
+    printf 'ok %s\n' "$path"
+  else
+    printf 'missing %s\n' "$path" >&2
+    exit 1
+  fi
+done
 ```
 
 Then run the downstream app's normal RSC build and test path. A package install

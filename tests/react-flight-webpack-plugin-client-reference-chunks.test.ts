@@ -179,8 +179,8 @@ const buildManifest = ({
 const buildDuplicateClientReferenceFixture = (
   groupCount: number,
   pluginOptions: { chunkGroupWarningThreshold?: number | false } = {},
+  sharedFiles: string[] = [clientFile],
 ) => {
-  const sharedFile = clientFile;
   const wrapperFiles = Array.from(
     { length: groupCount },
     (_value, index) => `/app/pages/Page${index}.tsx`,
@@ -192,23 +192,23 @@ const buildDuplicateClientReferenceFixture = (
 
   return buildManifest({
     isServer: false,
-    clientFiles: [sharedFile, ...wrapperFiles],
+    clientFiles: [...sharedFiles, ...wrapperFiles],
     pluginOptions,
     chunkGroups: (clientReferenceBlocks) =>
       chunks.map((chunk, index) => ({
-        getBlocks: () => [clientReferenceBlocks[index + 1]!],
+        getBlocks: () => [clientReferenceBlocks[sharedFiles.length + index]!],
         chunks: [chunk],
       })),
     getChunkModulesIterable: (chunk) => {
       const index = chunks.indexOf(chunk);
-      return [{ resource: wrapperFiles[index]! }, { resource: sharedFile }];
+      return [{ resource: wrapperFiles[index]! }, ...sharedFiles.map((resource) => ({ resource }))];
     },
   });
 };
 
 const duplicateClientReferenceWarnings = (warnings: unknown[]) =>
   warnings.filter((warning) =>
-    String(warning).includes('client-reference chunk groups'),
+    String(warning).includes('client-reference chunk group'),
   );
 
 describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
@@ -484,7 +484,7 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     expect(String(duplicateWarnings[0])).toContain(clientFile);
     expect(String(duplicateWarnings[0])).toContain('4 client-reference chunk groups');
     expect(String(duplicateWarnings[0])).toContain(
-      'react_on_rails docs/oss/migrating/rsc-troubleshooting.md',
+      'https://github.com/shakacode/react_on_rails/blob/main/docs/oss/migrating/rsc-troubleshooting.md',
     );
     expect(String(duplicateWarnings[0])).toContain('thin client wrapper');
   });
@@ -515,4 +515,30 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
       expect(duplicateClientReferenceWarnings(warnings)).toEqual([]);
     },
   );
+
+  it('rejects a threshold of one because it would warn for every client reference', () => {
+    expect(() =>
+      buildDuplicateClientReferenceFixture(4, {
+        chunkGroupWarningThreshold: 1,
+      }),
+    ).toThrow('chunkGroupWarningThreshold must be at least 2');
+  });
+
+  it('caps duplicate client-reference chunk group warnings and emits a summary', () => {
+    const sharedFiles = Array.from(
+      { length: 12 },
+      (_value, index) => `/app/components/Shared${index}.tsx`,
+    );
+
+    const { warnings } = buildDuplicateClientReferenceFixture(4, {}, sharedFiles);
+
+    const duplicateWarnings = duplicateClientReferenceWarnings(warnings);
+    expect(duplicateWarnings).toHaveLength(11);
+    expect(duplicateWarnings.filter((warning) => String(warning).includes('Shared'))).toHaveLength(
+      10,
+    );
+    expect(String(duplicateWarnings[10])).toContain(
+      'suppressed 2 additional client-reference chunk group warning(s)',
+    );
+  });
 });

@@ -160,8 +160,9 @@ export type Options = {
 };
 
 const DEFAULT_CHUNK_GROUP_WARNING_THRESHOLD = 4;
+const MAX_CHUNK_GROUP_WARNINGS = 10;
 const CHUNK_GROUP_WARNING_DOCS =
-  'react_on_rails docs/oss/migrating/rsc-troubleshooting.md';
+  'https://github.com/shakacode/react_on_rails/blob/main/docs/oss/migrating/rsc-troubleshooting.md';
 
 function normalizeChunkGroupWarningThreshold(
   threshold: number | false | undefined,
@@ -174,10 +175,16 @@ function normalizeChunkGroupWarningThreshold(
   }
   if (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0) {
     throw new Error(
-      'React Server Plugin: chunkGroupWarningThreshold must be a positive number, 0, or false.',
+      'React Server Plugin: chunkGroupWarningThreshold must be at least 2, 0, or false.',
     );
   }
-  return Math.ceil(threshold);
+  const normalizedThreshold = Math.ceil(threshold);
+  if (normalizedThreshold < 2) {
+    throw new Error(
+      'React Server Plugin: chunkGroupWarningThreshold must be at least 2, 0, or false.',
+    );
+  }
+  return normalizedThreshold;
 }
 
 type ModuleMetadata = {
@@ -835,9 +842,19 @@ export class RSCWebpackPlugin {
             }
 
             if (this.chunkGroupWarningThreshold !== false) {
+              let emittedWarnings = 0;
+              let suppressedWarnings = 0;
+
               for (const [resource, chunkGroups] of clientReferenceChunkGroupsByResource) {
                 const groupCount = chunkGroups.size;
                 if (groupCount < this.chunkGroupWarningThreshold) continue;
+
+                if (emittedWarnings >= MAX_CHUNK_GROUP_WARNINGS) {
+                  suppressedWarnings += 1;
+                  continue;
+                }
+
+                emittedWarnings += 1;
                 compilation.warnings.push(
                   new webpack.WebpackError(
                     'React Server Components: client reference module ' +
@@ -846,6 +863,20 @@ export class RSCWebpackPlugin {
                       groupCount +
                       ' client-reference chunk groups. ' +
                       'This can duplicate its client JS/CSS across routes; consider a thin client wrapper or isolating imports to avoid chunk contamination. ' +
+                      'See ' +
+                      CHUNK_GROUP_WARNING_DOCS +
+                      ' for mitigation guidance.',
+                  ),
+                );
+              }
+
+              if (suppressedWarnings > 0) {
+                compilation.warnings.push(
+                  new webpack.WebpackError(
+                    'React Server Components: suppressed ' +
+                      suppressedWarnings +
+                      ' additional client-reference chunk group warning(s). ' +
+                      'Increase chunkGroupWarningThreshold or inspect the module graph to narrow duplicated client references. ' +
                       'See ' +
                       CHUNK_GROUP_WARNING_DOCS +
                       ' for mitigation guidance.',

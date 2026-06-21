@@ -15,15 +15,16 @@ testing, choose one of these workflows:
 | Canary npm publish | Teammates or CI need the same temporary build. | Requires maintainer npm publish rights and a unique prerelease version. |
 | Throwaway dist branch | A Yarn Classic app needs a Git ref and npm publishing is not appropriate. | Commits generated `dist/` output to a branch that must never be merged. |
 
-## Why Direct Git Dependencies Break In Yarn Classic
+## Why Direct Git Dependencies Are Fragile In Yarn Classic
 
 This repository does not commit `dist/`; `.gitignore` excludes it. Published npm
 tarballs include `dist/`, and this package's `prepare` and `prepack` scripts run
 `yarn run build-if-needed` to create it when the package is built for publishing.
 
-That means a plain source branch is not enough for Yarn Classic consumers. A
-dependency such as this can install without the built files that this package's
-exports point at:
+That means a plain source branch is risky for Yarn Classic consumers. Depending
+on install flags, cache state, and the package manager environment, a Git
+dependency can install without the built files that this package's exports point
+at, or spend the app install trying to build this package from source:
 
 ```bash
 yarn add react-on-rails-rsc@git+https://github.com/shakacode/react_on_rails_rsc.git#main
@@ -31,8 +32,9 @@ yarn add react-on-rails-rsc@git+https://github.com/shakacode/react_on_rails_rsc.
 
 If `node_modules/react-on-rails-rsc/dist/client.browser.js` and the other `dist`
 entry points are missing, the downstream app will fail later during bundling or
-server startup. Use one of the workflows below instead of relying on Yarn
-Classic to build this package from a Git dependency.
+server startup. Use one of the workflows below instead of relying on a Yarn
+Classic Git dependency to build this package reproducibly inside the consumer
+install.
 
 ## yalc Workflow
 
@@ -68,6 +70,10 @@ yalc update react-on-rails-rsc
 yarn install
 ```
 
+For a faster loop, yalc also supports `yalc push` after `yalc publish` has
+linked the package into the app. Use `yalc push --watch` when you want yalc to
+refresh the app copy automatically after each local rebuild.
+
 Do not commit yalc artifacts such as `.yalc/`, `yalc.lock`, or temporary
 `package.json` dependency rewrites unless the downstream project deliberately
 tracks them for its own testing workflow.
@@ -93,8 +99,14 @@ git switch <fix-branch>
 yarn
 yarn build
 yarn version --new-version X.Y.Z-canary.<date>.<short-sha> --no-git-tag-version
-npm publish --tag canary --access public
+npm publish --ignore-scripts --tag canary --access public
 ```
+
+The publish command intentionally uses `npm publish`: npm owns the registry
+publish flow, while `yarn publish` prompts for versioning and can create git
+metadata. The explicit `yarn build` above prepares `dist/`, and
+`--ignore-scripts` prevents the `prepublishOnly` hook from rebuilding the same
+files a second time.
 
 Record the exact published version. Then restore the local version edit unless
 the branch is intentionally carrying that version change:

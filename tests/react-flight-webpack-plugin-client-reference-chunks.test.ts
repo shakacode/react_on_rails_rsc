@@ -22,12 +22,16 @@ const buildManifest = ({
   chunkGroups,
   getChunkModulesIterable,
   clientFiles = [clientFile],
+  pluginOptions = {},
 }: {
   isServer: boolean;
   chunkGroups: (clientReferenceBlocks: unknown[]) => unknown[];
   getChunkModulesIterable: (chunk: Chunk) => unknown[];
   /** Client references to resolve. Defaults to the single shared `clientFile`. */
   clientFiles?: string[];
+  pluginOptions?: {
+    chunkGroupWarningThreshold?: number | false;
+  };
 }) => {
   const runtimeFile = require.resolve(
     isServer ? 'react-server-dom-webpack/client.node' : 'react-server-dom-webpack/client.browser',
@@ -35,6 +39,7 @@ const buildManifest = ({
   const plugin = new ReactFlightWebpackPlugin({
     isServer,
     clientReferences: clientFiles,
+    ...pluginOptions,
   });
 
   plugin.resolveAllClientFiles = jest.fn(
@@ -171,6 +176,41 @@ const buildManifest = ({
   };
 };
 
+const buildDuplicateClientReferenceFixture = (
+  groupCount: number,
+  pluginOptions: { chunkGroupWarningThreshold?: number | false } = {},
+  sharedFiles: string[] = [clientFile],
+) => {
+  const wrapperFiles = Array.from(
+    { length: groupCount },
+    (_value, index) => `/app/pages/Page${index}.tsx`,
+  );
+  const chunks = wrapperFiles.map((_file, index) => ({
+    id: `client${index}`,
+    files: new Set([`js/client${index}.chunk.js`]),
+  }));
+
+  return buildManifest({
+    isServer: false,
+    clientFiles: [...sharedFiles, ...wrapperFiles],
+    pluginOptions,
+    chunkGroups: (clientReferenceBlocks) =>
+      chunks.map((chunk, index) => ({
+        getBlocks: () => [clientReferenceBlocks[sharedFiles.length + index]!],
+        chunks: [chunk],
+      })),
+    getChunkModulesIterable: (chunk) => {
+      const index = chunks.indexOf(chunk);
+      return [{ resource: wrapperFiles[index]! }, ...sharedFiles.map((resource) => ({ resource }))];
+    },
+  });
+};
+
+const duplicateClientReferenceWarnings = (warnings: unknown[]) =>
+  warnings.filter((warning) =>
+    String(warning).includes('client-reference chunk group'),
+  );
+
 describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
   it('does not merge unrelated entry chunks into the client manifest entry', () => {
     const clientModule = { resource: clientFile };
@@ -273,6 +313,22 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
       css: ['/assets/shared.css', '/assets/a.css', '/assets/b.css'],
       name: '*',
     });
+  });
+
+  it('does not warn about duplicated client-reference chunk groups on the server build', () => {
+    const serverModule = { resource: clientFile };
+    const serverChunks = Array.from({ length: 4 }, (_value, index) => ({
+      id: `server-${index}`,
+      files: new Set([`server-${index}.js`]),
+    }));
+
+    const { warnings } = buildManifest({
+      isServer: true,
+      chunkGroups: () => serverChunks.map((chunk) => ({ chunks: [chunk] })),
+      getChunkModulesIterable: () => [serverModule],
+    });
+
+    expect(duplicateClientReferenceWarnings(warnings)).toEqual([]);
   });
 
   it('warns when a client chunk group cannot expose client-reference blocks', () => {
@@ -418,5 +474,84 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
       css: [],
       name: '*',
     });
+  });
+
+  it('warns once by default when a client reference appears in four client-reference chunk groups', () => {
+    const { warnings } = buildDuplicateClientReferenceFixture(4);
+
+    const duplicateWarnings = duplicateClientReferenceWarnings(warnings);
+    expect(duplicateWarnings).toHaveLength(1);
+    expect(String(duplicateWarnings[0])).toContain(clientFile);
+    expect(String(duplicateWarnings[0])).toContain('4 client-reference chunk groups');
+    expect(String(duplicateWarnings[0])).toContain(
+      'https://github.com/shakacode/react_on_rails/blob/main/docs/oss/migrating/rsc-troubleshooting.md',
+    );
+    expect(String(duplicateWarnings[0])).toContain('thin client wrapper');
+  });
+
+  it('does not warn below the default client-reference chunk group threshold', () => {
+    const { warnings } = buildDuplicateClientReferenceFixture(3);
+
+    expect(duplicateClientReferenceWarnings(warnings)).toEqual([]);
+  });
+
+  it('honors a configured client-reference chunk group warning threshold', () => {
+    const { warnings } = buildDuplicateClientReferenceFixture(3, {
+      chunkGroupWarningThreshold: 3,
+    });
+
+    const duplicateWarnings = duplicateClientReferenceWarnings(warnings);
+    expect(duplicateWarnings).toHaveLength(1);
+    expect(String(duplicateWarnings[0])).toContain('3 client-reference chunk groups');
+  });
+
+  it('accepts the minimum client-reference chunk group warning threshold', () => {
+    const { warnings } = buildDuplicateClientReferenceFixture(2, {
+      chunkGroupWarningThreshold: 2,
+    });
+
+    const duplicateWarnings = duplicateClientReferenceWarnings(warnings);
+    expect(duplicateWarnings).toHaveLength(1);
+    expect(String(duplicateWarnings[0])).toContain('2 client-reference chunk groups');
+  });
+
+  it.each([false, 0] as const)(
+    'disables client-reference chunk group warnings when the threshold is %p',
+    (chunkGroupWarningThreshold) => {
+      const { warnings } = buildDuplicateClientReferenceFixture(4, {
+        chunkGroupWarningThreshold,
+      });
+
+      expect(duplicateClientReferenceWarnings(warnings)).toEqual([]);
+    },
+  );
+
+  it.each([-1, 1, 2.5] as const)(
+    'rejects an invalid warning threshold of %p',
+    (chunkGroupWarningThreshold) => {
+      expect(() =>
+        buildDuplicateClientReferenceFixture(4, {
+          chunkGroupWarningThreshold,
+        }),
+      ).toThrow('chunkGroupWarningThreshold must be false/0 to disable');
+    },
+  );
+
+  it('caps duplicate client-reference chunk group warnings and emits a summary', () => {
+    const sharedFiles = Array.from(
+      { length: 12 },
+      (_value, index) => `/app/components/Shared${index}.tsx`,
+    );
+
+    const { warnings } = buildDuplicateClientReferenceFixture(4, {}, sharedFiles);
+
+    const duplicateWarnings = duplicateClientReferenceWarnings(warnings);
+    expect(duplicateWarnings).toHaveLength(11);
+    expect(duplicateWarnings.filter((warning) => String(warning).includes('Shared'))).toHaveLength(
+      10,
+    );
+    expect(String(duplicateWarnings[10])).toContain(
+      'suppressed 2 additional client-reference chunk group warning(s)',
+    );
   });
 });

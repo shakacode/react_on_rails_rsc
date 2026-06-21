@@ -154,9 +154,39 @@ export type Options = {
   isServer: boolean;
   clientReferences?: ClientReferencePath | ReadonlyArray<ClientReferencePath>;
   chunkName?: string;
+  chunkGroupWarningThreshold?: number | false;
   clientManifestFilename?: string;
   serverConsumerManifestFilename?: string;
 };
+
+const DEFAULT_CHUNK_GROUP_WARNING_THRESHOLD = 4;
+const MAX_CHUNK_GROUP_WARNINGS = 10;
+const CHUNK_GROUP_WARNING_DOCS =
+  'https://github.com/shakacode/react_on_rails/blob/main/docs/oss/migrating/rsc-troubleshooting.md';
+
+function normalizeChunkGroupWarningThreshold(
+  threshold: number | false | undefined,
+): number | false {
+  if (threshold === undefined) {
+    return DEFAULT_CHUNK_GROUP_WARNING_THRESHOLD;
+  }
+  if (threshold === false || threshold === 0) {
+    return false;
+  }
+  // Keep the runtime guard for JavaScript callers even though TypeScript
+  // narrows typed callers before this point.
+  if (
+    typeof threshold !== 'number' ||
+    !Number.isFinite(threshold) ||
+    !Number.isInteger(threshold) ||
+    threshold < 2
+  ) {
+    throw new Error(
+      'React Server Components: chunkGroupWarningThreshold must be false/0 to disable, or an integer at least 2.',
+    );
+  }
+  return threshold;
+}
 
 type ModuleMetadata = {
   id: string | number | null;
@@ -318,6 +348,8 @@ export class RSCWebpackPlugin {
 
   readonly chunkName: string;
 
+  readonly chunkGroupWarningThreshold: number | false;
+
   readonly clientManifestFilename: string;
 
   /**
@@ -359,6 +391,10 @@ export class RSCWebpackPlugin {
     } else {
       this.chunkName = 'client[index]';
     }
+
+    this.chunkGroupWarningThreshold = normalizeChunkGroupWarningThreshold(
+      options.chunkGroupWarningThreshold,
+    );
 
     const defaultClientManifestFilename = this.isServer
       ? 'react-server-client-manifest.json'
@@ -501,6 +537,7 @@ export class RSCWebpackPlugin {
           }
 
           let missingClientReferenceBlocksWarningEmitted = false;
+          const clientReferenceChunkGroupsByResource = new Map<string, Set<FlightChunkGroup>>();
 
           // Records every module of `chunkGroup` whose resource is in
           // `chunkResolvedClientFiles`, listing the chunk group's own
@@ -510,6 +547,7 @@ export class RSCWebpackPlugin {
           const recordChunkGroup = (
             chunkGroup: FlightChunkGroup,
             chunkResolvedClientFiles: Set<string>,
+            trackClientReferencePresence = false,
           ): void => {
             const chunks: (string | number | null)[] = [];
 
@@ -556,6 +594,23 @@ export class RSCWebpackPlugin {
                   name: '*',
                 };
               }
+            };
+
+            const recordClientReferencePresence = (module: FlightModule): void => {
+              if (!trackClientReferencePresence || this.chunkGroupWarningThreshold === false) {
+                return;
+              }
+              // The warning is about physical chunk-group presence, including
+              // shared chunks, rather than only direct block dependencies.
+              if (!module.resource || !resolvedClientFiles.has(module.resource)) {
+                return;
+              }
+              let chunkGroups = clientReferenceChunkGroupsByResource.get(module.resource);
+              if (!chunkGroups) {
+                chunkGroups = new Set();
+                clientReferenceChunkGroupsByResource.set(module.resource, chunkGroups);
+              }
+              chunkGroups.add(chunkGroup);
             };
 
             // Record the loadable JS file of every chunk in the group: the
@@ -664,9 +719,11 @@ export class RSCWebpackPlugin {
                 const moduleCss = siblingCss.length
                   ? [...new Set([...chunkCss, ...siblingCss])]
                   : chunkCss;
+                recordClientReferencePresence(module);
                 recordModule(moduleId, module, moduleCss);
                 if (module.modules) {
                   for (const concatenatedMod of module.modules) {
+                    recordClientReferencePresence(concatenatedMod);
                     recordModule(moduleId, concatenatedMod, moduleCss);
                   }
                 }
@@ -727,7 +784,7 @@ export class RSCWebpackPlugin {
                 }
               }
               if (chunkResolvedClientFiles.size > 0) {
-                recordChunkGroup(chunkGroup, chunkResolvedClientFiles);
+                recordChunkGroup(chunkGroup, chunkResolvedClientFiles, true);
               }
             }
 
@@ -782,6 +839,57 @@ export class RSCWebpackPlugin {
                       missing.length +
                       ' client reference(s). Rendering them will fail at runtime with a missing manifest entry:\n  ' +
                       missing.join('\n  '),
+                  ),
+                );
+              }
+            }
+
+            const chunkGroupWarningThreshold = this.chunkGroupWarningThreshold;
+            if (chunkGroupWarningThreshold !== false) {
+              const chunkGroupWarningEntries = Array.from(clientReferenceChunkGroupsByResource)
+                .filter(([, chunkGroups]) => chunkGroups.size >= chunkGroupWarningThreshold)
+                .sort(
+                  ([leftResource, leftChunkGroups], [rightResource, rightChunkGroups]) =>
+                    rightChunkGroups.size - leftChunkGroups.size ||
+                    (leftResource < rightResource ? -1 : leftResource > rightResource ? 1 : 0)
+                );
+              let emittedWarnings = 0;
+              let suppressedWarnings = 0;
+
+              for (const [resource, chunkGroups] of chunkGroupWarningEntries) {
+                const groupCount = chunkGroups.size;
+
+                if (emittedWarnings >= MAX_CHUNK_GROUP_WARNINGS) {
+                  suppressedWarnings += 1;
+                  continue;
+                }
+
+                emittedWarnings += 1;
+                compilation.warnings.push(
+                  new webpack.WebpackError(
+                    'React Server Components: client reference module ' +
+                      resource +
+                      ' is present in ' +
+                      groupCount +
+                      ' client-reference chunk groups. ' +
+                      'This can duplicate its client JS/CSS across routes; consider a thin client wrapper or isolating imports to avoid chunk contamination. ' +
+                      'See ' +
+                      CHUNK_GROUP_WARNING_DOCS +
+                      ' for mitigation guidance.',
+                  ),
+                );
+              }
+
+              if (suppressedWarnings > 0) {
+                compilation.warnings.push(
+                  new webpack.WebpackError(
+                    'React Server Components: suppressed ' +
+                      suppressedWarnings +
+                      ' additional client-reference chunk group warning(s). ' +
+                      'Increase chunkGroupWarningThreshold or inspect the module graph to narrow duplicated client references. ' +
+                      'See ' +
+                      CHUNK_GROUP_WARNING_DOCS +
+                      ' for mitigation guidance.',
                   ),
                 );
               }

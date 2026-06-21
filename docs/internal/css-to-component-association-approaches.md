@@ -180,6 +180,10 @@ const filesForGroup = stats.namedChunkGroups?.[groupName]?.assets?.map((asset) =
 **Real-world usage**
 
 - `@loadable/webpack-plugin` emits `loadable-stats.json` from webpack stats data.
+  `@loadable/server`'s `ChunkExtractor` reads that manifest to inject CSS `<link>` tags into SSR HTML
+  at the chunk-group level. Note that `@loadable/component` (the client-side loader) has **no CSS
+  awareness at all** — it is a thin wrapper around `import()` and relies entirely on webpack's runtime
+  for CSS loading (see the note on runtime CSS loading below).
 - `webpack-manifest-plugin`, `webpack-assets-manifest`, and `webpack-stats-plugin` expose similar
   build-output views.
 - Many SSR frameworks use these manifests as infrastructure, even when they still layer their own
@@ -482,6 +486,54 @@ React core intentionally leaves "which CSS belongs to which module?" to the fram
 This is the architectural reason our plugin exists at all. React gives us the transport primitive and
 the reveal-time behavior, but not the CSS-to-component mapping.
 
+## Note: runtime CSS loading during client-side `import()`
+
+The approaches above address the **server-side** problem: which CSS `<link>` tags to include in the
+HTML response. There is a complementary **client-side** mechanism that is easy to overlook.
+
+When `mini-css-extract-plugin` extracts CSS into standalone files, it also registers a runtime chunk
+handler in webpack's output: `__webpack_require__.f.miniCss`. This handler participates in every
+dynamic `import()` call:
+
+```js
+// Simplified from mini-css-extract-plugin's CssLoadingRuntimeModule output
+__webpack_require__.f.miniCss = function (chunkId, promises) {
+  if (chunkHasCss(chunkId)) {
+    promises.push(
+      new Promise(function (resolve, reject) {
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = getCssFilename(chunkId);
+        link.onload = resolve;   // resolves only when CSS is downloaded + parsed
+        link.onerror = reject;
+        document.head.appendChild(link);
+      })
+    );
+  }
+};
+```
+
+Because `__webpack_require__.e(chunkId)` calls **all** registered handlers (JS loader, CSS loader,
+etc.) and returns `Promise.all(promises)`, the `import()` promise does not resolve until both the JS
+**and** the CSS for that chunk have loaded. The component code cannot execute — and therefore cannot
+render — until CSS is ready.
+
+**Practical consequence:** for client-side dynamic imports with `mini-css-extract-plugin`, FOUC
+(Flash of Unstyled Content) does not occur. This is true regardless of what sits on top of
+`import()` — `React.lazy`, `@loadable/component`, or plain `import().then(...)`. The protection is
+in webpack's runtime, not in any React library.
+
+This means the CSS association problem described in this document is primarily an **SSR concern**:
+determining which `<link>` tags to include in the server-rendered HTML so that initial paint and
+streamed Suspense boundary reveals have CSS available. Once the client takes over and uses `import()`
+for subsequent code-split chunks, webpack's runtime handles CSS delivery automatically.
+
+**Where FOUC _can_ still occur on the client:**
+
+- `style-loader` (embeds CSS in JS, injects `<style>` tags after execution — no `onload` gating)
+- CSS-in-JS libraries that generate styles at runtime (styled-components, emotion)
+- Dynamically constructed `<link>` tags outside of webpack's chunk loading system
+
 ## Practical takeaways
 
 - As of 2026-06, there does not appear to be a de facto standalone npm package that provides
@@ -515,7 +567,7 @@ the reveal-time behavior, but not the CSS-to-component mapping.
 | Approach | Stage | Granularity | Handles `MiniCssExtractPlugin` + `SplitChunksPlugin` divergence well? | Main advantage | Main downside | Typical users | Fit for `react_on_rails_rsc` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Module graph traversal | Build time, bundler internals | Per component / per entry, depending on traversal root | Yes, if implemented carefully | Highest precision | Most complex | `react_on_rails_rsc`, Next.js, Gatsby, Nuxt webpack | Best fit for current design |
-| Chunk-group tracking | Build time, stats/manifest layer | Per route / per async entry | Yes, at group level | Simpler and robust to splitting | Over-fetches within a group | `@loadable/*`, manifest/stat plugins | Useful fallback, too coarse as primary model |
+| Chunk-group tracking | Build time, stats/manifest layer | Per route / per async entry | Yes, at group level | Simpler and robust to splitting | Over-fetches within a group | `@loadable/server` + `@loadable/webpack-plugin`, manifest/stat plugins | Useful fallback, too coarse as primary model |
 | Custom CSS chunking | Build time, custom optimizer | Usually route/chunk oriented | Avoids much of the divergence by design | Predictable CSS topology | Heavy framework machinery | Next.js | Interesting but likely overkill |
 | Vite/Rollup pre-bundle graph | Build + render-time module collection | Module set used during SSR | Yes, via manifest metadata | Cleaner ownership data | Vite/Rollup specific | Waku, Astro, Remix Vite, Nuxt Vite | Relevant only for a future Vite backend |
 | Runtime CSS collection | Render time | Exact rendered tree | Not really; it sidesteps extracted-file ownership | Perfect conditional accuracy | Incompatible with extracted CSS workflows | CSS-in-JS, `isomorphic-style-loader` | Orthogonal, not a replacement |

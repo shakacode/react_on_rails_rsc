@@ -34,8 +34,13 @@ describe('19.2 runtime release policy', () => {
     const pkg = readJson<PackageJson>('package.json');
     const changelog = fs.readFileSync(path.join(repoRoot, 'CHANGELOG.md'), 'utf8');
 
-    expect(pkg.version).toBe('19.2.0-rc.2');
-    expect(changelog).toMatch(/^## \[19\.2\.0-rc\.2\] - \d{4}-\d{2}-\d{2}$/m);
+    // Derive the expected version from package.json so a version bump doesn't
+    // require editing this test (a hard-coded version here previously blocked
+    // the rc.3 release). Still pins the 19.2.0-rc line and requires the
+    // CHANGELOG's top entry to match the package version exactly.
+    expect(pkg.version).toMatch(/^19\.2\.0-rc\.\d+$/);
+    const topChangelogVersion = changelog.match(/^## \[([^\]]+)\] - \d{4}-\d{2}-\d{2}$/m)?.[1];
+    expect(topChangelogVersion).toBe(pkg.version);
   });
 
   it('depends on the stock React 19.2 Flight runtime and raises React peers to the runtime floor', () => {

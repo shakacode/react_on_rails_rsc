@@ -166,7 +166,9 @@ check_npm_unpublished() {
   local attempt
   for attempt in 1 2 3 4 5; do
     local npm_exit=0
-    npm --silent view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >"$npm_view_output" 2>&1 || npm_exit=$?
+    NPM_CONFIG_USERCONFIG=/dev/null \
+      npm --silent --registry=https://registry.npmjs.org/ view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json \
+      >"$npm_view_output" 2>&1 || npm_exit=$?
 
     if [[ "$npm_exit" -eq 0 ]]; then
       record_error "${PACKAGE_NAME}@${RELEASE_VERSION} is already published."
@@ -176,18 +178,6 @@ check_npm_unpublished() {
 
     local error_code
     error_code=$(npm_error_code "$npm_view_output")
-
-    if [[ "$error_code" =~ ^(E401|E403|ENEEDAUTH)$ ]]; then
-      log_warn "npm metadata check hit ${error_code}; retrying anonymously against the public registry."
-      npm_exit=0
-      NPM_CONFIG_USERCONFIG=/dev/null npm --silent --registry=https://registry.npmjs.org/ view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json >"$npm_view_output" 2>&1 || npm_exit=$?
-      if [[ "$npm_exit" -eq 0 ]]; then
-        record_error "${PACKAGE_NAME}@${RELEASE_VERSION} is already published."
-        cat "$npm_view_output" >&2
-        return
-      fi
-      error_code=$(npm_error_code "$npm_view_output")
-    fi
 
     if [[ "$error_code" == "E404" ]]; then
       echo "  - npm version ${PACKAGE_NAME}@${RELEASE_VERSION} is unpublished"

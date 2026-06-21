@@ -516,13 +516,16 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     },
   );
 
-  it('rejects a threshold of one because it would warn for every client reference', () => {
-    expect(() =>
-      buildDuplicateClientReferenceFixture(4, {
-        chunkGroupWarningThreshold: 1,
-      }),
-    ).toThrow('chunkGroupWarningThreshold must be at least 2');
-  });
+  it.each([1, 2.5] as const)(
+    'rejects an invalid warning threshold of %p',
+    (chunkGroupWarningThreshold) => {
+      expect(() =>
+        buildDuplicateClientReferenceFixture(4, {
+          chunkGroupWarningThreshold,
+        }),
+      ).toThrow('chunkGroupWarningThreshold must be an integer at least 2');
+    },
+  );
 
   it('caps duplicate client-reference chunk group warnings and emits a summary', () => {
     const sharedFiles = Array.from(

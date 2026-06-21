@@ -173,18 +173,22 @@ function normalizeChunkGroupWarningThreshold(
   if (threshold === false || threshold === 0) {
     return false;
   }
-  if (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0) {
+  if (
+    typeof threshold !== 'number' ||
+    !Number.isFinite(threshold) ||
+    !Number.isInteger(threshold) ||
+    threshold < 0
+  ) {
     throw new Error(
-      'React Server Plugin: chunkGroupWarningThreshold must be at least 2, 0, or false.',
+      'React Server Plugin: chunkGroupWarningThreshold must be an integer at least 2, 0, or false.',
     );
   }
-  const normalizedThreshold = Math.ceil(threshold);
-  if (normalizedThreshold < 2) {
+  if (threshold < 2) {
     throw new Error(
-      'React Server Plugin: chunkGroupWarningThreshold must be at least 2, 0, or false.',
+      'React Server Plugin: chunkGroupWarningThreshold must be an integer at least 2, 0, or false.',
     );
   }
-  return normalizedThreshold;
+  return threshold;
 }
 
 type ModuleMetadata = {

@@ -12,6 +12,7 @@ NC='\033[0m'
 
 ERROR_COUNT=0
 METADATA_JSON_FILE=
+NPM_VIEW_OUTPUT_FILE=
 
 # Keep npm usable in sandboxed shells where the default user cache can be
 # unwritable. User-provided cache settings still win.
@@ -38,10 +39,19 @@ process.stdout.write(String(metadata[key]));
 NODE
 }
 
-cleanup_metadata_file() {
+cleanup_temp_files() {
   if [[ -n "${METADATA_JSON_FILE:-}" ]]; then
     rm -f "$METADATA_JSON_FILE"
   fi
+  if [[ -n "${NPM_VIEW_OUTPUT_FILE:-}" ]]; then
+    rm -f "$NPM_VIEW_OUTPUT_FILE"
+  fi
+}
+
+handle_interrupt() {
+  cleanup_temp_files
+  trap - EXIT INT TERM
+  exit 130
 }
 
 npm_error_code() {
@@ -160,54 +170,59 @@ check_git_tags() {
 
 check_npm_unpublished() {
   # Mirrors release.yml "Validate release ref and publish state".
-  local npm_view_output
-  npm_view_output=$(mktemp)
+  local retry_delay
+  retry_delay="${RELEASE_CHECK_NPM_RETRY_DELAY:-10}"
+  NPM_VIEW_OUTPUT_FILE=$(mktemp)
   cleanup_npm_view_output() {
-    if [[ -n "${npm_view_output:-}" ]]; then
-      rm -f "$npm_view_output"
+    if [[ -n "${NPM_VIEW_OUTPUT_FILE:-}" ]]; then
+      rm -f "$NPM_VIEW_OUTPUT_FILE"
+      NPM_VIEW_OUTPUT_FILE=
     fi
-    trap - RETURN INT TERM
+    trap - RETURN
   }
   # RETURN keeps this temp-file cleanup scoped to check_npm_unpublished.
   trap cleanup_npm_view_output RETURN
-  trap 'cleanup_npm_view_output; exit 130' INT TERM
 
   local attempt
+  local npm_exit
   for attempt in 1 2 3 4 5; do
-    local npm_exit=0
+    npm_exit=0
+    # Use the public registry without user .npmrc auth so public metadata reads
+    # are not blocked by private registry credentials. Proxy settings can still
+    # be supplied through environment variables such as HTTPS_PROXY.
     NPM_CONFIG_USERCONFIG=/dev/null \
       npm --silent --registry=https://registry.npmjs.org/ view "${PACKAGE_NAME}@${RELEASE_VERSION}" version --json \
-      >"$npm_view_output" 2>&1 || npm_exit=$?
+      >"$NPM_VIEW_OUTPUT_FILE" 2>&1 || npm_exit=$?
 
     if [[ "$npm_exit" -eq 0 ]]; then
       record_error "${PACKAGE_NAME}@${RELEASE_VERSION} is already published."
-      cat "$npm_view_output" >&2
+      cat "$NPM_VIEW_OUTPUT_FILE" >&2
       return
     fi
 
     local error_code
-    error_code=$(npm_error_code "$npm_view_output")
+    error_code=$(npm_error_code "$NPM_VIEW_OUTPUT_FILE")
 
     if [[ "$error_code" == "E404" ]]; then
       echo "  - npm version ${PACKAGE_NAME}@${RELEASE_VERSION} is unpublished"
       return
     fi
 
-    if [[ "$attempt" -lt 5 ]] && grep -Eiq 'ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|network|timeout' "$npm_view_output"; then
-      log_warn "npm view failed before publish; retrying in 10s (attempt ${attempt}/5):"
-      cat "$npm_view_output" >&2
-      sleep 10
+    if [[ "$attempt" -lt 5 ]] && grep -Eiq 'ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|network|timeout' "$NPM_VIEW_OUTPUT_FILE"; then
+      log_warn "npm view failed before publish; retrying in ${retry_delay}s (attempt ${attempt}/5):"
+      cat "$NPM_VIEW_OUTPUT_FILE" >&2
+      sleep "$retry_delay"
       continue
     fi
 
-    if grep -Eiq 'ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|network|timeout' "$npm_view_output"; then
+    if grep -Eiq 'ENOTFOUND|ETIMEDOUT|ECONNRESET|EAI_AGAIN|network|timeout' "$NPM_VIEW_OUTPUT_FILE"; then
       record_error "npm view failed after 5 attempts due to a network error; publish state is UNKNOWN."
-      cat "$npm_view_output" >&2
+      cat "$NPM_VIEW_OUTPUT_FILE" >&2
       return
     fi
 
     record_error "Unexpected npm error (code: ${error_code:-unknown}) while checking publish state."
-    cat "$npm_view_output" >&2
+    cat "$NPM_VIEW_OUTPUT_FILE" >&2
     return
   done
 }
@@ -296,5 +311,6 @@ main() {
   echo ""
 }
 
-trap cleanup_metadata_file EXIT
+trap cleanup_temp_files EXIT
+trap handle_interrupt INT TERM
 main

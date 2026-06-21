@@ -13,7 +13,7 @@ You are helping to add an entry to the CHANGELOG.md file for the `react-on-rails
 This skill accepts an optional mode argument from the invocation text:
 
 - **No argument** (`/update-changelog`): Add entries to `## [Unreleased]` without stamping a version header. Use this during development. (If the CHANGELOG has no `## [Unreleased]` section yet, add one at the top, immediately after the file's intro lines and above the newest version header.)
-- **`release`** (`/update-changelog release`): Add entries and stamp a version header. Auto-compute the next version based on changes (breaking -> major, added features -> minor, fixes -> patch). `scripts/release.sh` (run via `yarn release`) then reads this version from the top-most `## [x.y.z]` header automatically.
+- **`release`** (`/update-changelog release`): Add entries, stamp a version header, and bump `package.json` to the same version. Auto-compute the next version based on changes (breaking -> major, added features -> minor, fixes -> patch). `yarn release:check` then reads this version from the top-most `## [x.y.z]` header and verifies it matches `package.json` before the GitHub Actions release.
 - **`rc`** (`/update-changelog rc`): Same as `release`, but stamps an RC prerelease version (e.g., `19.0.5-rc.0`). Auto-increments the RC index if prior RCs exist for the same base version.
 - **`beta`** (`/update-changelog beta`): Same as `rc`, but stamps a beta prerelease version (e.g., `19.0.5-beta.0`).
 - **`classification-sweep`** (`/update-changelog classification-sweep BASE_REF..TARGET_REF`): Print a mechanical review table for every merged PR in the selected range before deciding which changelog entries to add. This read-only agent workflow runs git and GitHub API commands directly; it does not edit `CHANGELOG.md` and does not run `scripts/release.sh` or any version-stamping command.
@@ -37,21 +37,24 @@ This skill serves four use cases at different points in the release lifecycle:
 **Before a release** -- Stamp a version header and prepare for release:
 
 - Run `/update-changelog release` (or `rc`, `beta`, or an explicit version like `19.0.5-rc.10`) to add entries AND stamp the version header
+- Bump `package.json` to the same version in the same PR
 - The version is auto-computed from changes (breaking -> major, features -> minor, fixes -> patch) — skipped when an explicit version is provided
 - The skill commits, pushes, and opens a PR — review and merge it to `main`
-- Then run `yarn release` from `main` (no version argument needed -- `scripts/release.sh` reads the version from the top-most `## [x.y.z]` header in CHANGELOG.md)
-- The release script publishes to npm and automatically creates a GitHub release from the matching changelog section
+- Then run `yarn release:check` from clean synced `main` and dispatch the GitHub Actions `Release package` workflow with the command it prints
+- The workflow publishes to npm with trusted publishing and creates a GitHub release from the matching changelog section
 
 **After a release you forgot to update the changelog for** -- Catch-up mode:
 
 - The skill can retroactively find commits between tags and add missing entries
 - Ask the user whether to stamp a version header or add to `## [Unreleased]`
 
-### Why changelog comes BEFORE the release
+### Why changelog and package version come BEFORE the release
 
-- The release is **changelog-driven**: `scripts/release.sh` reads the TARGET VERSION from the top-most `## [x.y.z]` header in CHANGELOG.md, then bumps `package.json`, tags, publishes to npm, and creates the GitHub release. The required sequence is: **update CHANGELOG.md -> merge that change to `main` -> run `yarn release` from `main`.**
-- `scripts/release.sh` builds the GitHub release notes from the changelog section matching the target version — no separate sync step is needed.
-- If no changelog section matches the target version, the release script warns and creates a release without notes, so the section must exist first.
+- The release is **changelog-driven**: the target version comes from the top-most `## [x.y.z]` header in CHANGELOG.md, and `package.json` must match that version before the release PR merges.
+- The canonical GitHub Actions release workflow refuses to publish when `CHANGELOG.md` and `package.json` differ, the unprefixed tag already exists, or the npm version is already published.
+- `yarn release:check` mirrors those fast metadata/tag/npm gates locally and prints the exact workflow dispatch command. The required sequence is: **update CHANGELOG.md and package.json -> merge that change to `main` -> run `yarn release:check` from clean synced `main` -> dispatch `Release package`.**
+- The workflow builds the GitHub release notes from the changelog section matching the target version — no separate sync step is needed.
+- If no changelog section matches the target version, the release workflow fails, so the section must exist first.
 - A premature version header (if a release fails) is harmless -- you'll release eventually.
 
 ## Auto-Computing the Next Version
@@ -256,13 +259,17 @@ To stamp a version:
 
 1. Compute the version per "Auto-Computing the Next Version" (or use the explicit version provided).
 2. If a `## [Unreleased]` section exists, rename it to `## [<version>] - YYYY-MM-DD` (today's date), or insert a new `## [<version>] - YYYY-MM-DD` header above the previous newest version header and move the relevant entries beneath it.
-3. Update the reference links at the bottom of the file (see "Version Links").
+3. Update `package.json` so its `version` equals `<version>`.
+4. Update the reference links at the bottom of the file (see "Version Links").
 
-Do NOT manually edit `package.json` — `scripts/release.sh` (via release-it) bumps `package.json` to match the changelog version during `yarn release`.
+Bump `package.json` to match the version you stamp, in the same PR. The local
+`yarn release` fallback will see it already correct; the GitHub Actions release
+path requires it. Plain `/update-changelog` with no version-stamping argument
+does not touch `package.json`.
 
 **When to use which path:**
 
-- **`/update-changelog release` (this skill)**: Full automation -- analyzes commits, writes changelog entries, then stamps the version header. Use before a release.
+- **`/update-changelog release` (this skill)**: Full automation -- analyzes commits, writes changelog entries, stamps the version header, and bumps `package.json` to match. Use before a release.
 - **`/update-changelog` (this skill, no args)**: Adds entries to `## [Unreleased]` during development. Does not stamp a version header.
 
 ### Finding the Most Recent Version
@@ -384,12 +391,14 @@ If the user passed `release`, `rc`, `beta`, or an explicit version string as an 
 
 1. Auto-compute the next version per "Auto-Computing the Next Version" (prerelease index is determined solely from git tags, not changelog headers) and confirm it with the user.
 2. Stamp the header: rename `## [Unreleased]` to `## [<version>] - YYYY-MM-DD`, or insert a new `## [<version>] - YYYY-MM-DD` header above the previous newest version header and move the relevant entries beneath it.
-3. Update the reference links at the bottom (add the version compare link; ensure all `[#NN]` PR links used by the new section are present).
+3. Update `package.json` so its `version` equals `<version>`.
+4. Update the reference links at the bottom (add the version compare link; ensure all `[#NN]` PR links used by the new section are present).
 
 **For an explicit version string** (e.g., `19.0.5-rc.10`):
 
 1. Use the explicit version directly for the header (do not auto-compute).
-2. **Verify** the stamped header and compare link match the requested version.
+2. Update `package.json` so its `version` equals the requested version.
+3. **Verify** the stamped header, `package.json`, and compare link match the requested version.
 
 If no argument was passed, skip this step -- entries stay in `## [Unreleased]`.
 
@@ -402,20 +411,22 @@ If no argument was passed, skip this step -- entries stay in `## [Unreleased]`.
    - File ends with a newline character
    - **No duplicate section headings** (e.g., don't create two `### Fixed` sections — merge entries into the existing heading)
 2. **Verify version sections are in order** (Unreleased -> newest tag -> older tags)
-3. **Verify the reference links** at the bottom of the file are correct (version compare links use the bare version with no `v` prefix; every `([#NN])` has a matching `[#NN]:` definition)
-4. **Show the user** a summary of what was done:
+3. If in `release`/`rc`/`beta` mode or explicit-version mode, **verify `package.json` matches the stamped version**. If no argument was passed, verify `package.json` was not changed.
+4. **Verify the reference links** at the bottom of the file are correct (version compare links use the bare version with no `v` prefix; every `([#NN])` has a matching `[#NN]:` definition)
+5. **Show the user** a summary of what was done:
    - Which version sections were created
+   - Whether `package.json` was updated or intentionally left untouched
    - Which entries were moved from Unreleased
    - Which new entries were added
    - Which PRs were skipped (and why)
-5. If in `release`/`rc`/`beta` mode or explicit-version mode, **automatically commit, push, and open a PR**:
-   - Verify the working tree only has `CHANGELOG.md` changes; if there are other uncommitted changes, warn the user and stop
+6. If in `release`/`rc`/`beta` mode or explicit-version mode, **automatically commit, push, and open a PR**:
+   - Verify the working tree only has `CHANGELOG.md` and `package.json` changes; if there are other uncommitted changes, warn the user and stop
    - Verify the current branch is `main` (`git branch --show-current`); if not, warn the user and stop
    - Create a feature branch (e.g., `changelog-19.0.5-rc.10`)
-   - Stage only `CHANGELOG.md` (`git add CHANGELOG.md`) and commit with message `Update CHANGELOG.md for VERSION` (using the stamped version)
+   - Stage only `CHANGELOG.md` and `package.json` (`git add CHANGELOG.md package.json`) and commit with message `Update CHANGELOG.md and package version for VERSION` (using the stamped version)
    - Push and open a PR with the changelog diff as the body
    - If the push or PR creation fails, the CHANGELOG is already stamped locally — fix the issue (e.g., authentication, branch protection), then run `git push -u origin <branch>` and `gh pr create` manually
-   - Remind the user that, **after the PR merges to `main`**, the release is run with `yarn release` from `main` (it reads the version from the top-most `## [x.y.z]` header, publishes to npm, and creates the GitHub release). Use `yarn release:dry-run` first to preview without publishing.
+   - Remind the user that, **after the PR merges to `main`**, the canonical release path is `yarn release:check` from clean synced `main`, followed by the `gh workflow run release.yml ...` command that the check prints. Use `yarn release:dry-run` only when debugging the maintainer-only local fallback path.
 
 ### For Prerelease Versions (RC and Beta)
 
@@ -558,4 +569,4 @@ grep -A 3 "^### " CHANGELOG.md | head -30
 - Use past tense for the description
 - Be consistent with existing formatting in the changelog
 - Always ensure the file ends with a trailing newline
-- Before a release, you can sanity-check the pipeline with `yarn release:dry-run` (no publish, no tag, no push). The release itself verifies the build with `yarn test` and `yarn build` (tsc) before publishing.
+- Before a release, sanity-check the canonical GitHub Actions path with `yarn release:check` from clean synced `main`; it prints the dispatch command on success. Use `yarn release:dry-run` only for the maintainer-only local fallback path. The GitHub Actions release verifies the build with `yarn test` and `yarn build` (tsc) before publishing.

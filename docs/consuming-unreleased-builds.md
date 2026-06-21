@@ -99,14 +99,16 @@ git switch <fix-branch>
 yarn
 yarn build
 yarn version --new-version X.Y.Z-canary.<date>.<short-sha> --no-git-tag-version
-npm publish --ignore-scripts --tag canary --access public
+npm whoami
+npm publish --ignore-scripts --tag canary
 ```
 
 The publish command intentionally uses `npm publish`: npm owns the registry
 publish flow, while `yarn publish` prompts for versioning and can create git
 metadata. The explicit `yarn build` above prepares `dist/`, and
 `--ignore-scripts` prevents the `prepublishOnly` hook from rebuilding the same
-files a second time.
+files a second time. The `npm whoami` preflight makes missing npm publish auth
+fail before the version is changed or the publish step starts.
 
 Record the exact published version. Then restore the local version edit unless
 the branch is intentionally carrying that version change:
@@ -212,8 +214,11 @@ points and exported plugin/server files:
 ```bash
 node -p "require('react-on-rails-rsc/package.json').version"
 test -f node_modules/react-on-rails-rsc/dist/client.browser.js
+test -f node_modules/react-on-rails-rsc/dist/client.browser.d.ts
 test -f node_modules/react-on-rails-rsc/dist/client.node.js
+test -f node_modules/react-on-rails-rsc/dist/client.node.d.ts
 test -f node_modules/react-on-rails-rsc/dist/server.node.js
+test -f node_modules/react-on-rails-rsc/dist/server.node.d.ts
 test -f node_modules/react-on-rails-rsc/dist/types.js
 test -f node_modules/react-on-rails-rsc/dist/types.d.ts
 test -f node_modules/react-on-rails-rsc/dist/WebpackPlugin.js
@@ -221,14 +226,21 @@ test -f node_modules/react-on-rails-rsc/dist/WebpackPlugin.d.ts
 test -f node_modules/react-on-rails-rsc/dist/WebpackLoader.js
 test -f node_modules/react-on-rails-rsc/dist/WebpackLoader.d.ts
 test -f node_modules/react-on-rails-rsc/dist/flight-server.js
+test -f node_modules/react-on-rails-rsc/dist/flight-server.d.ts
 test -f node_modules/react-on-rails-rsc/dist/flight-server.browser.js
+test -f node_modules/react-on-rails-rsc/dist/flight-server.browser.d.ts
 test -f node_modules/react-on-rails-rsc/dist/flight-server.edge.js
+test -f node_modules/react-on-rails-rsc/dist/flight-server.edge.d.ts
 test -f node_modules/react-on-rails-rsc/dist/flight-server.node.js
+test -f node_modules/react-on-rails-rsc/dist/flight-server.node.d.ts
 test -f node_modules/react-on-rails-rsc/dist/flight-server.node.unbundled.js
+test -f node_modules/react-on-rails-rsc/dist/flight-server.node.unbundled.d.ts
 test -f node_modules/react-on-rails-rsc/dist/RSCReferenceDiscoveryPlugin.js
 test -f node_modules/react-on-rails-rsc/dist/RSCReferenceDiscoveryPlugin.d.ts
 test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/plugin.js
+test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/plugin.d.ts
 test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/loader.js
+test -f node_modules/react-on-rails-rsc/dist/react-server-dom-rspack/loader.d.ts
 test -f node_modules/react-on-rails-rsc/dist/webpack/RSCWebpackPlugin.js
 ```
 

@@ -173,6 +173,8 @@ function normalizeChunkGroupWarningThreshold(
   if (threshold === false || threshold === 0) {
     return false;
   }
+  // Keep the runtime guard for JavaScript callers even though TypeScript
+  // narrows typed callers before this point.
   if (
     typeof threshold !== 'number' ||
     !Number.isFinite(threshold) ||
@@ -180,7 +182,7 @@ function normalizeChunkGroupWarningThreshold(
     threshold < 2
   ) {
     throw new Error(
-      'React Server Plugin: chunkGroupWarningThreshold must be an integer at least 2, 0, or false.',
+      'React Server Components: chunkGroupWarningThreshold must be an integer at least 2, 0, or false.',
     );
   }
   return threshold;

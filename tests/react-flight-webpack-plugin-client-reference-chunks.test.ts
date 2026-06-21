@@ -505,6 +505,16 @@ describe('ReactFlightWebpackPlugin client-reference chunk selection', () => {
     expect(String(duplicateWarnings[0])).toContain('3 client-reference chunk groups');
   });
 
+  it('accepts the minimum client-reference chunk group warning threshold', () => {
+    const { warnings } = buildDuplicateClientReferenceFixture(2, {
+      chunkGroupWarningThreshold: 2,
+    });
+
+    const duplicateWarnings = duplicateClientReferenceWarnings(warnings);
+    expect(duplicateWarnings).toHaveLength(1);
+    expect(String(duplicateWarnings[0])).toContain('2 client-reference chunk groups');
+  });
+
   it.each([false, 0] as const)(
     'disables client-reference chunk group warnings when the threshold is %p',
     (chunkGroupWarningThreshold) => {

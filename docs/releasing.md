@@ -1,9 +1,39 @@
 # Releasing react-on-rails-rsc
 
 This project uses a changelog-driven release workflow. The target version is
-read from `CHANGELOG.md`; do not pass a version to the release tooling. Update
-the changelog and `package.json` first, merge that change to `main`, then
-publish from the GitHub Actions release workflow.
+read from `CHANGELOG.md`, and `package.json` must match that version before the
+release PR merges. Publish from the GitHub Actions release workflow; the local
+`yarn release` path is maintainer-only fallback.
+
+## Release Quickstart
+
+1. Stamp the changelog and package version in one PR:
+
+   ```text
+   /update-changelog rc
+   ```
+
+   Use `/update-changelog release`, `/update-changelog beta`, or an explicit
+   version such as `/update-changelog 19.2.0-rc.4` when that is the intended
+   release type.
+
+2. Review the stamped `CHANGELOG.md` and matching `package.json`, do a final
+   changelog sweep for any PRs merged during the release window, then merge the
+   PR to `main`.
+
+3. From a clean, current `main` checkout, run the fast Actions preflight:
+
+   ```bash
+   git switch main
+   git pull --ff-only origin main
+   yarn release:check
+   ```
+
+4. For final non-prerelease versions, run the downstream React on Rails gate
+   before dispatching the release so `latest` does not advance prematurely.
+
+5. Run the `gh workflow run release.yml ...` command printed by
+   `yarn release:check`.
 
 Tags in this repository do not use a `v` prefix. For example, use
 `X.Y.Z-rc.N`, not `vX.Y.Z-rc.N`.
@@ -67,7 +97,7 @@ For an actual release:
 Before choosing a target version, confirm the runtime-line policy in
 [versioning.md](versioning.md).
 
-### 1. Update The Changelog
+### 1. Update The Changelog And Package Version
 
 Use the local Claude Code command:
 
@@ -88,24 +118,38 @@ The changelog compare links at the bottom should also use unprefixed tags:
 [X.Y.Z-rc.N]: https://github.com/shakacode/react_on_rails_rsc/compare/PREVIOUS-TAG...X.Y.Z-rc.N
 ```
 
+When stamping a version with `/update-changelog release`, `rc`, `beta`, or an
+explicit version, bump `package.json` to the same version in the same PR. Plain
+`/update-changelog` entries under `[Unreleased]` do not change `package.json`.
+
 Review and merge the changelog/version PR before publishing.
 
-### 2. Run A Local Dry Run
+### 2. Run The GitHub Actions Readiness Check
 
 From `main`:
 
 ```bash
-yarn release:dry-run
+yarn release:check
 ```
 
-The dry run verifies the release version, npm/GitHub auth where available,
-package publish state, tests, build, and `npm pack --dry-run`. It does not
-publish to npm, push a tag, or create a GitHub release.
+This fast read-only check mirrors the GitHub Actions release metadata, tag, and
+npm publish-state gates. It verifies:
 
-Use this dry run as the local fallback whenever you need to validate release
-readiness without publishing. In dry-run mode, missing npm or GitHub auth is a
-warning instead of a release blocker, and no npm publish, git tag, tag push, or
-GitHub release is created.
+1. The top `CHANGELOG.md` release header is valid semver and has release notes.
+2. `package.json` has the same version.
+3. The unprefixed git tag does not exist locally or on `origin`.
+4. `react-on-rails-rsc@X.Y.Z` is not already published to npm.
+5. The local checkout is on clean, synced `main`.
+
+On success, it prints the exact dispatch command:
+
+```bash
+gh workflow run release.yml --ref main -f version=X.Y.Z -f confirm_publish=publish
+```
+
+This is distinct from `yarn release:dry-run`, which drives the heavier local
+release-it fallback path. Use `release:dry-run` only when the GitHub Actions path
+is blocked or a maintainer needs to debug the local fallback without publishing.
 
 ### 3. Run The Downstream React On Rails Gate
 
@@ -147,8 +191,9 @@ downstream checkout or rollout branch.
 
 ### 4. Publish From GitHub Actions
 
-After the changelog/version PR lands on `main`, open GitHub Actions and run
-`Release package` from the `main` branch.
+After `yarn release:check` passes, open GitHub Actions and run `Release package`
+from the `main` branch, or run the `gh workflow run release.yml ...` command
+printed by the check.
 
 Use these `workflow_dispatch` inputs:
 
@@ -185,13 +230,22 @@ Use the local publish path only if the GitHub Actions release path is blocked
 and a maintainer explicitly chooses to publish from a trusted workstation:
 
 ```bash
+yarn release:dry-run
+```
+
+```bash
+yarn verify:artifacts
+```
+
+```bash
 yarn release
 ```
 
 The script will:
 
 1. Read the target version from the first `## [X.Y.Z]` header in `CHANGELOG.md`.
-2. Verify that `package.json` is not ahead of the changelog version.
+2. Verify that `package.json` is not ahead of the changelog version; when using
+   the canonical Actions path, `package.json` should already match.
 3. Stop if the release tag already exists or the npm version is already published.
 4. Publish prereleases such as `X.Y.Z-rc.N` with the npm `next` dist-tag.
 5. Run `yarn test`, `yarn run build`, and `npm pack --dry-run`.

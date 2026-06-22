@@ -30,6 +30,10 @@ This repository does not currently have a rake changelog task. Edit
   [19.0.5-rc.6]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5-rc.5...19.0.5-rc.6
   ```
 
+- When stamping a version section, update `package.json` to the same version in
+  the same PR. Plain `/update-changelog` entries under `[Unreleased]` do not
+  change `package.json`.
+
 ## What To Include
 
 Only add user-visible changes:
@@ -80,22 +84,31 @@ Keep wording concise and focused on observable behavior.
 
 4. Add or update the version section in `CHANGELOG.md`.
 
-5. Update the compare links at the bottom:
+5. If you stamped a release version, update `package.json` so its `version`
+   equals the stamped changelog header.
+
+6. Update the compare links at the bottom:
 
    - `[new-version]` compares `<previous-tag>...<new-version>`
    - Older links remain below it
 
-6. Verify formatting:
+7. Verify formatting:
 
    ```bash
    sed -n '1,240p' CHANGELOG.md
    ```
 
-7. For release readiness, run:
+8. After the changelog/version PR merges to `main`, run the canonical GitHub
+   Actions preflight:
 
    ```bash
-   yarn release:dry-run
+   yarn release:check
    ```
+
+   The Actions workflow runs `yarn build`, `yarn test`, and
+   `yarn verify:artifacts` before publishing. Use `yarn release:dry-run` only
+   for the maintainer-only local fallback path; run `yarn verify:artifacts`
+   before `yarn release` on that fallback path.
 
 ## rc.6 Example
 

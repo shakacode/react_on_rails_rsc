@@ -75,7 +75,10 @@ yarn jest tests/path/to/file.test.ts
 # For an RSC test file, set the react-server condition:
 NODE_CONDITIONS=react-server yarn jest tests/path/to/file.rsc.test.ts
 
-# Dry-run a release (no publish/tag/push) to validate the changelog-driven release
+# Fast read-only preflight for the canonical GitHub Actions release
+yarn release:check
+
+# Dry-run the maintainer-only local fallback release path (no publish/tag/push)
 yarn release:dry-run
 
 # Verify the packed npm artifact, exports, runtime peer policy, publint, and attw
@@ -166,10 +169,14 @@ exposed secrets, auth bypass) still require investigation before dismissal, rega
 or build-config changes, dependency or runtime-version bumps, broad refactors, and release-process
 changes. When unsure whether a PR is low-risk, leave it ready and ask.
 
-**Releasing** is changelog-driven: update `CHANGELOG.md` with the target version, merge that to `main`,
-then run `yarn release` from `main` (or `yarn release:dry-run` to validate first). `scripts/release.sh`
-reads the version from `CHANGELOG.md` and publishes `react-on-rails-rsc` to npm via release-it. See
-`.agents/skills/update-changelog/SKILL.md`.
+**Releasing** is changelog-driven and the GitHub Actions workflow is canonical: stamp
+`CHANGELOG.md` and `package.json` to the same target version, merge that PR to `main`, run
+`yarn release:check` from a clean synced `main` checkout, then dispatch `Release package`
+using the command printed by the check. The Actions workflow runs `yarn build`,
+`yarn test`, and `yarn verify:artifacts` before publishing. `yarn release` /
+`yarn release:dry-run` are maintainer-only local fallback paths when GitHub Actions is blocked;
+run `yarn verify:artifacts` before `yarn release` on that fallback path. See
+`.agents/skills/update-changelog/SKILL.md` and `docs/releasing.md`.
 
 ## Review Workflow
 

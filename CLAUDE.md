@@ -35,23 +35,30 @@ lint, format, or type-check script. `yarn test` runs both halves of the suite:
 
 ## Release Flow
 
-Releases are changelog-driven. Update `CHANGELOG.md`, merge that changelog PR to
-`main`, then release from a clean `main` checkout.
+Releases are changelog-driven, and the GitHub Actions `Release package`
+workflow is canonical. When stamping a release, update `CHANGELOG.md` and
+`package.json` to the same target version in one PR, merge that PR to `main`,
+then release from a clean, synced `main` checkout.
 
-1. Run `yarn release:dry-run` first.
-2. Run `yarn verify:artifacts` to check the packed npm artifact, package
-   exports, runtime peer policy, `publint`, and Are The Types Wrong.
-3. Run `yarn release` only after the dry run and artifact verification succeed.
+1. Run `yarn release:check`.
+2. Run the `gh workflow run release.yml --ref main ...` command printed by the
+   check.
+3. The Actions workflow runs `yarn build`, `yarn test`, and
+   `yarn verify:artifacts` before publishing.
+4. Use `yarn release:dry-run`, `yarn verify:artifacts`, and `yarn release` only
+   as maintainer-only local fallback paths when GitHub Actions is blocked.
 
-`scripts/release.sh` reads the target version from the first version header in
-`CHANGELOG.md`. Do not pass a version to the release script. Tags have no `v`
-prefix, for example `19.0.5-rc.7`, not `v19.0.5-rc.7`. Prereleases publish
-with the npm `next` dist-tag. Current `scripts/release.sh` publishes final
-non-prerelease versions with the npm `latest` dist-tag.
+`yarn release:check` reads the target version from the first version header in
+`CHANGELOG.md`, verifies `package.json` matches it, checks that the unprefixed
+tag and npm version are unused, and confirms the checkout is clean synced
+`main`. Tags have no `v` prefix, for example `19.0.5-rc.7`, not
+`v19.0.5-rc.7`. Prereleases publish with the npm `next` dist-tag; final
+non-prerelease versions publish with `latest` only after the downstream release
+gate accepts the candidate.
 
-See `.agents/skills/update-changelog/SKILL.md` and `AGENTS.md` for release
-policy. If `docs/releasing.md` exists, treat it as supplementary detail and
-defer to `AGENTS.md` on conflicts. If `docs/releasing.md` is not present in your
+See `AGENTS.md`, `docs/releasing.md`, and
+`.agents/skills/update-changelog/SKILL.md` for release policy. If those files
+conflict, `AGENTS.md` wins. If `docs/releasing.md` is not present in your
 checkout, treat its contents as `UNKNOWN`.
 
 The runtime-line versioning policy lives in `docs/versioning.md`; use it before

@@ -34,15 +34,15 @@ jobs:
       RSC_DOWNSTREAM_INSTALL_PLAYWRIGHT_DEPS: '1'
     steps:
       - name: Check out react-on-rails-rsc
-        # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        # Pinned immutable actions/checkout@v7 release SHA verified via git ls-remote.
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ env.RSC_REF }}
           persist-credentials: false
 
       - name: Check out React on Rails
-        # Pinned immutable actions/checkout@v5 release SHA verified via git ls-remote.
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        # Pinned immutable actions/checkout@v7 release SHA verified via git ls-remote.
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           repository: shakacode/react_on_rails
           ref: ${{ env.REACT_ON_RAILS_REF }}
@@ -89,8 +89,8 @@ jobs:
           bundler-cache: true
 
       - name: Setup RSC Node
-        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        # Pinned immutable actions/setup-node@v6 release SHA verified via git ls-remote.
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '22.x'
 
@@ -131,8 +131,8 @@ jobs:
           echo "RSC_DOWNSTREAM_TARBALL=$tarball_path" >> "$GITHUB_ENV"
 
       - name: Setup downstream Node
-        # Pinned immutable actions/setup-node@v4 release SHA verified via git ls-remote.
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        # Pinned immutable actions/setup-node@v6 release SHA verified via git ls-remote.
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ steps.downstream-versions.outputs.downstream-node-version }}
 
@@ -160,8 +160,8 @@ jobs:
             --react-on-rails-ref "$REACT_ON_RAILS_REF"
 
       - name: Upload downstream logs
-        # Pinned immutable actions/upload-artifact@v4 release SHA verified via git ls-remote.
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        # Pinned immutable actions/upload-artifact@v7 release SHA verified via git ls-remote.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
           name: downstream-rsc-e2e-logs

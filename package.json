@@ -123,7 +123,7 @@
     "react-dom": "^19.2.7",
     "release-it": "20.2.0",
     "ts-jest": "^29.4.5",
-    "typescript": "^5.4.3",
+    "typescript": "^6.0.3",
     "webpack": "^5.98.0"
   },
   "peerDependencies": {

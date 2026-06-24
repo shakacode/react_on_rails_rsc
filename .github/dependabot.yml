@@ -3,10 +3,10 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
     groups:
-      root-dev-minor-patch:
-        dependency-type: development
+      root-minor-patch:
         patterns:
           - '*'
         update-types:
@@ -16,7 +16,8 @@ updates:
   - package-ecosystem: npm
     directory: /scripts/react-upgrade
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
     groups:
       react-upgrade-minor-patch:
         patterns:
@@ -28,7 +29,8 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
     groups:
       github-actions:
         patterns:

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Build (tsc; this is also the typecheck).
+set -euo pipefail
+exec yarn build

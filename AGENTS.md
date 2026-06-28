@@ -282,38 +282,9 @@ Update `/CHANGELOG.md` for **user-visible changes only** (features, bug fixes, b
 
 ## Agent Workflow Configuration
 
-Portable shared skills resolve every repo-specific value through this section.
-Adopting repos replace these values with their own and validate the seam with
-`agent-workflow-seam-doctor` (add `--shared <agent-workflows-root>` when checking
-user-installed shared skills outside the checkout). The shared source lives at
-[`shakacode/agent-workflows`](https://github.com/shakacode/agent-workflows).
+Portable shared skills resolve this repo's commands and policy through:
 
-- **Base branch**: `main`.
-- **Pre-push local validation**: `yarn build && yarn test` (tsc typecheck + jest). For a
-  single file run `yarn jest <path>`, prefixed `NODE_CONDITIONS=react-server` for
-  `*.rsc.test.*`.
-- **CI change detector**: n/a — no detector script; run the full suite.
-- **Hosted-CI trigger**: n/a — the unit-tests workflow runs on every PR; no manual
-  trigger or `+ci-*` commands.
-- **CI parity environment**: n/a — reproduce CI-only failures from the matching job in
-  `.github/workflows/**`.
-- **Benchmark labels**: n/a.
-- **Follow-up issue prefix**: `Follow-up:`.
-- **Changelog**: `/CHANGELOG.md` — Keep-a-Changelog; user-visible changes only;
-  reference-style PR links (e.g. `([#52])`).
-- **Lint / format**: n/a — eslint/prettier configs exist but are not wired into a gate;
-  do not run them as a blocking check.
-- **Merge ledger**: n/a.
-- **Docs checks**: n/a.
-- **Tests**: `yarn test` (`yarn test:rsc` + `yarn test:non-rsc`); single file
-  `yarn jest <path>`, prefix `NODE_CONDITIONS=react-server` for `*.rsc.test.*`.
-- **Build / type checks**: `yarn build` (runs `tsc`; this is the typecheck — no separate
-  type-check script).
-- **Review gate**: AI reviewers (Claude, CodeRabbit, Greptile, Bugbot, Codex) are
-  advisory, not blocking unless they confirm a blocker; merge gate is the full
-  `gh pr checks` list green (not `--required`) + all threads resolved + `mergeable` clean.
-- **Approval-exempt change categories**: at batch closeout, auto-merge ready low-risk PRs
-  that pass the merge gate; keep high-risk (CI/workflow, build-config, dependency or
-  runtime bumps, broad refactors, release) maintainer-gated.
-- **Coordination backend**: private `shakacode/agent-coordination` (claims/heartbeats
-  namespaced by full repo name).
+- **Commands** — run `.agents/bin/<name>` (`setup`, `validate`, `test`, `build`);
+  see [`.agents/bin/README.md`](.agents/bin/README.md). A missing script means that
+  capability is n/a here.
+- **Policy / config** — [`.agents/agent-workflow.yml`](.agents/agent-workflow.yml).

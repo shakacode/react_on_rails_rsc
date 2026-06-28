@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Pre-push gate: build + test (run before pushing).
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+"$here/build"
+"$here/test"

@@ -279,3 +279,12 @@ Update `/CHANGELOG.md` for **user-visible changes only** (features, bug fixes, b
 - **Format**: Keep-a-Changelog. Version headings are `## [x.y.z] - YYYY-MM-DD`; group entries under `### Added` / `### Changed` / `### Fixed` / `### Removed`.
 - **PR links**: reference style, e.g. `- Past-tense description of the change. ([#52])`, with the link definition collected at the bottom of the file: `[#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52`.
 - The release version is read from the top changelog heading by `scripts/release.sh`. See `.agents/skills/update-changelog/SKILL.md` for the full flow.
+
+## Agent Workflow Configuration
+
+Portable shared skills resolve this repo's commands and policy through:
+
+- **Commands** — run `.agents/bin/<name>` (`setup`, `validate`, `test`, `build`);
+  see [`.agents/bin/README.md`](.agents/bin/README.md). A missing script means that
+  capability is n/a here.
+- **Policy / config** — [`.agents/agent-workflow.yml`](.agents/agent-workflow.yml).

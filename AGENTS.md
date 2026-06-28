@@ -279,3 +279,45 @@ Update `/CHANGELOG.md` for **user-visible changes only** (features, bug fixes, b
 - **Format**: Keep-a-Changelog. Version headings are `## [x.y.z] - YYYY-MM-DD`; group entries under `### Added` / `### Changed` / `### Fixed` / `### Removed`.
 - **PR links**: reference style, e.g. `- Past-tense description of the change. ([#52])`, with the link definition collected at the bottom of the file: `[#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52`.
 - The release version is read from the top changelog heading by `scripts/release.sh`. See `.agents/skills/update-changelog/SKILL.md` for the full flow.
+
+## Agent Workflow Configuration
+
+Portable shared skills resolve every repo-specific value through this section.
+Adopting repos replace these values with their own and validate the seam with
+`agent-workflow-seam-doctor` (add `--shared <agent-workflows-root>` when checking
+user-installed shared skills outside the checkout). The shared source lives at
+[`shakacode/agent-workflows`](https://github.com/shakacode/agent-workflows).
+
+- **Base branch**: `main` (fetch and compare via `origin/main`).
+- **Pre-push local validation**: `yarn build` (tsc typecheck) and `yarn test`, or a
+  targeted `yarn jest` over the changed surface (prefix `NODE_CONDITIONS=react-server`
+  for `*.rsc.test.*` files).
+- **CI change detector**: n/a (no detector script; use `$run-ci` to reproduce CI job
+  selection locally).
+- **Hosted-CI trigger**: n/a (the jest unit-tests workflow runs automatically on every
+  PR; no `+ci-*` commands or CI-expansion labels).
+- **CI parity environment**: n/a (no documented `act`/runner image; reproduce CI-only
+  failures from the exact `.github/workflows/**` job).
+- **Benchmark labels**: n/a.
+- **Follow-up issue prefix**: `Follow-up:` (prefer fixing or declining in the PR;
+  default to no new issue).
+- **Changelog**: `/CHANGELOG.md` (Keep-a-Changelog; user-visible changes only;
+  reference-style PR links such as `([#52])`).
+- **Lint / format**: n/a (ESLint/Prettier configs exist but are not installed or wired
+  into a script or CI gate; `yarn test` + `yarn build` are the gates).
+- **Merge ledger**: n/a (no merge-ledger script or `Agent Merge Confidence` protocol).
+- **Docs checks**: n/a.
+- **Tests**: `yarn test` (runs `yarn test:rsc` then `yarn test:non-rsc`); run one file
+  with `yarn jest` (prefix `NODE_CONDITIONS=react-server` for `*.rsc.test.*`).
+- **Build / type checks**: `yarn build` (runs `tsc`; the build is also the typecheck).
+- **Review gate**: AI reviewers (Claude Code Review, CodeRabbit, Greptile, Cursor
+  Bugbot, Codex) are advisory unless they identify a confirmed blocker; the merge gate
+  is the full `gh pr checks <PR>` list green (not `--required`), all review threads
+  resolved or triaged, and `mergeable` clean.
+- **Approval-exempt change categories**: batch-closeout auto-merge of ready, low-risk
+  PRs that clear full merge qualification; high-risk classes (CI/workflow, build-config,
+  dependency or runtime-version bumps, broad refactors, release-process) stay
+  maintainer-gated.
+- **Coordination backend**: ShakaCode-internal; shares the private
+  `shakacode/agent-coordination` backend (claims/heartbeats namespaced by full repo
+  name).

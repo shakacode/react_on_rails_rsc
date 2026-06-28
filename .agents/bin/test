@@ -2,4 +2,5 @@
 # Run tests (test:rsc + test:non-rsc). For a single RSC file:
 #   NODE_CONDITIONS=react-server yarn jest <path>   (for *.rsc.test.*)
 set -euo pipefail
+cd "$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 exec yarn test "$@"

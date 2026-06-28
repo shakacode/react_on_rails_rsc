@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Pre-push gate: build + test (run before pushing).
 set -euo pipefail
-here="$(cd "$(dirname "$0")" && pwd)"
-"$here/build"
-"$here/test"
+root="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+cd "$root"
+"$root/.agents/bin/build"
+"$root/.agents/bin/test"

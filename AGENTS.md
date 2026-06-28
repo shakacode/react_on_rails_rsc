@@ -288,36 +288,32 @@ Adopting repos replace these values with their own and validate the seam with
 user-installed shared skills outside the checkout). The shared source lives at
 [`shakacode/agent-workflows`](https://github.com/shakacode/agent-workflows).
 
-- **Base branch**: `main` (fetch and compare via `origin/main`).
-- **Pre-push local validation**: `yarn build` (tsc typecheck) and `yarn test`, or a
-  targeted `yarn jest` over the changed surface (prefix `NODE_CONDITIONS=react-server`
-  for `*.rsc.test.*` files).
-- **CI change detector**: n/a (no detector script; use `$run-ci` to reproduce CI job
-  selection locally).
-- **Hosted-CI trigger**: n/a (the jest unit-tests workflow runs automatically on every
-  PR; no `+ci-*` commands or CI-expansion labels).
-- **CI parity environment**: n/a (no documented `act`/runner image; reproduce CI-only
-  failures from the exact `.github/workflows/**` job).
+- **Base branch**: `main`.
+- **Pre-push local validation**: `yarn build && yarn test` (tsc typecheck + jest). For a
+  single file run `yarn jest <path>`, prefixed `NODE_CONDITIONS=react-server` for
+  `*.rsc.test.*`.
+- **CI change detector**: n/a — no detector script; run the full suite.
+- **Hosted-CI trigger**: n/a — the unit-tests workflow runs on every PR; no manual
+  trigger or `+ci-*` commands.
+- **CI parity environment**: n/a — reproduce CI-only failures from the matching job in
+  `.github/workflows/**`.
 - **Benchmark labels**: n/a.
-- **Follow-up issue prefix**: `Follow-up:` (prefer fixing or declining in the PR;
-  default to no new issue).
-- **Changelog**: `/CHANGELOG.md` (Keep-a-Changelog; user-visible changes only;
-  reference-style PR links such as `([#52])`).
-- **Lint / format**: n/a (ESLint/Prettier configs exist but are not installed or wired
-  into a script or CI gate; `yarn test` + `yarn build` are the gates).
-- **Merge ledger**: n/a (no merge-ledger script or `Agent Merge Confidence` protocol).
+- **Follow-up issue prefix**: `Follow-up:`.
+- **Changelog**: `/CHANGELOG.md` — Keep-a-Changelog; user-visible changes only;
+  reference-style PR links (e.g. `([#52])`).
+- **Lint / format**: n/a — eslint/prettier configs exist but are not wired into a gate;
+  do not run them as a blocking check.
+- **Merge ledger**: n/a.
 - **Docs checks**: n/a.
-- **Tests**: `yarn test` (runs `yarn test:rsc` then `yarn test:non-rsc`); run one file
-  with `yarn jest` (prefix `NODE_CONDITIONS=react-server` for `*.rsc.test.*`).
-- **Build / type checks**: `yarn build` (runs `tsc`; the build is also the typecheck).
-- **Review gate**: AI reviewers (Claude Code Review, CodeRabbit, Greptile, Cursor
-  Bugbot, Codex) are advisory unless they identify a confirmed blocker; the merge gate
-  is the full `gh pr checks <PR>` list green (not `--required`), all review threads
-  resolved or triaged, and `mergeable` clean.
-- **Approval-exempt change categories**: batch-closeout auto-merge of ready, low-risk
-  PRs that clear full merge qualification; high-risk classes (CI/workflow, build-config,
-  dependency or runtime-version bumps, broad refactors, release-process) stay
-  maintainer-gated.
-- **Coordination backend**: ShakaCode-internal; shares the private
-  `shakacode/agent-coordination` backend (claims/heartbeats namespaced by full repo
-  name).
+- **Tests**: `yarn test` (`yarn test:rsc` + `yarn test:non-rsc`); single file
+  `yarn jest <path>`, prefix `NODE_CONDITIONS=react-server` for `*.rsc.test.*`.
+- **Build / type checks**: `yarn build` (runs `tsc`; this is the typecheck — no separate
+  type-check script).
+- **Review gate**: AI reviewers (Claude, CodeRabbit, Greptile, Bugbot, Codex) are
+  advisory, not blocking unless they confirm a blocker; merge gate is the full
+  `gh pr checks` list green (not `--required`) + all threads resolved + `mergeable` clean.
+- **Approval-exempt change categories**: at batch closeout, auto-merge ready low-risk PRs
+  that pass the merge gate; keep high-risk (CI/workflow, build-config, dependency or
+  runtime bumps, broad refactors, release) maintainer-gated.
+- **Coordination backend**: private `shakacode/agent-coordination` (claims/heartbeats
+  namespaced by full repo name).

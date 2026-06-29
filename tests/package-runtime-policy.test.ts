@@ -30,15 +30,15 @@ const collectExportTargets = (value: unknown): string[] => {
 };
 
 describe('19.2 runtime release policy', () => {
-  it('stamps the package and changelog for the 19.2.0 rc line', () => {
+  it('stamps the package and changelog for the 19.2.0 release line', () => {
     const pkg = readJson<PackageJson>('package.json');
     const changelog = fs.readFileSync(path.join(repoRoot, 'CHANGELOG.md'), 'utf8');
 
     // Derive the expected version from package.json so a version bump doesn't
     // require editing this test (a hard-coded version here previously blocked
-    // the rc.3 release). Still pins the 19.2.0-rc line and requires the
+    // the rc.3 release). Still pins the 19.2.0 release line and requires the
     // CHANGELOG's top entry to match the package version exactly.
-    expect(pkg.version).toMatch(/^19\.2\.0-rc\.\d+$/);
+    expect(pkg.version).toMatch(/^19\.2\.0(?:-rc\.\d+)?$/);
     const topChangelogVersion = changelog.match(/^## \[([^\]]+)\] - \d{4}-\d{2}-\d{2}$/m)?.[1];
     expect(topChangelogVersion).toBe(pkg.version);
   });

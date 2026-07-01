@@ -130,8 +130,7 @@ describe('19.2 runtime release policy', () => {
     );
   });
 
-  it('keeps default server fallback exports as explicit unsupported-runtime errors', () => {
-    const defaultServer = require('../src/flight-server') as typeof import('../src/flight-server');
+  it('keeps default server fallback fail-fast while declaring resource hint exports', () => {
     const defaultServerSource = fs.readFileSync(
       path.join(repoRoot, 'src/flight-server.ts'),
       'utf8'
@@ -148,19 +147,16 @@ describe('19.2 runtime release policy', () => {
       'preloadImage',
     ];
 
+    expect(() => {
+      jest.isolateModules(() => {
+        require('../src/flight-server');
+      });
+    }).toThrow(/React Server Writer cannot be used.*--conditions react-server/);
     for (const exportName of expectedResourceHintExports) {
-      expect(defaultServerSource).toContain(
-        `throwUnsupportedDefaultServerResourceHint('${exportName}')`
-      );
+      expect(defaultServerSource).toContain(`export const ${exportName}`);
     }
-    expect(defaultServerSource).not.toMatch(
+    expect(defaultServerSource).toMatch(
       /export const (prefetchDNS|preconnect|preloadAsset|preloadStyle|preinitStyle|preloadScript|preinitScript|preloadFont|preloadImage)[\s\S]*?undefined as never/
-    );
-    expect(() => defaultServer.prefetchDNS('https://cdn.example.com')).toThrow(
-      /react-on-rails-rsc\/server prefetchDNS\(\).*--conditions react-server/
-    );
-    expect(() => defaultServer.renderToReadableStream(null, {})).toThrow(
-      /react-on-rails-rsc\/server renderToReadableStream\(\).*--conditions react-server/
     );
   });
 });

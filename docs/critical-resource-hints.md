@@ -59,7 +59,10 @@ Use hints only for resources that are genuinely needed for the first viewport or
 for early interaction:
 
 - Use `preinitStyle` for critical CSS that should participate in React's
-  stylesheet precedence and streamed boundary reveal behavior.
+  stylesheet precedence and streamed boundary reveal behavior. By default it
+  uses this package's `rsc-css` precedence bucket, the same bucket used for
+  automatically discovered client-reference CSS. Pass an explicit `precedence`
+  when author-critical CSS must be ordered separately.
 - Use `preloadStyle` when you only need to start downloading a stylesheet early.
 - Use `preloadFont` for fonts used by the LCP text. Include the real production
   font URL and `type`, for example `font/woff2`.

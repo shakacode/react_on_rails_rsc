@@ -64,7 +64,9 @@ for early interaction:
   stylesheet precedence and streamed boundary reveal behavior. By default it
   uses this package's `rsc-css` precedence bucket, the same bucket used for
   automatically discovered client-reference CSS. Pass an explicit `precedence`
-  when author-critical CSS must be ordered separately.
+  when author-critical CSS must be ordered separately, but avoid overriding the
+  precedence for an `href` that automatic client-reference CSS discovery also
+  emits because React dedupes stylesheet preinit hints by URL.
 - Use `preloadStyle` when you only need to start downloading a stylesheet early.
 - Use `preloadFont` for fonts used by the LCP text. Include the real production
   font URL and `type`, for example `font/woff2`.

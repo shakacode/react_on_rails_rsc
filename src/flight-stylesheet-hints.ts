@@ -1,6 +1,6 @@
 import { preinit } from 'react-dom';
 
-const RSC_CSS_PRECEDENCE = 'rsc-css';
+export const RSC_CSS_PRECEDENCE = 'rsc-css';
 
 const preinitStylesheetsForClientReference = (metadata: unknown) => {
   if (!metadata || typeof metadata !== 'object') return;

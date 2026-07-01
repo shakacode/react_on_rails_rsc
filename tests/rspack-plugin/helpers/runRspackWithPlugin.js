@@ -11,6 +11,7 @@
  *     outputPath: string,
  *     isServer: boolean,
  *     clientManifestFilename?: string,
+ *     clientReferenceDiagnosticsFilename?: string|false,
  *     clientReferences?: unknown,
  *     publicPath?: string,
  *     crossOriginLoading?: false|'anonymous'|'use-credentials',
@@ -41,6 +42,7 @@ const {
   outputPath,
   isServer,
   clientManifestFilename,
+  clientReferenceDiagnosticsFilename,
   clientReferences: rawClientReferences,
   publicPath,
   crossOriginLoading,
@@ -69,6 +71,7 @@ if (missingRuntimeEntries.length > 0) {
 }
 const runtimeEntry = isServer ? runtimeEntries.server : runtimeEntries.client;
 const clientReferences = reviveFromRunner(rawClientReferences);
+const revivedConfigExtra = reviveFromRunner(configExtra);
 
 const config = {
   mode: 'development',
@@ -92,10 +95,11 @@ const config = {
     new RSCRspackPlugin({
       isServer: isServer,
       clientManifestFilename: clientManifestFilename,
+      clientReferenceDiagnosticsFilename: clientReferenceDiagnosticsFilename,
       clientReferences: clientReferences,
     }),
   ],
-  ...(configExtra || {}),
+  ...(revivedConfigExtra || {}),
 };
 
 rspack(config, (err, stats) => {

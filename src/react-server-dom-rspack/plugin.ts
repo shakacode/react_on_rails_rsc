@@ -94,9 +94,16 @@ type AnyCompilation = {
   };
   entrypoints?: ReadonlyMap<string, AnyEntrypoint>;
   emitAsset(filename: string, source: unknown): void;
+  assets?: Record<string, AssetSource>;
+  getAsset?: (filename: string) => { source?: AssetSource } | undefined;
   warnings: unknown[];
   compiler: AnyCompiler;
   getLogger?(name: string): AnyLogger;
+};
+
+type AssetSource = {
+  size?: () => number;
+  source?: () => string | Buffer;
 };
 
 // Helper to read/write our private Symbol key on the compilation. Using a
@@ -177,6 +184,11 @@ export interface Options {
    * file path). Default: `"client[index]"`.
    */
   chunkName?: string;
+  /**
+   * Optional diagnostics asset that lists client references, their emitted
+   * chunk files, and known emitted asset byte sizes. Disabled by default.
+   */
+  clientReferenceDiagnosticsFilename?: string | false;
 }
 
 // Default loader rule — applied to all JS/TS files so our directive detector
@@ -369,6 +381,13 @@ export class RSCRspackPlugin {
             `Emitting ${manifestFilename} with ` +
               `${Object.keys(manifest.filePathToModuleMetadata).length} entries`,
           );
+          if (typeof this.options.clientReferenceDiagnosticsFilename === 'string') {
+            const diagnostics = this.buildDiagnostics(compilation, manifest, manifestFilename);
+            compilation.emitAsset(
+              this.options.clientReferenceDiagnosticsFilename,
+              new bundler.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false),
+            );
+          }
           compilation.emitAsset(
             manifestFilename,
             new bundler.sources.RawSource(JSON.stringify(manifest, null, 2), false),
@@ -611,6 +630,62 @@ export class RSCRspackPlugin {
     };
   }
 
+  private buildDiagnostics(
+    compilation: AnyCompilation,
+    manifest: {
+      moduleLoading: { prefix: string; crossOrigin: string | null };
+      filePathToModuleMetadata: Record<
+        string,
+        { id: string | number | null; chunks: (string | number | null)[]; name: string }
+      >;
+    },
+    manifestFilename: string,
+  ): {
+    version: 1;
+    manifestFilename: string;
+    isServer: boolean;
+    clientReferenceCount: number;
+    totalChunkBytes: number;
+    clientReferences: Array<{
+      file: string;
+      id: string | number | null;
+      name: string;
+      totalBytes: number;
+      chunks: Array<{ id: string | number | null; file: string; bytes: number | null }>;
+    }>;
+  } {
+    const clientReferences = Object.entries(manifest.filePathToModuleMetadata)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([file, metadata]) => {
+        const chunks = [];
+        for (let i = 0; i < metadata.chunks.length; i += 2) {
+          const chunkFile = String(metadata.chunks[i + 1]);
+          chunks.push({
+            id: metadata.chunks[i] ?? null,
+            file: chunkFile,
+            bytes: getCompilationAssetSize(compilation, chunkFile, manifest.moduleLoading.prefix),
+          });
+        }
+        const totalBytes = chunks.reduce((sum, entry) => sum + (entry.bytes ?? 0), 0);
+        return {
+          file,
+          id: metadata.id,
+          name: metadata.name,
+          totalBytes,
+          chunks,
+        };
+      });
+
+    return {
+      version: 1,
+      manifestFilename,
+      isServer: this.options.isServer,
+      clientReferenceCount: clientReferences.length,
+      totalChunkBytes: sumUniqueKnownBytes(clientReferences),
+      clientReferences,
+    };
+  }
+
   /** Stash resolved client files so buildManifest can filter by them. */
   private _resolvedClientFiles: string[] = [];
 
@@ -685,6 +760,55 @@ export class RSCRspackPlugin {
       };
     }
   }
+}
+
+function sumUniqueKnownBytes(
+  clientReferences: Array<{
+    chunks: Array<{ file: string; bytes: number | null }>;
+  }>,
+): number {
+  const seen = new Set<string>();
+  let total = 0;
+  for (const reference of clientReferences) {
+    for (const chunk of reference.chunks) {
+      if (chunk.bytes === null || seen.has(chunk.file)) continue;
+      seen.add(chunk.file);
+      total += chunk.bytes;
+    }
+  }
+  return total;
+}
+
+function getCompilationAssetSize(
+  compilation: AnyCompilation,
+  file: string,
+  publicPath: string,
+): number | null {
+  const candidates = new Set([file]);
+  if (publicPath && publicPath !== 'auto' && file.startsWith(publicPath)) {
+    candidates.add(file.slice(publicPath.length));
+  }
+  if (file.startsWith('/')) candidates.add(file.slice(1));
+
+  for (const candidate of candidates) {
+    const source = compilation.getAsset?.(candidate)?.source ?? compilation.assets?.[candidate];
+    const size = getSourceSize(source);
+    if (size !== null) return size;
+  }
+  return null;
+}
+
+function getSourceSize(source: AssetSource | undefined): number | null {
+  if (!source) return null;
+  if (typeof source.size === 'function') {
+    const size = source.size();
+    return Number.isFinite(size) ? size : null;
+  }
+  if (typeof source.source === 'function') {
+    const value = source.source();
+    return typeof value === 'string' ? Buffer.byteLength(value) : value.length;
+  }
+  return null;
 }
 
 // Also export as default to match how `WebpackPlugin` is imported elsewhere.

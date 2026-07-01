@@ -17,6 +17,7 @@ const FIXTURES_ROOT = path.resolve(__dirname, '../fixtures');
 export interface CompileOptions {
   isServer?: boolean;
   clientManifestFilename?: string;
+  clientReferenceDiagnosticsFilename?: string | false;
   /** Passed through to the plugin; RegExps survive the child-process hop. */
   clientReferences?: unknown;
   /** Chunk name template, e.g. 'client-[request]' for readable chunk ids. */
@@ -48,6 +49,22 @@ export interface ModuleMetadata {
   name: string;
 }
 
+export interface ClientReferenceDiagnostics {
+  version: 1;
+  manifestFilename: string;
+  isServer: boolean;
+  clientReferenceCount: number;
+  totalChunkBytes: number;
+  clientReferences: Array<{
+    file: string;
+    id: string | number | null;
+    name: string;
+    totalBytes: number;
+    chunks: Array<{ id: string | number | null; file: string; bytes: number | null }>;
+    css?: Array<{ file: string; bytes: number | null }>;
+  }>;
+}
+
 export interface CompileResult {
   manifest: {
     moduleLoading: { prefix: string; crossOrigin: string | null };
@@ -55,6 +72,8 @@ export interface CompileResult {
   };
   manifestSource: string;
   manifestPath: string;
+  clientReferenceDiagnostics?: ClientReferenceDiagnostics;
+  clientReferenceDiagnosticsSource?: string;
   assets: string[];
   warnings: string[];
   outputPath: string;
@@ -89,6 +108,7 @@ const compileInto = (
     outputPath,
     isServer: options.isServer ?? false,
     clientManifestFilename: options.clientManifestFilename,
+    clientReferenceDiagnosticsFilename: options.clientReferenceDiagnosticsFilename,
     clientReferences: serializeForRunner(options.clientReferences),
     chunkName: options.chunkName,
     publicPath: options.publicPath,
@@ -142,11 +162,23 @@ const compileInto = (
   }
   const manifestSource = fs.readFileSync(manifestPath, 'utf8');
   const manifest = JSON.parse(manifestSource) as CompileResult['manifest'];
+  const diagnosticsFilename = options.clientReferenceDiagnosticsFilename;
+  const diagnosticsPath =
+    typeof diagnosticsFilename === 'string' ? path.join(outputPath, diagnosticsFilename) : undefined;
+  const clientReferenceDiagnosticsSource =
+    diagnosticsPath && fs.existsSync(diagnosticsPath)
+      ? fs.readFileSync(diagnosticsPath, 'utf8')
+      : undefined;
+  const clientReferenceDiagnostics = clientReferenceDiagnosticsSource
+    ? (JSON.parse(clientReferenceDiagnosticsSource) as ClientReferenceDiagnostics)
+    : undefined;
 
   return {
     manifest,
     manifestSource,
     manifestPath,
+    clientReferenceDiagnostics,
+    clientReferenceDiagnosticsSource,
     assets: result.assets ?? [],
     warnings: result.warnings ?? [],
     outputPath,

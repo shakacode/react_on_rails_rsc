@@ -157,6 +157,7 @@ export type Options = {
   chunkGroupWarningThreshold?: number | false;
   clientManifestFilename?: string;
   serverConsumerManifestFilename?: string;
+  clientReferenceDiagnosticsFilename?: string | false;
 };
 
 const DEFAULT_CHUNK_GROUP_WARNING_THRESHOLD = 4;
@@ -193,6 +194,31 @@ type ModuleMetadata = {
   chunks: (string | number | null)[];
   css: string[] | null;
   name: string;
+};
+
+type AssetSource = {
+  size?: () => number;
+  source?: () => string | Buffer;
+};
+
+type FlightAsset = {
+  source?: AssetSource;
+};
+
+type ClientReferenceDiagnostics = {
+  version: 1;
+  manifestFilename: string;
+  isServer: boolean;
+  clientReferenceCount: number;
+  totalChunkBytes: number;
+  clientReferences: Array<{
+    file: string;
+    id: string | number | null;
+    name: string;
+    totalBytes: number;
+    chunks: Array<{ id: string | number | null; file: string; bytes: number | null }>;
+    css?: Array<{ file: string; bytes: number | null }>;
+  }>;
 };
 
 /**
@@ -252,6 +278,8 @@ type FlightCompilation = {
       module: FlightModule,
     ): Iterable<{ module?: FlightModule | null; resolvedModule?: FlightModule | null }>;
   };
+  assets?: Record<string, AssetSource>;
+  getAsset?: (filename: string) => FlightAsset | undefined;
   hooks: {
     processAssets: {
       tap(options: { name: string; stage: number }, fn: () => void): void;
@@ -359,6 +387,8 @@ export class RSCWebpackPlugin {
    */
   readonly serverConsumerManifestFilename: string;
 
+  readonly clientReferenceDiagnosticsFilename: string | false | undefined;
+
   static __internal_isReactOnRailsRSCRuntimeResource = isReactOnRailsRSCRuntimeResource;
 
   constructor(options: Options) {
@@ -403,6 +433,7 @@ export class RSCWebpackPlugin {
       options.clientManifestFilename || defaultClientManifestFilename;
     this.serverConsumerManifestFilename =
       options.serverConsumerManifestFilename || 'react-ssr-manifest.json';
+    this.clientReferenceDiagnosticsFilename = options.clientReferenceDiagnosticsFilename;
   }
 
   apply(compiler: webpack.Compiler): void {
@@ -896,6 +927,14 @@ export class RSCWebpackPlugin {
             }
           }
 
+          if (typeof this.clientReferenceDiagnosticsFilename === 'string') {
+            const diagnostics = this.buildDiagnostics(compilation, manifest);
+            compilation.emitAsset(
+              this.clientReferenceDiagnosticsFilename,
+              new webpack.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false),
+            );
+          }
+
           compilation.emitAsset(
             this.clientManifestFilename,
             new webpack.sources.RawSource(JSON.stringify(manifest, null, 2), false),
@@ -903,6 +942,58 @@ export class RSCWebpackPlugin {
         },
       );
     });
+  }
+
+  private buildDiagnostics(
+    compilation: FlightCompilation,
+    manifest: {
+      moduleLoading: { prefix: string; crossOrigin: string | null };
+      filePathToModuleMetadata: Record<string, ModuleMetadata>;
+    },
+  ): ClientReferenceDiagnostics {
+    const clientReferences = Object.entries(manifest.filePathToModuleMetadata)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([file, metadata]) => {
+        const chunks = [];
+        for (let i = 0; i < metadata.chunks.length; i += 2) {
+          const chunkFile = String(metadata.chunks[i + 1]);
+          chunks.push({
+            id: metadata.chunks[i] ?? null,
+            file: chunkFile,
+            bytes: getCompilationAssetSize(compilation, chunkFile, manifest.moduleLoading.prefix),
+          });
+        }
+
+        const css =
+          metadata.css && metadata.css.length > 0
+            ? metadata.css.map((fileName) => ({
+                file: fileName,
+                bytes: getCompilationAssetSize(compilation, fileName, manifest.moduleLoading.prefix),
+              }))
+            : undefined;
+        const totalBytes = [...chunks, ...(css || [])].reduce(
+          (sum, entry) => sum + (entry.bytes ?? 0),
+          0,
+        );
+
+        return {
+          file,
+          id: metadata.id,
+          name: metadata.name,
+          totalBytes,
+          chunks,
+          ...(css ? { css } : {}),
+        };
+      });
+
+    return {
+      version: 1,
+      manifestFilename: this.clientManifestFilename,
+      isServer: this.isServer,
+      clientReferenceCount: clientReferences.length,
+      totalChunkBytes: sumUniqueKnownBytes(clientReferences),
+      clientReferences,
+    };
   }
 
   /**
@@ -993,6 +1084,53 @@ export class RSCWebpackPlugin {
       },
     );
   }
+}
+
+function sumUniqueKnownBytes(
+  clientReferences: ClientReferenceDiagnostics['clientReferences'],
+): number {
+  const seen = new Set<string>();
+  let total = 0;
+  for (const reference of clientReferences) {
+    for (const chunk of reference.chunks) {
+      if (chunk.bytes === null || seen.has(chunk.file)) continue;
+      seen.add(chunk.file);
+      total += chunk.bytes;
+    }
+  }
+  return total;
+}
+
+function getCompilationAssetSize(
+  compilation: FlightCompilation,
+  file: string,
+  publicPath: string,
+): number | null {
+  const candidates = new Set([file]);
+  if (publicPath && publicPath !== 'auto' && file.startsWith(publicPath)) {
+    candidates.add(file.slice(publicPath.length));
+  }
+  if (file.startsWith('/')) candidates.add(file.slice(1));
+
+  for (const candidate of candidates) {
+    const source = compilation.getAsset?.(candidate)?.source ?? compilation.assets?.[candidate];
+    const size = getSourceSize(source);
+    if (size !== null) return size;
+  }
+  return null;
+}
+
+function getSourceSize(source: AssetSource | undefined): number | null {
+  if (!source) return null;
+  if (typeof source.size === 'function') {
+    const size = source.size();
+    return Number.isFinite(size) ? size : null;
+  }
+  if (typeof source.source === 'function') {
+    const value = source.source();
+    return typeof value === 'string' ? Buffer.byteLength(value) : value.length;
+  }
+  return null;
 }
 
 export default RSCWebpackPlugin;

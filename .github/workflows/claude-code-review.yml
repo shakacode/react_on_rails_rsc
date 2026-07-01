@@ -45,7 +45,7 @@ jobs:
       - name: Run Claude Code Review
         if: steps.claude-workflow-changes.outputs.changed != 'true'
         id: claude-review
-        uses: anthropics/claude-code-action@51705da45eecce209d4700538bf8377d5b5fc695 # v1.0.152
+        uses: anthropics/claude-code-action@fad22eb3fa582b7357fc0ea48af6645851b884fd # v1.0.161
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |

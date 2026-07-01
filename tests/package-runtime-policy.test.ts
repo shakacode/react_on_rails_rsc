@@ -86,6 +86,19 @@ describe('19.2 runtime release policy', () => {
       })
     );
 
+    const expectedServerExports = [
+      'registerClientReference',
+      'preloadAsset',
+      'preloadStyle',
+      'preinitStyle',
+      'preloadScript',
+      'preinitScript',
+      'preloadFont',
+      'preloadImage',
+      'preconnect',
+      'prefetchDNS',
+    ];
+
     for (const fileName of [
       'src/flight-server.ts',
       'src/flight-server.browser.ts',
@@ -95,10 +108,9 @@ describe('19.2 runtime release policy', () => {
     ]) {
       const source = fs.readFileSync(path.join(repoRoot, fileName), 'utf8');
 
-      expect(source).toContain('registerClientReference');
-      expect(source).toContain('preloadAsset');
-      expect(source).toContain('preconnect');
-      expect(source).toContain('prefetchDNS');
+      for (const exportName of expectedServerExports) {
+        expect(source).toContain(exportName);
+      }
       expect(source).not.toMatch(/export\s+\*\s+from\s+['"]react-server-dom-webpack\/server/);
     }
 

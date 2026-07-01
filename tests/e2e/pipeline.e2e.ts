@@ -323,6 +323,19 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       },
     );
 
+    it('serializes app-declared resource hints from the public server export', () => {
+      expect(payload).toContain(':HD"https://rsc-assets.example.test"');
+      expect(payload).toContain(':HC["https://cdn.example.test",""]');
+      expect(payload).toContain(':HL["/assets/e2e-critical.css","style"');
+      expect(payload).toContain(':HL["/assets/e2e-critical.js","script"');
+      expect(payload).toContain('/assets/e2e-font.woff2');
+      expect(payload).toContain('"font"');
+      expect(payload).toContain('"type":"font/woff2"');
+      expect(payload).toContain('/assets/e2e-hero.webp');
+      expect(payload).toContain('"fetchPriority":"high"');
+      expect(payload).toContain('"imageSizes":"100vw"');
+    });
+
     it('renders the payload to SSR HTML with executed client components', () => {
       const result = runNode<{ ok: boolean; errors: string[] }>([
         'scripts/render-ssr.js',

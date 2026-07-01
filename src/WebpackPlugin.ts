@@ -21,6 +21,7 @@ export type Options = {
   chunkGroupWarningThreshold?: number | false,
   clientManifestFilename?: string,
   serverConsumerManifestFilename?: string,
+  clientReferenceDiagnosticsFilename?: string | false,
 };
 
 export class RSCWebpackPlugin {

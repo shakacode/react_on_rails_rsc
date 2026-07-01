@@ -26,6 +26,33 @@ type ManifestChunks =
 const manifestChunkFiles = (chunks: ManifestChunks): string[] =>
   chunks.filter((_chunk, index) => index % 2 === 1).map(String);
 
+const staticIslandClientReferences = (include: RegExp) => [
+  { directory: '.', recursive: false, include },
+];
+
+const splitStaticIslandVendors = {
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      minSize: 0,
+      cacheGroups: {
+        default: false,
+        defaultVendors: false,
+        appVendor: {
+          test: /app-vendor\.js$/,
+          name: 'vendors-app',
+          enforce: true,
+        },
+        heavyVendor: {
+          test: /heavy-vendor\.js$/,
+          name: 'vendors-heavy',
+          enforce: true,
+        },
+      },
+    },
+  },
+};
+
 afterAll(() => cleanupOutputDirs(created));
 
 const DIST_PLUGIN = path.resolve(__dirname, '../../dist/react-server-dom-rspack/plugin.js');
@@ -68,6 +95,100 @@ describe('RSCRspackPlugin', () => {
       const a = run('basic-client');
       const b = run('basic-client');
       expect(a.manifestSource).toBe(b.manifestSource);
+    });
+  });
+
+  describe('static island diagnostics', () => {
+    const diagnosticsFilename = 'rsc-client-reference-diagnostics.json';
+
+    it('emits empty diagnostics for an explicitly server-only static page config', () => {
+      const result = run('static-islands', {
+        clientReferences: [],
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+      });
+
+      expect(result.manifest.filePathToModuleMetadata).toEqual({});
+      expect(result.assets).toContain(diagnosticsFilename);
+      expect(result.clientReferenceDiagnostics).toEqual({
+        version: 1,
+        manifestFilename: 'react-client-manifest.json',
+        isServer: false,
+        clientReferenceCount: 0,
+        totalChunkBytes: 0,
+        clientReferences: [],
+      });
+    });
+
+    it('shows a tiny island avoiding unrelated app/vendor chunks', () => {
+      const result = run('static-islands', {
+        clientReferences: staticIslandClientReferences(/TinyIsland\.js$/),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        configExtra: splitStaticIslandVendors,
+      });
+
+      expect(result.assets).toContain('vendors-app.js');
+      const tinyKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('/TinyIsland.js'),
+      );
+      expect(tinyKey).toBeTruthy();
+      const tiny = result.manifest.filePathToModuleMetadata[tinyKey!]!;
+      expect(manifestChunkFiles(tiny.chunks).join(',')).not.toContain('vendors');
+
+      const diagnosticEntry = result.clientReferenceDiagnostics?.clientReferences[0]!;
+      expect(diagnosticEntry.file).toContain('/TinyIsland.js');
+      expect(diagnosticEntry.chunks.map((chunk) => chunk.file).join(',')).not.toContain('vendors');
+      expect(diagnosticEntry.totalBytes).toBeGreaterThan(0);
+    });
+
+    it('reports a larger byte total for the heavy island chunk', () => {
+      const tinyResult = run('static-islands', {
+        clientReferences: staticIslandClientReferences(/TinyIsland\.js$/),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        configExtra: splitStaticIslandVendors,
+      });
+      const heavyResult = run('static-islands', {
+        clientReferences: staticIslandClientReferences(/HeavyIsland\.js$/),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        configExtra: splitStaticIslandVendors,
+      });
+
+      const heavyEntry = heavyResult.clientReferenceDiagnostics?.clientReferences[0]!;
+      expect(heavyEntry.file).toContain('/HeavyIsland.js');
+      expect(heavyEntry.chunks).toHaveLength(1);
+      expect(heavyEntry.chunks[0]!.bytes).toBeGreaterThan(0);
+      expect(heavyEntry.totalBytes).toBeGreaterThan(
+        tinyResult.clientReferenceDiagnostics!.clientReferences[0]!.totalBytes,
+      );
+      expect(heavyResult.clientReferenceDiagnostics?.totalChunkBytes).toBe(heavyEntry.totalBytes);
+    });
+
+    it('includes CSS asset bytes in static island diagnostics', () => {
+      const result = run('static-islands', {
+        clientReferences: staticIslandClientReferences(/StyledIsland\.js$/),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        publicPath: '/assets',
+        withCss: true,
+      });
+
+      expect(result.assets).toContain('client0.chunk.css');
+
+      const manifestEntry = Object.entries(result.manifest.filePathToModuleMetadata).find(([file]) =>
+        file.endsWith('/StyledIsland.js'),
+      )?.[1];
+      expect(manifestEntry).not.toHaveProperty('css');
+
+      const diagnosticEntry = result.clientReferenceDiagnostics?.clientReferences[0]!;
+      expect(diagnosticEntry.file).toContain('/StyledIsland.js');
+      expect(diagnosticEntry.css).toEqual([
+        {
+          file: '/assets/client0.chunk.css',
+          bytes: expect.any(Number),
+        },
+      ]);
+      expect(diagnosticEntry.totalBytes).toBe(
+        diagnosticEntry.chunks[0]!.bytes! + diagnosticEntry.css![0]!.bytes!,
+      );
+      expect(result.clientReferenceDiagnostics?.totalChunkBytes).toBe(diagnosticEntry.totalBytes);
     });
   });
 

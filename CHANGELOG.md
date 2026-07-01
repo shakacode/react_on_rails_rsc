@@ -4,6 +4,9 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
+
 ## [19.2.0] - 2026-06-28
 
 ### Breaking Changes
@@ -52,6 +55,7 @@ All notable changes to this package will be documented in this file.
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
+[#144]: https://github.com/shakacode/react_on_rails_rsc/pull/144
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
 [#106]: https://github.com/shakacode/react_on_rails_rsc/pull/106
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23

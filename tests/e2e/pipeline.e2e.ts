@@ -96,6 +96,8 @@ interface HydrateResult {
   consoleMessages: { level: string; message: string }[];
 }
 
+type LinkHintRow = [string, string] | [string, string, Record<string, string>];
+
 const runNode = <T>(args: string[]): T => {
   let stdout: string;
   try {
@@ -150,6 +152,12 @@ const importRows = (payload: string): [string, string[], string][] =>
 const styleHintRows = (payload: string): [string, string][] =>
   [...payload.matchAll(/^(?:[0-9a-f]+)?:HS(\[.*\])$/gm)].map(
     (m) => JSON.parse(m[1]!) as [string, string],
+  );
+
+/** Flight preload/preinit rows look like `<row id>:HL[...]` or `:HL[...]`. */
+const linkHintRows = (payload: string): LinkHintRow[] =>
+  [...payload.matchAll(/^(?:[0-9a-f]+)?:HL(\[.*\])$/gm)].map(
+    (m) => JSON.parse(m[1]!) as LinkHintRow,
   );
 
 jest.setTimeout(300_000);
@@ -326,14 +334,12 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
     it('serializes app-declared resource hints from the public server export', () => {
       expect(payload).toContain(':HD"https://rsc-assets.example.test"');
       expect(payload).toContain(':HC["https://cdn.example.test",""]');
-      expect(payload).toContain(':HL["/assets/e2e-critical.css","style"');
-      expect(payload).toContain(':HL["/assets/e2e-critical.js","script"');
-      expect(payload).toContain('/assets/e2e-font.woff2');
-      expect(payload).toContain('"font"');
-      expect(payload).toContain('"type":"font/woff2"');
-      expect(payload).toContain('/assets/e2e-hero.webp');
-      expect(payload).toContain('"fetchPriority":"high"');
-      expect(payload).toContain('"imageSizes":"100vw"');
+      expect(linkHintRows(payload)).toEqual([
+        ['/assets/e2e-critical.css', 'style', { fetchPriority: 'high' }],
+        ['/assets/e2e-critical.js', 'script'],
+        ['/assets/e2e-font.woff2', 'font', { crossOrigin: '', type: 'font/woff2' }],
+        ['/assets/e2e-hero.webp', 'image', { fetchPriority: 'high', imageSizes: '100vw' }],
+      ]);
     });
 
     it('renders the payload to SSR HTML with executed client components', () => {

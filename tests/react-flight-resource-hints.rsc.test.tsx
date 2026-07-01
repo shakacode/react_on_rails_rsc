@@ -61,9 +61,9 @@ describe('React Flight resource hint helpers', () => {
     expect(payload).toContain(':HS["/packs/generated/default-precedence.css","rsc-css"]');
     expect(payload).toContain(':HL["/packs/generated/WelcomePage.js","script"');
     expect(payload).toContain(':HX["/packs/generated/bootstrap.js"');
-    expect(payload).toContain('/fonts/poppins-600.woff2');
-    expect(payload).toContain('"font"');
-    expect(payload).toContain('"type":"font/woff2"');
+    expect(payload).toContain(
+      ':HL["/fonts/poppins-600.woff2","font",{"crossOrigin":"","type":"font/woff2"}]'
+    );
     expect(payload).toContain('/images/listing-price-comparison.webp');
     expect(payload).toContain('"fetchPriority":"high"');
     expect(payload).toContain('"imageSizes":"100vw"');

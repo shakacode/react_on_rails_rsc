@@ -94,9 +94,16 @@ type AnyCompilation = {
   };
   entrypoints?: ReadonlyMap<string, AnyEntrypoint>;
   emitAsset(filename: string, source: unknown): void;
+  assets?: Record<string, AssetSource>;
+  getAsset?: (filename: string) => { source?: AssetSource } | undefined;
   warnings: unknown[];
   compiler: AnyCompiler;
   getLogger?(name: string): AnyLogger;
+};
+
+type AssetSource = {
+  size?: () => number;
+  source?: () => string | Buffer;
 };
 
 // Helper to read/write our private Symbol key on the compilation. Using a
@@ -119,6 +126,12 @@ type AnyChunk = {
   id: string | number | null;
   files: Set<string> | string[];
   canBeInitial?: () => boolean;
+};
+
+type ModuleMetadata = {
+  id: string | number | null;
+  chunks: (string | number | null)[];
+  name: string;
 };
 
 type Bundler = {
@@ -177,6 +190,11 @@ export interface Options {
    * file path). Default: `"client[index]"`.
    */
   chunkName?: string;
+  /**
+   * Optional diagnostics asset that lists client references, their emitted
+   * chunk files, and known emitted asset byte sizes. Disabled by default.
+   */
+  clientReferenceDiagnosticsFilename?: string | false;
 }
 
 // Default loader rule — applied to all JS/TS files so our directive detector
@@ -364,11 +382,24 @@ export class RSCRspackPlugin {
           } else {
             logger?.debug(`Resolved ${resolvedClientCount} RSC client reference(s)`);
           }
-          const manifest = this.buildManifest(compilation, bundler);
+          const diagnosticsCssFiles = new Map<string, string[]>();
+          const manifest = this.buildManifest(compilation, bundler, diagnosticsCssFiles);
           logger?.debug(
             `Emitting ${manifestFilename} with ` +
               `${Object.keys(manifest.filePathToModuleMetadata).length} entries`,
           );
+          if (typeof this.options.clientReferenceDiagnosticsFilename === 'string') {
+            const diagnostics = this.buildDiagnostics(
+              compilation,
+              manifest,
+              manifestFilename,
+              diagnosticsCssFiles,
+            );
+            compilation.emitAsset(
+              this.options.clientReferenceDiagnosticsFilename,
+              new bundler.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false),
+            );
+          }
           compilation.emitAsset(
             manifestFilename,
             new bundler.sources.RawSource(JSON.stringify(manifest, null, 2), false),
@@ -531,9 +562,10 @@ export class RSCRspackPlugin {
   private buildManifest(
     compilation: AnyCompilation,
     bundler: Bundler,
+    diagnosticsCssFiles: Map<string, string[]>,
   ): {
     moduleLoading: { prefix: string; crossOrigin: string | null };
-    filePathToModuleMetadata: Record<string, { id: string | number | null; chunks: (string | number | null)[]; name: string }>;
+    filePathToModuleMetadata: Record<string, ModuleMetadata>;
   } {
     // Check if the client runtime module was found in this compilation.
     // The webpack plugin emits a warning and skips manifest emission if
@@ -549,17 +581,22 @@ export class RSCRspackPlugin {
     const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
     const initialChunks = this.getInitialChunks(compilation);
 
-    const filePathToModuleMetadata: Record<
-      string,
-      { id: string | number | null; chunks: (string | number | null)[]; name: string }
-    > = {};
+    const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
+    let cssPrefix =
+      typeof compilation.outputOptions.publicPath === 'string' &&
+      compilation.outputOptions.publicPath !== 'auto'
+        ? compilation.outputOptions.publicPath
+        : null;
+    if (cssPrefix && !cssPrefix.endsWith('/')) {
+      cssPrefix += '/';
+    }
 
     // Walk chunk groups using group-level chunks (matching the webpack
     // plugin, lines 241-294). Each module gets the full list of sibling
     // chunks in its group — this ensures splitChunks dependencies are
     // included.
     for (const chunkGroup of compilation.chunkGroups) {
-      const groupChunks = this.getGroupChunks(chunkGroup, initialChunks);
+      const groupAssets = this.getGroupAssets(chunkGroup, initialChunks, cssPrefix);
 
       for (const chunkUnknown of chunkGroup.chunks) {
         const chunk = chunkUnknown as AnyChunk;
@@ -569,11 +606,27 @@ export class RSCRspackPlugin {
           if (isRuntimeResource(mod.resource, this.options.isServer)) clientFileNameFound = true;
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
-          this.recordModule(mod, moduleId, groupChunks, resolvedClientFiles, filePathToModuleMetadata);
+          this.recordModule(
+            mod,
+            moduleId,
+            groupAssets.chunks,
+            groupAssets.css,
+            resolvedClientFiles,
+            filePathToModuleMetadata,
+            diagnosticsCssFiles,
+          );
           if (mod.modules) {
             for (const inner of mod.modules) {
               if (isRuntimeResource(inner.resource, this.options.isServer)) clientFileNameFound = true;
-              this.recordModule(inner, moduleId, groupChunks, resolvedClientFiles, filePathToModuleMetadata);
+              this.recordModule(
+                inner,
+                moduleId,
+                groupAssets.chunks,
+                groupAssets.css,
+                resolvedClientFiles,
+                filePathToModuleMetadata,
+                diagnosticsCssFiles,
+              );
             }
           }
         }
@@ -611,27 +664,100 @@ export class RSCRspackPlugin {
     };
   }
 
+  private buildDiagnostics(
+    compilation: AnyCompilation,
+    manifest: {
+      moduleLoading: { prefix: string; crossOrigin: string | null };
+      filePathToModuleMetadata: Record<string, ModuleMetadata>;
+    },
+    manifestFilename: string,
+    diagnosticsCssFiles: ReadonlyMap<string, string[]>,
+  ): {
+    version: 1;
+    manifestFilename: string;
+    isServer: boolean;
+    clientReferenceCount: number;
+    totalChunkBytes: number;
+    clientReferences: Array<{
+      file: string;
+      id: string | number | null;
+      name: string;
+      totalBytes: number;
+      chunks: Array<{ id: string | number | null; file: string; bytes: number | null }>;
+      css?: Array<{ file: string; bytes: number | null }>;
+    }>;
+  } {
+    const clientReferences = Object.entries(manifest.filePathToModuleMetadata)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([file, metadata]) => {
+        const chunks = [];
+        for (let i = 0; i < metadata.chunks.length; i += 2) {
+          const chunkFile = String(metadata.chunks[i + 1]);
+          chunks.push({
+            id: metadata.chunks[i] ?? null,
+            file: chunkFile,
+            bytes: getCompilationAssetSize(compilation, chunkFile, manifest.moduleLoading.prefix),
+          });
+        }
+        const cssFiles = diagnosticsCssFiles.get(file);
+        const css =
+          cssFiles && cssFiles.length > 0
+            ? cssFiles.map((fileName) => ({
+                file: fileName,
+                bytes: getCompilationAssetSize(compilation, fileName, manifest.moduleLoading.prefix),
+              }))
+            : undefined;
+        const totalBytes = [...chunks, ...(css || [])].reduce(
+          (sum, entry) => sum + (entry.bytes ?? 0),
+          0,
+        );
+        return {
+          file,
+          id: metadata.id,
+          name: metadata.name,
+          totalBytes,
+          chunks,
+          ...(css ? { css } : {}),
+        };
+      });
+
+    return {
+      version: 1,
+      manifestFilename,
+      isServer: this.options.isServer,
+      clientReferenceCount: clientReferences.length,
+      totalChunkBytes: sumUniqueKnownBytes(clientReferences),
+      clientReferences,
+    };
+  }
+
   /** Stash resolved client files so buildManifest can filter by them. */
   private _resolvedClientFiles: string[] = [];
 
   /** Build the chunks array from all async-loadable chunks in a chunk group. */
-  private getGroupChunks(
+  private getGroupAssets(
     chunkGroup: AnyChunkGroup,
     initialChunks: Set<unknown>,
-  ): (string | number | null)[] {
+    cssPrefix: string | null,
+  ): { chunks: (string | number | null)[]; css: string[] } {
     const chunks: (string | number | null)[] = [];
+    const css: string[] = [];
     for (const chunkUnknown of chunkGroup.chunks) {
       const c = chunkUnknown as AnyChunk;
       if (this.isInitialChunk(c, initialChunks)) continue;
       const files = c.files instanceof Set ? c.files : new Set(c.files);
+      let recordedJs = false;
       for (const file of files) {
-        if (!file.endsWith('.js')) continue;
-        if (file.endsWith('.hot-update.js')) continue;
+        if (file.endsWith('.css') && !file.endsWith('.hot-update.css') && cssPrefix !== null) {
+          css.push(cssPrefix + file);
+          continue;
+        }
+        if (recordedJs || !file.endsWith('.js') || file.endsWith('.hot-update.js')) continue;
         chunks.push(c.id, file);
-        break;
+        recordedJs = true;
       }
     }
-    return chunks;
+    return { chunks, css };
   }
 
   private getInitialChunks(compilation: AnyCompilation): Set<unknown> {
@@ -661,8 +787,10 @@ export class RSCRspackPlugin {
     module: AnyModule,
     moduleId: string | number | null,
     chunks: (string | number | null)[],
+    css: string[],
     resolvedClientFiles: Set<string>,
-    filePathToModuleMetadata: Record<string, { id: string | number | null; chunks: (string | number | null)[]; name: string }>,
+    filePathToModuleMetadata: Record<string, ModuleMetadata>,
+    diagnosticsCssFiles: Map<string, string[]>,
   ): void {
     if (!module.resource) return;
     if (!resolvedClientFiles.has(module.resource)) return;
@@ -677,14 +805,86 @@ export class RSCRspackPlugin {
       for (let i = 0; i < chunks.length; i += 2) {
         if (!seen.has(chunks[i]!)) existing.chunks.push(chunks[i]!, chunks[i + 1]!);
       }
+      this.recordDiagnosticsCssFiles(href, css, diagnosticsCssFiles);
     } else {
       filePathToModuleMetadata[href] = {
         id: moduleId,
         chunks: chunks.slice(),
         name: '*',
       };
+      this.recordDiagnosticsCssFiles(href, css, diagnosticsCssFiles);
     }
   }
+
+  private recordDiagnosticsCssFiles(
+    href: string,
+    css: string[],
+    diagnosticsCssFiles: Map<string, string[]>,
+  ): void {
+    if (css.length === 0) return;
+    const existing = diagnosticsCssFiles.get(href) ?? [];
+    for (const cssFile of css) {
+      if (!existing.includes(cssFile)) existing.push(cssFile);
+    }
+    diagnosticsCssFiles.set(href, existing);
+  }
+}
+
+function sumUniqueKnownBytes(
+  clientReferences: Array<{
+    chunks: Array<{ file: string; bytes: number | null }>;
+    css?: Array<{ file: string; bytes: number | null }>;
+  }>,
+): number {
+  const seen = new Set<string>();
+  let total = 0;
+  for (const reference of clientReferences) {
+    for (const chunk of [...reference.chunks, ...(reference.css ?? [])]) {
+      if (chunk.bytes === null || seen.has(chunk.file)) continue;
+      seen.add(chunk.file);
+      total += chunk.bytes;
+    }
+  }
+  return total;
+}
+
+function getCompilationAssetSize(
+  compilation: AnyCompilation,
+  file: string,
+  publicPath: string,
+): number | null {
+  const candidates = new Set<string>();
+  const addCandidate = (candidate: string): void => {
+    candidates.add(candidate);
+    if (candidate.startsWith('/')) {
+      candidates.add(candidate.slice(1));
+    }
+  };
+
+  addCandidate(file);
+  if (publicPath && publicPath !== 'auto' && file.startsWith(publicPath)) {
+    addCandidate(file.slice(publicPath.length));
+  }
+
+  for (const candidate of candidates) {
+    const source = compilation.getAsset?.(candidate)?.source ?? compilation.assets?.[candidate];
+    const size = getSourceSize(source);
+    if (size !== null) return size;
+  }
+  return null;
+}
+
+function getSourceSize(source: AssetSource | undefined): number | null {
+  if (!source) return null;
+  if (typeof source.size === 'function') {
+    const size = source.size();
+    return Number.isFinite(size) ? size : null;
+  }
+  if (typeof source.source === 'function') {
+    const value = source.source();
+    return typeof value === 'string' ? Buffer.byteLength(value) : value.length;
+  }
+  return null;
 }
 
 // Also export as default to match how `WebpackPlugin` is imported elsewhere.

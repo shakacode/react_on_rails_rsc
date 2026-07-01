@@ -6,6 +6,7 @@ All notable changes to this package will be documented in this file.
 
 ### Added
 - Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. ([#143])
+- Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
 
 ## [19.2.0] - 2026-06-28
 
@@ -56,6 +57,7 @@ All notable changes to this package will be documented in this file.
 
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
 [#143]: https://github.com/shakacode/react_on_rails_rsc/pull/143
+[#144]: https://github.com/shakacode/react_on_rails_rsc/pull/144
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
 [#106]: https://github.com/shakacode/react_on_rails_rsc/pull/106
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23

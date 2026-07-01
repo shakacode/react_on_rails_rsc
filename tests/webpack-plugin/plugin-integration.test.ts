@@ -56,7 +56,102 @@ const expectNoWarnings = (result: CompileResult): void => {
   expect(result.warnings).toEqual([]);
 };
 
+const staticIslandClientReferences = (include: RegExp) => [
+  { directory: '.', recursive: false, include },
+];
+
+const splitStaticIslandVendors = {
+  splitChunks: {
+    chunks: 'all',
+    minSize: 0,
+    cacheGroups: {
+      default: false,
+      defaultVendors: false,
+      appVendor: {
+        test: /app-vendor\.js$/,
+        name: 'vendors-app',
+        enforce: true,
+      },
+      heavyVendor: {
+        test: /heavy-vendor\.js$/,
+        name: 'vendors-heavy',
+        enforce: true,
+      },
+    },
+  },
+};
+
 describe('ReactFlightWebpackPlugin (real webpack)', () => {
+  describe('static island diagnostics', () => {
+    const diagnosticsFilename = 'rsc-client-reference-diagnostics.json';
+
+    it('emits empty diagnostics for an explicitly server-only static page config', () => {
+      const result = run('static-islands', {
+        clientReferences: [],
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+      });
+
+      expect(result.manifest.filePathToModuleMetadata).toEqual({});
+      expect(result.assets).toContain(diagnosticsFilename);
+      expect(result.clientReferenceDiagnostics).toEqual({
+        version: 1,
+        manifestFilename: 'react-client-manifest.json',
+        isServer: false,
+        clientReferenceCount: 0,
+        totalChunkBytes: 0,
+        clientReferences: [],
+      });
+      expectNoWarnings(result);
+    });
+
+    it('shows a tiny island avoiding unrelated app/vendor chunks', () => {
+      const result = run('static-islands', {
+        chunkName: 'client-[request]',
+        clientReferences: staticIslandClientReferences(/TinyIsland\.js$/),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        optimizationExtra: splitStaticIslandVendors,
+      });
+
+      expect(result.assets).toContain('vendors-app.js');
+
+      const tiny = entryEndingWith(result.manifest, '/TinyIsland.js');
+      expect(chunkFiles(tiny)).toEqual(['client-TinyIsland-js.chunk.js']);
+
+      const diagnostics = result.clientReferenceDiagnostics;
+      expect(diagnostics?.clientReferenceCount).toBe(1);
+      const diagnosticEntry = diagnostics?.clientReferences[0]!;
+      expect(diagnosticEntry.file).toContain('/TinyIsland.js');
+      expect(diagnosticEntry.chunks.map((chunk) => chunk.file)).toEqual([
+        'client-TinyIsland-js.chunk.js',
+      ]);
+      expect(diagnosticEntry.chunks[0]!.bytes).toBeGreaterThan(0);
+      expect(diagnosticEntry.totalBytes).toBe(diagnosticEntry.chunks[0]!.bytes);
+      expect(diagnosticEntry.chunks.map((chunk) => chunk.file).join(',')).not.toContain('vendors');
+      expectNoWarnings(result);
+    });
+
+    it('reports the heavy island vendor chunk and byte size', () => {
+      const result = run('static-islands', {
+        chunkName: 'client-[request]',
+        clientReferences: staticIslandClientReferences(/HeavyIsland\.js$/),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        optimizationExtra: splitStaticIslandVendors,
+      });
+
+      const heavy = entryEndingWith(result.manifest, '/HeavyIsland.js');
+      expect(chunkFiles(heavy)).toEqual(
+        expect.arrayContaining(['client-HeavyIsland-js.chunk.js', 'vendors-heavy.chunk.js']),
+      );
+
+      const diagnosticEntry = result.clientReferenceDiagnostics?.clientReferences[0]!;
+      const heavyVendor = diagnosticEntry.chunks.find((chunk) => chunk.file === 'vendors-heavy.chunk.js');
+      expect(heavyVendor?.bytes).toBeGreaterThan(0);
+      expect(diagnosticEntry.totalBytes).toBeGreaterThan(heavyVendor!.bytes!);
+      expect(result.clientReferenceDiagnostics?.totalChunkBytes).toBe(diagnosticEntry.totalBytes);
+      expectNoWarnings(result);
+    });
+  });
+
   describe('splitChunks shared module across chunk groups (issue #22 scenario)', () => {
     // Button.js ('use client') is forced into a `shared-button` chunk that
     // belongs to two chunk groups: Button's own client-reference group and
@@ -308,6 +403,7 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     it("records a chunk group's CSS under `css` with the normalized publicPath prefix", () => {
       const result = run('css-import', {
         chunkName: 'client-[request]',
+        clientReferenceDiagnosticsFilename: 'rsc-client-reference-diagnostics.json',
         // No trailing slash on purpose: the plugin must normalize the
         // cssPrefix by appending one.
         publicPath: '/assets',
@@ -319,6 +415,17 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(button.css).toEqual(['/assets/client-Button-js.chunk.css']);
       // CSS files belong in `css`, never in the JS chunk pair list.
       expect(chunkFiles(button)).toEqual(['client-Button-js.chunk.js']);
+      const diagnosticEntry = result.clientReferenceDiagnostics?.clientReferences[0]!;
+      expect(diagnosticEntry.css).toEqual([
+        {
+          file: '/assets/client-Button-js.chunk.css',
+          bytes: expect.any(Number),
+        },
+      ]);
+      expect(diagnosticEntry.totalBytes).toBe(
+        diagnosticEntry.chunks[0]!.bytes! + diagnosticEntry.css![0]!.bytes!,
+      );
+      expect(result.clientReferenceDiagnostics?.totalChunkBytes).toBe(diagnosticEntry.totalBytes);
       expectNoWarnings(result);
     });
   });

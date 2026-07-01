@@ -30,53 +30,70 @@ type RegisterClientReference = (
 ) => unknown;
 type RegisterServerReference = (reference: unknown, id: string, exportName: string) => unknown;
 
-throw new Error(
-  'The React Server Writer cannot be used outside a react-server environment. ' +
-    'You must configure Node.js using the `--conditions react-server` flag.'
-);
+const defaultServerFallbackError = (apiName: string): Error =>
+  new Error(
+    `react-on-rails-rsc/server ${apiName}() cannot be used outside a react-server environment. ` +
+      'Configure Node.js using the `--conditions react-server` flag so the server entrypoint ' +
+      'resolves to the Flight runtime before calling server helpers.'
+  );
 
-// Unreachable at runtime; present so tsc emits the public default type surface.
-export const renderToReadableStream: ServerFunction = undefined as never;
-export const renderToPipeableStream: ServerFunction = undefined as never;
-export const decodeReply: ServerFunction = undefined as never;
-export const decodeReplyFromBusboy: ServerFunction = undefined as never;
-export const decodeReplyFromAsyncIterable: ServerFunction = undefined as never;
-export const decodeAction: ServerFunction = undefined as never;
-export const decodeFormState: ServerFunction = undefined as never;
-export const registerServerReference: RegisterServerReference = undefined as never;
-export const registerClientReference: RegisterClientReference = undefined as never;
-export const createClientModuleProxy: (moduleId: string) => unknown = undefined as never;
-export const createTemporaryReferenceSet: () => unknown = undefined as never;
-export const prefetchDNS: (href: string) => void = undefined as never;
-export const preconnect: (
-  href: string,
-  options?: PreconnectResourceOptions
-) => void = undefined as never;
-export const preloadAsset: (
-  href: string,
-  options: PreloadAssetOptions
-) => void = undefined as never;
-export const preloadStyle: (
-  href: string,
-  options?: PreloadStyleOptions
-) => void = undefined as never;
-export const preinitStyle: (
-  href: string,
-  options?: PreinitStyleOptions
-) => void = undefined as never;
-export const preloadScript: (
-  href: string,
-  options?: PreloadScriptOptions
-) => void = undefined as never;
-export const preinitScript: (
-  href: string,
-  options?: PreinitScriptOptions
-) => void = undefined as never;
-export const preloadFont: (
-  href: string,
-  options?: PreloadFontOptions
-) => void = undefined as never;
-export const preloadImage: (
-  href: string,
-  options?: PreloadImageOptions
-) => void = undefined as never;
+const unsupportedDefaultServerFunction = <TFunction>(apiName: string): TFunction =>
+  (() => {
+    throw defaultServerFallbackError(apiName);
+  }) as unknown as TFunction;
+
+const throwUnsupportedDefaultServerResourceHint = (apiName: string): never => {
+  throw defaultServerFallbackError(apiName);
+};
+
+// Default fallback is importable for type/runtime introspection, but every API
+// fails explicitly until the react-server export condition selects a Flight runtime.
+export const renderToReadableStream: ServerFunction =
+  unsupportedDefaultServerFunction<ServerFunction>('renderToReadableStream');
+export const renderToPipeableStream: ServerFunction =
+  unsupportedDefaultServerFunction<ServerFunction>('renderToPipeableStream');
+export const decodeReply: ServerFunction =
+  unsupportedDefaultServerFunction<ServerFunction>('decodeReply');
+export const decodeReplyFromBusboy: ServerFunction =
+  unsupportedDefaultServerFunction<ServerFunction>('decodeReplyFromBusboy');
+export const decodeReplyFromAsyncIterable: ServerFunction =
+  unsupportedDefaultServerFunction<ServerFunction>('decodeReplyFromAsyncIterable');
+export const decodeAction: ServerFunction =
+  unsupportedDefaultServerFunction<ServerFunction>('decodeAction');
+export const decodeFormState: ServerFunction =
+  unsupportedDefaultServerFunction<ServerFunction>('decodeFormState');
+export const registerServerReference: RegisterServerReference =
+  unsupportedDefaultServerFunction<RegisterServerReference>('registerServerReference');
+export const registerClientReference: RegisterClientReference =
+  unsupportedDefaultServerFunction<RegisterClientReference>('registerClientReference');
+export const createClientModuleProxy: (moduleId: string) => unknown =
+  unsupportedDefaultServerFunction<(moduleId: string) => unknown>('createClientModuleProxy');
+export const createTemporaryReferenceSet: () => unknown =
+  unsupportedDefaultServerFunction<() => unknown>('createTemporaryReferenceSet');
+export const prefetchDNS: (href: string) => void = () => {
+  throwUnsupportedDefaultServerResourceHint('prefetchDNS');
+};
+export const preconnect: (href: string, options?: PreconnectResourceOptions) => void = () => {
+  throwUnsupportedDefaultServerResourceHint('preconnect');
+};
+export const preloadAsset: (href: string, options: PreloadAssetOptions) => void = () => {
+  throwUnsupportedDefaultServerResourceHint('preloadAsset');
+};
+export const preloadStyle: (href: string, options?: PreloadStyleOptions) => void = () => {
+  throwUnsupportedDefaultServerResourceHint('preloadStyle');
+};
+export const preinitStyle: (href: string, options?: PreinitStyleOptions) => void = () => {
+  throwUnsupportedDefaultServerResourceHint('preinitStyle');
+};
+export const preloadScript: (href: string, options?: PreloadScriptOptions) => void = () => {
+  throwUnsupportedDefaultServerResourceHint('preloadScript');
+};
+export const preinitScript: (href: string, options?: PreinitScriptOptions) => void = () => {
+  throwUnsupportedDefaultServerResourceHint('preinitScript');
+};
+export const preloadFont: (href: string, options?: PreloadFontOptions) => void = () => {
+  throwUnsupportedDefaultServerResourceHint('preloadFont');
+};
+export const preloadImage: (href: string, options?: PreloadImageOptions) => void = () => {
+  throwUnsupportedDefaultServerResourceHint('preloadImage');
+};

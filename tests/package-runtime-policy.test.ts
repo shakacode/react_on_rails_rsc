@@ -129,4 +129,38 @@ describe('19.2 runtime release policy', () => {
       /declare module 'react-server-dom-webpack\/server\.(browser|edge)' \{\s*export \* from 'react-server-dom-webpack\/server\.node';\s*\}/
     );
   });
+
+  it('keeps default server fallback exports as explicit unsupported-runtime errors', () => {
+    const defaultServer = require('../src/flight-server') as typeof import('../src/flight-server');
+    const defaultServerSource = fs.readFileSync(
+      path.join(repoRoot, 'src/flight-server.ts'),
+      'utf8'
+    );
+    const expectedResourceHintExports = [
+      'prefetchDNS',
+      'preconnect',
+      'preloadAsset',
+      'preloadStyle',
+      'preinitStyle',
+      'preloadScript',
+      'preinitScript',
+      'preloadFont',
+      'preloadImage',
+    ];
+
+    for (const exportName of expectedResourceHintExports) {
+      expect(defaultServerSource).toContain(
+        `throwUnsupportedDefaultServerResourceHint('${exportName}')`
+      );
+    }
+    expect(defaultServerSource).not.toMatch(
+      /export const (prefetchDNS|preconnect|preloadAsset|preloadStyle|preinitStyle|preloadScript|preinitScript|preloadFont|preloadImage)[\s\S]*?undefined as never/
+    );
+    expect(() => defaultServer.prefetchDNS('https://cdn.example.com')).toThrow(
+      /react-on-rails-rsc\/server prefetchDNS\(\).*--conditions react-server/
+    );
+    expect(() => defaultServer.renderToReadableStream(null, {})).toThrow(
+      /react-on-rails-rsc\/server renderToReadableStream\(\).*--conditions react-server/
+    );
+  });
 });

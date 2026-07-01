@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. ([#141])
+- Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. ([#143])
 
 ## [19.2.0] - 2026-06-28
 
@@ -55,7 +55,7 @@ All notable changes to this package will be documented in this file.
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
-[#141]: https://github.com/shakacode/react_on_rails_rsc/issues/141
+[#143]: https://github.com/shakacode/react_on_rails_rsc/pull/143
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
 [#106]: https://github.com/shakacode/react_on_rails_rsc/pull/106
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23

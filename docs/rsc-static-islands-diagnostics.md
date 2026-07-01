@@ -38,9 +38,9 @@ the bundler exposes them:
   "totalChunkBytes": 1234,
   "clientReferences": [
     {
-      "file": "/absolute/path/to/TinyIsland.js",
-      "id": "/absolute/path/to/TinyIsland.js#default",
-      "name": "",
+      "file": "file:///absolute/path/to/TinyIsland.js",
+      "id": "./TinyIsland.js",
+      "name": "*",
       "chunks": [
         {
           "id": "client-TinyIsland-js",

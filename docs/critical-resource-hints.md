@@ -51,7 +51,9 @@ Use already-resolved URLs. This package does not look up logical pack names such
 as `generated/WelcomePage.css`; resolve those through the host app's manifest or
 React on Rails integration before calling the helper. That keeps the RSC package
 independent of Rails and manifest formats while still supporting hashed
-production assets.
+production assets. Treat hint URLs and origins as trusted manifest or
+application configuration data; do not pass user input, query parameters, or
+other request-derived values directly to these helpers.
 
 ## Choosing Hints
 

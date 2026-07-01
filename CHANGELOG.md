@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Added opt-in client-reference diagnostics that emit RSC client reference chunk files and byte sizes for static island performance audits. ([#144])
+- Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
 
 ## [19.2.0] - 2026-06-28
 

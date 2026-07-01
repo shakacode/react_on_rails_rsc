@@ -161,6 +161,35 @@ describe('RSCRspackPlugin', () => {
       );
       expect(heavyResult.clientReferenceDiagnostics?.totalChunkBytes).toBe(heavyEntry.totalBytes);
     });
+
+    it('includes CSS asset bytes in static island diagnostics', () => {
+      const result = run('static-islands', {
+        clientReferences: staticIslandClientReferences(/StyledIsland\.js$/),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        publicPath: '/assets',
+        withCss: true,
+      });
+
+      expect(result.assets).toContain('client0.chunk.css');
+
+      const manifestEntry = Object.entries(result.manifest.filePathToModuleMetadata).find(([file]) =>
+        file.endsWith('/StyledIsland.js'),
+      )?.[1];
+      expect(manifestEntry).not.toHaveProperty('css');
+
+      const diagnosticEntry = result.clientReferenceDiagnostics?.clientReferences[0]!;
+      expect(diagnosticEntry.file).toContain('/StyledIsland.js');
+      expect(diagnosticEntry.css).toEqual([
+        {
+          file: '/assets/client0.chunk.css',
+          bytes: expect.any(Number),
+        },
+      ]);
+      expect(diagnosticEntry.totalBytes).toBe(
+        diagnosticEntry.chunks[0]!.bytes! + diagnosticEntry.css![0]!.bytes!,
+      );
+      expect(result.clientReferenceDiagnostics?.totalChunkBytes).toBe(diagnosticEntry.totalBytes);
+    });
   });
 
   describe('top-level manifest shape', () => {

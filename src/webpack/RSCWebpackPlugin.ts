@@ -1092,7 +1092,7 @@ function sumUniqueKnownBytes(
   const seen = new Set<string>();
   let total = 0;
   for (const reference of clientReferences) {
-    for (const chunk of reference.chunks) {
+    for (const chunk of [...reference.chunks, ...(reference.css ?? [])]) {
       if (chunk.bytes === null || seen.has(chunk.file)) continue;
       seen.add(chunk.file);
       total += chunk.bytes;

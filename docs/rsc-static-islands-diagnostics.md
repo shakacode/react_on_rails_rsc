@@ -55,8 +55,8 @@ the bundler exposes them:
 ```
 
 `bytes` is `null` only when the bundler does not expose the asset source during
-manifest emission. `totalChunkBytes` counts each emitted JS chunk file once even
-when multiple client references share that chunk.
+manifest emission. `totalChunkBytes` counts each emitted JS or CSS asset file
+once even when multiple client references share that asset.
 
 ## Static Page Patterns
 

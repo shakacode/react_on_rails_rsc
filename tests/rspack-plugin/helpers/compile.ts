@@ -23,6 +23,7 @@ export interface CompileOptions {
   publicPath?: string;
   crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   clientReferences?: unknown;
+  withCss?: boolean;
   /** Additional rspack config to merge. Use sparingly. */
   configExtra?: Record<string, unknown>;
 }
@@ -49,6 +50,7 @@ export interface CompileResult {
       name: string;
       totalBytes: number;
       chunks: Array<{ id: string | number | null; file: string; bytes: number | null }>;
+      css?: Array<{ file: string; bytes: number | null }>;
     }>;
   };
   clientReferenceDiagnosticsSource?: string;
@@ -75,6 +77,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     clientReferences: serializeForRunner(options.clientReferences),
     publicPath: options.publicPath,
     crossOriginLoading: options.crossOriginLoading,
+    withCss: options.withCss,
     configExtra: serializeForRunner(options.configExtra ?? {}),
   };
   const argsFile = path.join(outputPath, '__args__.json');

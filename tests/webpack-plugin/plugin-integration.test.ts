@@ -422,6 +422,10 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
           bytes: expect.any(Number),
         },
       ]);
+      expect(diagnosticEntry.totalBytes).toBe(
+        diagnosticEntry.chunks[0]!.bytes! + diagnosticEntry.css![0]!.bytes!,
+      );
+      expect(result.clientReferenceDiagnostics?.totalChunkBytes).toBe(diagnosticEntry.totalBytes);
       expectNoWarnings(result);
     });
   });

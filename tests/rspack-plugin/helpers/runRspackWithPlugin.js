@@ -15,6 +15,7 @@
  *     clientReferences?: unknown,
  *     publicPath?: string,
  *     crossOriginLoading?: false|'anonymous'|'use-credentials',
+ *     withCss?: boolean,
  *     configExtra?: object,
  *   }
  *
@@ -46,6 +47,7 @@ const {
   clientReferences: rawClientReferences,
   publicPath,
   crossOriginLoading,
+  withCss,
   configExtra,
 } = args;
 
@@ -72,6 +74,22 @@ if (missingRuntimeEntries.length > 0) {
 const runtimeEntry = isServer ? runtimeEntries.server : runtimeEntries.client;
 const clientReferences = reviveFromRunner(rawClientReferences);
 const revivedConfigExtra = reviveFromRunner(configExtra);
+const plugins = [
+  new RSCRspackPlugin({
+    isServer: isServer,
+    clientManifestFilename: clientManifestFilename,
+    clientReferenceDiagnosticsFilename: clientReferenceDiagnosticsFilename,
+    clientReferences: clientReferences,
+  }),
+];
+if (withCss) {
+  plugins.push(
+    new rspack.CssExtractRspackPlugin({
+      filename: '[name].css',
+      chunkFilename: '[name].chunk.css',
+    }),
+  );
+}
 
 const config = {
   mode: 'development',
@@ -91,14 +109,14 @@ const config = {
     minimize: false,
   },
   devtool: false,
-  plugins: [
-    new RSCRspackPlugin({
-      isServer: isServer,
-      clientManifestFilename: clientManifestFilename,
-      clientReferenceDiagnosticsFilename: clientReferenceDiagnosticsFilename,
-      clientReferences: clientReferences,
-    }),
-  ],
+  ...(withCss
+    ? {
+        module: {
+          rules: [{ test: /\.css$/, use: [rspack.CssExtractRspackPlugin.loader, 'css-loader'] }],
+        },
+      }
+    : {}),
+  plugins,
   ...(revivedConfigExtra || {}),
 };
 

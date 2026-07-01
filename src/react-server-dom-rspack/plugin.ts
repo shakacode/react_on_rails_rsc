@@ -784,11 +784,18 @@ function getCompilationAssetSize(
   file: string,
   publicPath: string,
 ): number | null {
-  const candidates = new Set([file]);
+  const candidates = new Set<string>();
+  const addCandidate = (candidate: string): void => {
+    candidates.add(candidate);
+    if (candidate.startsWith('/')) {
+      candidates.add(candidate.slice(1));
+    }
+  };
+
+  addCandidate(file);
   if (publicPath && publicPath !== 'auto' && file.startsWith(publicPath)) {
-    candidates.add(file.slice(publicPath.length));
+    addCandidate(file.slice(publicPath.length));
   }
-  if (file.startsWith('/')) candidates.add(file.slice(1));
 
   for (const candidate of candidates) {
     const source = compilation.getAsset?.(candidate)?.source ?? compilation.assets?.[candidate];

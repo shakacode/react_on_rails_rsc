@@ -403,6 +403,7 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     it("records a chunk group's CSS under `css` with the normalized publicPath prefix", () => {
       const result = run('css-import', {
         chunkName: 'client-[request]',
+        clientReferenceDiagnosticsFilename: 'rsc-client-reference-diagnostics.json',
         // No trailing slash on purpose: the plugin must normalize the
         // cssPrefix by appending one.
         publicPath: '/assets',
@@ -414,6 +415,13 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(button.css).toEqual(['/assets/client-Button-js.chunk.css']);
       // CSS files belong in `css`, never in the JS chunk pair list.
       expect(chunkFiles(button)).toEqual(['client-Button-js.chunk.js']);
+      const diagnosticEntry = result.clientReferenceDiagnostics?.clientReferences[0]!;
+      expect(diagnosticEntry.css).toEqual([
+        {
+          file: '/assets/client-Button-js.chunk.css',
+          bytes: expect.any(Number),
+        },
+      ]);
       expectNoWarnings(result);
     });
   });

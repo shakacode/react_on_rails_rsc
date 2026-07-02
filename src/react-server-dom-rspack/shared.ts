@@ -12,5 +12,10 @@
 
 export const CLIENT_MODULES_KEY: symbol = Symbol.for('react-on-rails-rsc.clientModules');
 
+export const getGeneratedChunkName = (chunkName: string, file: string, index: number): string =>
+  chunkName
+    .replace(/\[index\]/g, String(index))
+    .replace(/\[request\]/g, file.replace(/[^a-zA-Z0-9_]/g, '_'));
+
 // ── directive detection (shared between loader + plugin FS walk) ──
 export { hasUseClientDirective } from '../clientReferences';

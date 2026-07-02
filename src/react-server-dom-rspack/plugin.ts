@@ -26,7 +26,7 @@ import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from '../clientReferences';
-import { CLIENT_MODULES_KEY, hasUseClientDirective } from './shared';
+import { CLIENT_MODULES_KEY, getGeneratedChunkName, hasUseClientDirective } from './shared';
 import type {} from './injection-loader';
 
 function setInjectionState(files: string[], chunkName: string): void {
@@ -579,6 +579,7 @@ export class RSCRspackPlugin {
     let clientFileNameFound = false;
 
     const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
+    const generatedChunkNamesByResource = this.getGeneratedChunkNamesByResource();
     const initialChunks = this.getInitialChunks(compilation);
 
     const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
@@ -606,11 +607,17 @@ export class RSCRspackPlugin {
           if (isRuntimeResource(mod.resource, this.options.isServer)) clientFileNameFound = true;
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
+          const diagnosticsCss = this.getDiagnosticsCssForModule(
+            mod.resource,
+            chunkGroup,
+            groupAssets.css,
+            generatedChunkNamesByResource,
+          );
           this.recordModule(
             mod,
             moduleId,
             groupAssets.chunks,
-            groupAssets.css,
+            diagnosticsCss,
             resolvedClientFiles,
             filePathToModuleMetadata,
             diagnosticsCssFiles,
@@ -618,11 +625,17 @@ export class RSCRspackPlugin {
           if (mod.modules) {
             for (const inner of mod.modules) {
               if (isRuntimeResource(inner.resource, this.options.isServer)) clientFileNameFound = true;
+              const diagnosticsCss = this.getDiagnosticsCssForModule(
+                inner.resource,
+                chunkGroup,
+                groupAssets.css,
+                generatedChunkNamesByResource,
+              );
               this.recordModule(
                 inner,
                 moduleId,
                 groupAssets.chunks,
-                groupAssets.css,
+                diagnosticsCss,
                 resolvedClientFiles,
                 filePathToModuleMetadata,
                 diagnosticsCssFiles,
@@ -758,6 +771,36 @@ export class RSCRspackPlugin {
       }
     }
     return { chunks, css };
+  }
+
+  private getGeneratedChunkNamesByResource(): ReadonlyMap<string, string> {
+    return new Map(
+      (this._resolvedClientFiles ?? []).map((file, index) => [
+        file,
+        getGeneratedChunkName(this.chunkName, file, index),
+      ]),
+    );
+  }
+
+  private getDiagnosticsCssForModule(
+    resource: string | undefined,
+    chunkGroup: AnyChunkGroup,
+    css: string[],
+    generatedChunkNamesByResource: ReadonlyMap<string, string>,
+  ): string[] {
+    if (!resource || css.length === 0) return css;
+    const generatedChunkName = generatedChunkNamesByResource.get(resource);
+    if (!generatedChunkName) return css;
+    return this.chunkGroupHasName(chunkGroup, generatedChunkName) ? css : [];
+  }
+
+  private chunkGroupHasName(chunkGroup: AnyChunkGroup, generatedChunkName: string): boolean {
+    if (chunkGroup.name === generatedChunkName) return true;
+    for (const chunkUnknown of chunkGroup.chunks) {
+      const chunk = chunkUnknown as { name?: string };
+      if (chunk.name === generatedChunkName) return true;
+    }
+    return false;
   }
 
   private getInitialChunks(compilation: AnyCompilation): Set<unknown> {

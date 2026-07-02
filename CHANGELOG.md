@@ -10,6 +10,7 @@ All notable changes to this package will be documented in this file.
 
 ### Fixed
 - Restored RSC stylesheet hints when a CSS-merging SplitChunks cache group, such as mini-css-extract's `styles` group, moves a client reference's own CSS into a CSS-only split chunk. ([#151])
+- Scoped Rspack diagnostics CSS to the generated chunk group for the reported client reference, avoiding importer-island CSS being counted against an imported child reference. ([#166])
 
 ## [19.2.0] - 2026-06-28
 
@@ -62,6 +63,7 @@ All notable changes to this package will be documented in this file.
 [#143]: https://github.com/shakacode/react_on_rails_rsc/pull/143
 [#144]: https://github.com/shakacode/react_on_rails_rsc/pull/144
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151
+[#166]: https://github.com/shakacode/react_on_rails_rsc/pull/166
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
 [#106]: https://github.com/shakacode/react_on_rails_rsc/pull/106
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23

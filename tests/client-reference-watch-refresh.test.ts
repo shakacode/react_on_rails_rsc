@@ -9,6 +9,7 @@ const DIST_RSPACK_PLUGIN = path.resolve(
   '../dist/react-server-dom-rspack/plugin.js'
 );
 const DIST_WEBPACK_PLUGIN = path.resolve(__dirname, '../dist/webpack/RSCWebpackPlugin.js');
+const DIST_PLUGINS = [DIST_RSPACK_PLUGIN, DIST_WEBPACK_PLUGIN];
 
 type Bundler = 'rspack' | 'webpack';
 type Scenario = 'add' | 'remove';
@@ -81,8 +82,28 @@ const expectNoManifestEntry = (
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const ensureDistPluginsBuilt = (): void => {
+  if (DIST_PLUGINS.every((pluginPath) => fs.existsSync(pluginPath))) return;
+
+  try {
+    execFileSync('yarn', ['build-if-needed'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 120_000,
+    });
+  } catch (error) {
+    const err = error as { stdout?: string; stderr?: string; message: string };
+    throw new Error(
+      `Failed to build dist artifacts for watch refresh tests:\n${
+        err.stderr || err.stdout || err.message
+      }`
+    );
+  }
+};
+
 describe.each(['rspack', 'webpack'] as const)('%s client-reference watch refresh', (bundler) => {
   beforeAll(() => {
+    ensureDistPluginsBuilt();
     const distPlugin = bundler === 'rspack' ? DIST_RSPACK_PLUGIN : DIST_WEBPACK_PLUGIN;
     if (!fs.existsSync(distPlugin)) {
       throw new Error(`Precondition: ${distPlugin} does not exist. Run \`yarn build\` first.`);

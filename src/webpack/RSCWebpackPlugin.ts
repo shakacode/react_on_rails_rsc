@@ -47,6 +47,12 @@ const asyncLib = require('neo-async') as {
     iterator: (item: T, callback: (err: Error | null, result?: R) => void) => void,
     callback: (err: Error | null, results?: R[]) => void,
   ): void;
+  mapLimit<T, R>(
+    arr: ReadonlyArray<T>,
+    limit: number,
+    iterator: (item: T, callback: (err: Error | null, result?: R) => void) => void,
+    callback: (err: Error | null, results?: R[]) => void,
+  ): void;
   filter<T>(
     arr: ReadonlyArray<T>,
     iterator: (item: T, callback: (err: Error | null, keep?: boolean) => void) => void,
@@ -234,6 +240,7 @@ type FlightModule = {
   /** Inner modules of a ConcatenatedModule. */
   modules?: FlightModule[];
   addBlock?: (block: unknown) => void;
+  buildInfo?: { cacheable?: boolean };
 };
 
 type FlightChunk = {
@@ -259,6 +266,9 @@ type FlightCompilation = {
   dependencyFactories: Map<unknown, unknown>;
   dependencyTemplates: Map<unknown, unknown>;
   warnings: Error[];
+  fileDependencies?: WatchDependencySet;
+  contextDependencies?: WatchDependencySet;
+  missingDependencies?: WatchDependencySet;
   outputOptions: {
     publicPath?: string;
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
@@ -295,6 +305,39 @@ type FlightParser = {
     program: { tap(name: string, fn: () => void): void };
   };
 };
+
+type WatchDependencySet = {
+  add(dependency: string): unknown;
+};
+
+type ClientReferenceWatchDependencies = {
+  files: Set<string>;
+  contexts: Set<string>;
+  missing: Set<string>;
+};
+
+function createClientReferenceWatchDependencies(): ClientReferenceWatchDependencies {
+  return {
+    files: new Set<string>(),
+    contexts: new Set<string>(),
+    missing: new Set<string>(),
+  };
+}
+
+function addClientReferenceWatchDependencies(
+  compilation: FlightCompilation,
+  dependencies: ClientReferenceWatchDependencies,
+): void {
+  for (const file of dependencies.files) {
+    compilation.fileDependencies?.add(file);
+  }
+  for (const context of dependencies.contexts) {
+    compilation.contextDependencies?.add(context);
+  }
+  for (const missing of dependencies.missing) {
+    compilation.missingDependencies?.add(missing);
+  }
+}
 
 type FlightNormalModuleFactory = {
   hooks: {
@@ -368,7 +411,23 @@ type ReadFileFs = {
   ): void;
 };
 
+type WatchInputFileSystem = ReadFileFs & {
+  readdir(
+    filePath: string,
+    callback: (err: NodeJS.ErrnoException | null, files?: string[]) => void,
+  ): void;
+  realpath?(
+    filePath: string,
+    callback: (err: NodeJS.ErrnoException | null, realPath?: string) => void,
+  ): void;
+  stat(
+    filePath: string,
+    callback: (err: NodeJS.ErrnoException | null, stats?: { isDirectory(): boolean }) => void,
+  ): void;
+};
+
 const PLUGIN_NAME = 'React Server Plugin';
+const WATCH_TRAVERSAL_CONCURRENCY = 32;
 
 export class RSCWebpackPlugin {
   readonly isServer: boolean;
@@ -440,6 +499,7 @@ export class RSCWebpackPlugin {
   apply(compiler: webpack.Compiler): void {
     const flightCompiler = compiler as unknown as FlightCompiler;
     let resolvedClientReferences: ClientReferenceDependency[] | undefined;
+    let clientReferenceWatchDependencies = createClientReferenceWatchDependencies();
     let clientFileNameFound = false;
 
     // Phase 1: resolve every configured client reference before the
@@ -448,6 +508,7 @@ export class RSCWebpackPlugin {
     flightCompiler.hooks.beforeCompile.tapAsync(PLUGIN_NAME, (params, callback) => {
       const contextResolver = flightCompiler.resolverFactory.get('context', {});
       const normalResolver = flightCompiler.resolverFactory.get('normal');
+      const nextWatchDependencies = createClientReferenceWatchDependencies();
       this.resolveAllClientFiles(
         flightCompiler.context,
         contextResolver,
@@ -459,9 +520,11 @@ export class RSCWebpackPlugin {
             callback(err);
             return;
           }
+          clientReferenceWatchDependencies = nextWatchDependencies;
           resolvedClientReferences = resolvedClientRefs;
           callback();
         },
+        nextWatchDependencies,
       );
     });
 
@@ -469,6 +532,9 @@ export class RSCWebpackPlugin {
     // named AsyncDependenciesBlock per resolved client reference, creating
     // the chunk groups the manifest is later built from.
     flightCompiler.hooks.thisCompilation.tap(PLUGIN_NAME, (compilation, params) => {
+      clientFileNameFound = false;
+      addClientReferenceWatchDependencies(compilation, clientReferenceWatchDependencies);
+
       const normalModuleFactory = params.normalModuleFactory;
       compilation.dependencyFactories.set(ClientReferenceDependency, normalModuleFactory);
       compilation.dependencyTemplates.set(
@@ -483,6 +549,13 @@ export class RSCWebpackPlugin {
             return;
           }
           clientFileNameFound = true;
+          // The block list below depends on the latest client-reference
+          // discovery result, not on the Flight runtime file contents. Force
+          // webpack to rebuild this single runtime module in watch mode so the
+          // parser hook re-attaches blocks after client files are added or
+          // removed.
+          const buildInfo = module.buildInfo;
+          if (buildInfo) buildInfo.cacheable = false;
           if (!resolvedClientReferences) return;
           for (let i = 0; i < resolvedClientReferences.length; i++) {
             const dep = resolvedClientReferences[i]!;
@@ -1022,11 +1095,13 @@ export class RSCWebpackPlugin {
     fs: unknown,
     contextModuleFactory: FlightContextModuleFactory,
     callback: (err: Error | null, result?: ClientReferenceDependency[]) => void,
+    watchDependencies = createClientReferenceWatchDependencies(),
   ): void {
     asyncLib.map<ClientReferencePath, ClientReferenceDependency[]>(
       this.clientReferences,
       (clientReferencePath, cb) => {
         if (typeof clientReferencePath === 'string') {
+          watchDependencies.files.add(path.resolve(context, clientReferencePath));
           cb(null, [new ClientReferenceDependency(clientReferencePath)]);
           return;
         }
@@ -1036,50 +1111,70 @@ export class RSCWebpackPlugin {
           clientReferencePath.directory,
           {},
           (err, resolvedDirectory) => {
-            if (err) return cb(err);
-            contextModuleFactory.resolveDependencies(
+            if (err) {
+              watchDependencies.missing.add(path.resolve(context, clientReferencePath.directory));
+              return cb(err);
+            }
+            const resolvedDirectoryPath = resolvedDirectory as string;
+            watchDependencies.contexts.add(resolvedDirectoryPath);
+            this.collectClientReferenceContextDependencies(
               fs,
-              {
-                resource: resolvedDirectory as string,
-                resourceQuery: '',
-                recursive:
-                  clientReferencePath.recursive === undefined
-                    ? true
-                    : clientReferencePath.recursive,
-                regExp: clientReferencePath.include,
-                include: undefined,
-                exclude: clientReferencePath.exclude,
-              },
-              (err2, deps) => {
-                if (err2) return cb(err2);
-                const clientRefDeps = (deps || []).map((dep) => {
-                  const request = path.join(resolvedDirectory as string, dep.userRequest);
-                  const clientRefDep = new ClientReferenceDependency(request);
-                  clientRefDep.userRequest = dep.userRequest;
-                  return clientRefDep;
-                });
-                asyncLib.filter(
-                  clientRefDeps,
-                  (clientRefDep, filterCb) => {
-                    normalResolver.resolve(
-                      {},
-                      context,
-                      clientRefDep.request,
-                      {},
-                      (err3, resolvedPath) => {
-                        if (err3 || typeof resolvedPath !== 'string') {
-                          return filterCb(null, false);
-                        }
-                        (fs as ReadFileFs).readFile(resolvedPath, 'utf-8', (err4, content) => {
-                          if (err4 || typeof content !== 'string') {
-                            return filterCb(null, false);
-                          }
-                          filterCb(null, hasUseClientDirective(content));
-                        });
+              resolvedDirectoryPath,
+              clientReferencePath,
+              watchDependencies,
+              (contextDependencyErr) => {
+                if (contextDependencyErr) return cb(contextDependencyErr);
+                contextModuleFactory.resolveDependencies(
+                  fs,
+                  {
+                    resource: resolvedDirectoryPath,
+                    resourceQuery: '',
+                    recursive:
+                      clientReferencePath.recursive === undefined
+                        ? true
+                        : clientReferencePath.recursive,
+                    regExp: clientReferencePath.include,
+                    include: undefined,
+                    exclude: clientReferencePath.exclude,
+                  },
+                  (err2, deps) => {
+                    if (err2) return cb(err2);
+                    const clientRefDeps = (deps || []).map((dep) => {
+                      const request = path.join(resolvedDirectoryPath, dep.userRequest);
+                      watchDependencies.files.add(request);
+                      const clientRefDep = new ClientReferenceDependency(request);
+                      clientRefDep.userRequest = dep.userRequest;
+                      return clientRefDep;
+                    });
+                    asyncLib.filter(
+                      clientRefDeps,
+                      (clientRefDep, filterCb) => {
+                        normalResolver.resolve(
+                          {},
+                          context,
+                          clientRefDep.request,
+                          {},
+                          (err3, resolvedPath) => {
+                            if (err3 || typeof resolvedPath !== 'string') {
+                              return filterCb(null, false);
+                            }
+                            watchDependencies.files.add(resolvedPath);
+                            (fs as ReadFileFs).readFile(
+                              resolvedPath,
+                              'utf-8',
+                              (err4, content) => {
+                                if (err4 || typeof content !== 'string') {
+                                  return filterCb(null, false);
+                                }
+                                filterCb(null, hasUseClientDirective(content));
+                              },
+                            );
+                          },
+                        );
                       },
+                      cb,
                     );
                   },
-                  cb,
                 );
               },
             );
@@ -1095,6 +1190,81 @@ export class RSCWebpackPlugin {
         callback(null, flattened);
       },
     );
+  }
+
+  private collectClientReferenceContextDependencies(
+    fs: unknown,
+    rootDirectory: string,
+    clientReferencePath: ClientReferenceSearchPath,
+    watchDependencies: ClientReferenceWatchDependencies,
+    callback: (err: Error | null) => void,
+  ): void {
+    const inputFs = fs as WatchInputFileSystem;
+    const recursive = clientReferencePath.recursive !== false;
+    const visited = new Set<string>();
+
+    const walk = (directory: string, done: (err?: Error | null) => void): void => {
+      const visit = (canonicalDirectory: string): void => {
+        if (visited.has(canonicalDirectory)) {
+          done();
+          return;
+        }
+        visited.add(canonicalDirectory);
+        watchDependencies.contexts.add(directory);
+
+        inputFs.readdir(directory, (readErr, files) => {
+          if (readErr) {
+            watchDependencies.missing.add(directory);
+            done();
+            return;
+          }
+
+          asyncLib.mapLimit<string, void>(
+            (files ?? []).filter((file) => file.indexOf('.') !== 0),
+            WATCH_TRAVERSAL_CONCURRENCY,
+            (segment, mapDone) => {
+              const child = path.join(directory, segment);
+              if (clientReferencePath.exclude?.test(child)) {
+                mapDone(null);
+                return;
+              }
+
+              inputFs.stat(child, (statErr, stats) => {
+                if (statErr) {
+                  watchDependencies.missing.add(child);
+                  mapDone(null);
+                  return;
+                }
+
+                if (recursive && stats?.isDirectory()) {
+                  walk(child, (walkErr) => mapDone(walkErr ?? null));
+                  return;
+                }
+
+                mapDone(null);
+              });
+            },
+            (err) => done(err),
+          );
+        });
+      };
+
+      if (!inputFs.realpath) {
+        visit(directory);
+        return;
+      }
+
+      inputFs.realpath(directory, (realpathErr, realPath) => {
+        if (realpathErr) {
+          watchDependencies.missing.add(directory);
+          done();
+          return;
+        }
+        visit(realPath ?? directory);
+      });
+    };
+
+    walk(rootDirectory, (err) => callback(err ?? null));
   }
 }
 

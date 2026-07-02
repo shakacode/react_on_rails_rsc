@@ -10,6 +10,7 @@ All notable changes to this package will be documented in this file.
 
 ### Fixed
 - Fixed `RSCRspackPlugin` to install the generated client-reference `splitChunks` guard after Rspack applies option defaults, so default optimization configs keep generated client chunks self-contained. ([#165])
+- Fixed watch rebuilds so rspack and webpack refresh client-reference runtime injections when `"use client"` files are added or removed without restarting the dev server. ([#164])
 - Restored RSC stylesheet hints when a CSS-merging SplitChunks cache group, such as mini-css-extract's `styles` group, moves a client reference's own CSS into a CSS-only split chunk. ([#151])
 
 ## [19.2.0] - 2026-06-28
@@ -63,6 +64,7 @@ All notable changes to this package will be documented in this file.
 [#143]: https://github.com/shakacode/react_on_rails_rsc/pull/143
 [#144]: https://github.com/shakacode/react_on_rails_rsc/pull/144
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
+[#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
 [#106]: https://github.com/shakacode/react_on_rails_rsc/pull/106

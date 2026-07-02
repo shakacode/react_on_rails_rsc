@@ -101,6 +101,9 @@ type AnyCompilation = {
   getAsset?: (filename: string) => { source?: AssetSource } | undefined;
   warnings: unknown[];
   compiler: AnyCompiler;
+  fileDependencies?: WatchDependencySet;
+  contextDependencies?: WatchDependencySet;
+  missingDependencies?: WatchDependencySet;
   getLogger?(name: string): AnyLogger;
 };
 
@@ -108,6 +111,39 @@ type AssetSource = {
   size?: () => number;
   source?: () => string | Buffer;
 };
+
+type WatchDependencySet = {
+  add(dependency: string): unknown;
+};
+
+type ClientReferenceWatchDependencies = {
+  files: Set<string>;
+  contexts: Set<string>;
+  missing: Set<string>;
+};
+
+function createClientReferenceWatchDependencies(): ClientReferenceWatchDependencies {
+  return {
+    files: new Set<string>(),
+    contexts: new Set<string>(),
+    missing: new Set<string>(),
+  };
+}
+
+function addClientReferenceWatchDependencies(
+  compilation: AnyCompilation,
+  dependencies: ClientReferenceWatchDependencies,
+): void {
+  for (const file of dependencies.files) {
+    compilation.fileDependencies?.add(file);
+  }
+  for (const context of dependencies.contexts) {
+    compilation.contextDependencies?.add(context);
+  }
+  for (const missing of dependencies.missing) {
+    compilation.missingDependencies?.add(missing);
+  }
+}
 
 // Helper to read/write our private Symbol key on the compilation. Using a
 // symbol requires a cast because TS structural types can't easily express
@@ -274,12 +310,18 @@ export class RSCRspackPlugin {
     // from disk, check for a `"use client"` directive, and stash the
     // absolute paths.  This list is used in Phase 2 to inject async chunks.
     let discoveredClientFiles: string[] = [];
+    let clientReferenceWatchDependencies = createClientReferenceWatchDependencies();
 
     compiler.hooks.beforeCompile.tapAsync(
       'RSCRspackPlugin',
       (_params: unknown, callback: (err?: Error | null) => void) => {
         try {
-          discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
+          const nextWatchDependencies = createClientReferenceWatchDependencies();
+          discoveredClientFiles = this.resolveAllClientFiles(
+            compiler.context,
+            nextWatchDependencies,
+          );
+          clientReferenceWatchDependencies = nextWatchDependencies;
           this._resolvedClientFiles = discoveredClientFiles;
           setInjectionState(discoveredClientFiles, this.chunkName);
           callback();
@@ -380,6 +422,7 @@ export class RSCRspackPlugin {
     // ── Phase 3: tag set + manifest emission ────────────────────────
     compiler.hooks.thisCompilation.tap('RSCRspackPlugin', (compilationUnknown) => {
       const compilation = compilationUnknown as AnyCompilation;
+      addClientReferenceWatchDependencies(compilation, clientReferenceWatchDependencies);
 
       // Eagerly create the shared Set so the loader never races on init.
       if (!getTagSet(compilation)) {
@@ -435,7 +478,10 @@ export class RSCRspackPlugin {
   //   - string → direct file reference (unconditionally included, matching
   //     the webpack plugin's behavior — no "use client" check)
   //   - search descriptor → walk directory, read files, check for directive
-  private resolveAllClientFiles(compilerContext: string): string[] {
+  private resolveAllClientFiles(
+    compilerContext: string,
+    watchDependencies: ClientReferenceWatchDependencies,
+  ): string[] {
     const results = new Set<string>();
     for (const ref of this.clientReferences) {
       if (typeof ref === 'string') {
@@ -443,16 +489,23 @@ export class RSCRspackPlugin {
         // a ClientReferenceDependency unconditionally (line 337). We do
         // the same: include it without checking for "use client".
         const resolved = path.resolve(compilerContext, ref);
+        watchDependencies.files.add(resolved);
         try {
           if (fs.statSync(resolved).isFile()) this.addResolvedClientFile(results, resolved);
-        } catch { /* not found — skip */ }
+        } catch {
+          watchDependencies.missing.add(resolved);
+        }
         continue;
       }
       const dir = path.resolve(compilerContext, ref.directory);
       try {
         if (!fs.statSync(dir).isDirectory()) continue;
-      } catch { continue; }
-      this.walkDir(dir, dir, ref, results);
+      } catch {
+        watchDependencies.missing.add(dir);
+        continue;
+      }
+      watchDependencies.contexts.add(dir);
+      this.walkDir(dir, dir, ref, results, watchDependencies);
     }
     return [...results];
   }
@@ -462,11 +515,14 @@ export class RSCRspackPlugin {
     walkRoot: string,
     ref: ClientReferenceSearchPath,
     out: Set<string>,
+    watchDependencies = createClientReferenceWatchDependencies(),
   ): void {
+    watchDependencies.contexts.add(dir);
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
+      watchDependencies.missing.add(dir);
       return;
     }
     for (const entry of entries) {
@@ -480,7 +536,7 @@ export class RSCRspackPlugin {
       if (stat.isDirectory()) {
         const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
         if (ref.exclude && ref.exclude.test(relPath)) continue;
-        if (ref.recursive !== false) this.walkDir(full, walkRoot, ref, out);
+        if (ref.recursive !== false) this.walkDir(full, walkRoot, ref, out, watchDependencies);
       } else if (stat.isFile()) {
         // Test include/exclude against the RELATIVE path from the walk
         // root (e.g. "./components/Button.tsx"), matching the webpack
@@ -489,6 +545,7 @@ export class RSCRspackPlugin {
         const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
         if (!ref.include.test(relPath)) continue;
         if (ref.exclude && ref.exclude.test(relPath)) continue;
+        watchDependencies.files.add(full);
         try {
           const source = fs.readFileSync(full, 'utf-8');
           if (hasUseClientDirective(source)) this.addResolvedClientFile(out, full);

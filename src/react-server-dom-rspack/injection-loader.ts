@@ -21,6 +21,12 @@ export let _chunkName = 'client[index]';
 export let _generatedChunkNames: Set<string> = new Set();
 
 const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
+  // The injected import list comes from the plugin's latest FS walk, not from
+  // the runtime file itself. Re-run on every watch rebuild so added/removed
+  // client references refresh the runtime module instead of reusing stale
+  // loader output.
+  this.cacheable(false);
+
   if (!_discoveredClientFiles.length) return source;
 
   const names: string[] = [];

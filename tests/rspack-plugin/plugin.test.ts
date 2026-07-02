@@ -221,6 +221,26 @@ describe('RSCRspackPlugin', () => {
       expect(childCss).not.toContain('.parent-styled-island');
       expect(parentCss).toContain('.parent-styled-island');
     });
+
+    it("scopes server diagnostics CSS to the referenced island's chunk group", () => {
+      const result = run('static-islands', {
+        isServer: true,
+        clientReferences: staticIslandClientReferences(
+          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/,
+        ),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        publicPath: '/assets',
+        withCss: true,
+      });
+
+      const childCss = readDiagnosticCss(result, '/StyledIsland.js');
+      const parentCss = readDiagnosticCss(result, '/ParentStyledIsland.js');
+
+      expect(childCss).toContain('.styled-island');
+      expect(childCss).not.toContain('.parent-styled-island');
+      expect(parentCss).toContain('.parent-styled-island');
+      expect(result.clientReferenceDiagnostics?.isServer).toBe(true);
+    });
   });
 
   describe('top-level manifest shape', () => {

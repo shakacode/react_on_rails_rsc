@@ -26,7 +26,7 @@ import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from '../clientReferences';
-import { CLIENT_MODULES_KEY, hasUseClientDirective } from './shared';
+import { CLIENT_MODULES_KEY, getGeneratedChunkName, hasUseClientDirective } from './shared';
 import type {} from './injection-loader';
 
 function setInjectionState(files: string[], chunkName: string): void {
@@ -80,8 +80,8 @@ type AnyCompilation = {
   hooks: {
     processAssets: {
       tap: (opts: { name: string; stage: number }, fn: () => void) => void;
-	  };
-	};
+    };
+  };
   chunkGraph: {
     getModuleChunks(module: unknown): Iterable<unknown>;
     getModuleId(module: unknown): string | number | null;
@@ -777,15 +777,9 @@ export class RSCRspackPlugin {
     return new Map(
       (this._resolvedClientFiles ?? []).map((file, index) => [
         file,
-        this.getGeneratedChunkName(file, index),
+        getGeneratedChunkName(this.chunkName, file, index),
       ]),
     );
-  }
-
-  private getGeneratedChunkName(file: string, index: number): string {
-    return this.chunkName
-      .replace(/\[index\]/g, String(index))
-      .replace(/\[request\]/g, file.replace(/[^a-zA-Z0-9_]/g, '_'));
   }
 
   private getDiagnosticsCssForModule(
@@ -794,7 +788,7 @@ export class RSCRspackPlugin {
     css: string[],
     generatedChunkNamesByResource: ReadonlyMap<string, string>,
   ): string[] {
-    if (this.options.isServer || !resource || css.length === 0) return css;
+    if (!resource || css.length === 0) return css;
     const generatedChunkName = generatedChunkNamesByResource.get(resource);
     if (!generatedChunkName) return css;
     return this.chunkGroupHasName(chunkGroup, generatedChunkName) ? css : [];

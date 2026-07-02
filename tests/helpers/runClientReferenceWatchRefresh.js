@@ -21,7 +21,8 @@ const outputPath = fs.realpathSync.native(
 );
 
 const indexPath = path.join(context, 'index.js');
-const clientPath = (name) => path.join(context, `${name}.js`);
+const clientsDir = path.join(context, 'components');
+const clientPath = (name) => path.join(clientsDir, `${name}.js`);
 
 const writeIndex = (label) => {
   fs.writeFileSync(indexPath, `export const marker = ${JSON.stringify(label)};\n`);
@@ -35,6 +36,7 @@ const writeClient = (name) => {
 };
 
 writeIndex('initial');
+fs.mkdirSync(clientsDir);
 writeClient('InitialClient');
 if (args.scenario === 'remove') {
   writeClient('RemovedClient');
@@ -124,10 +126,8 @@ function runWatch() {
       if (snapshots.length === 1) {
         if (args.scenario === 'add') {
           writeClient('AddedClient');
-          writeIndex('after-add');
         } else if (args.scenario === 'remove') {
           fs.rmSync(clientPath('RemovedClient'), { force: true });
-          writeIndex('after-remove');
         } else {
           finish({ ok: false, errors: [`Unknown scenario: ${args.scenario}`] });
         }

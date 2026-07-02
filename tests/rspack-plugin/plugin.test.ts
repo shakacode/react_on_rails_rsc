@@ -402,10 +402,11 @@ describe('RSCRspackPlugin', () => {
   });
 
   describe('splitChunks integration', () => {
-    it('installs the default splitChunks guard after rspack option defaults are available', () => {
+    it('retries the default splitChunks guard after rspack option defaults are available', () => {
       const { RSCRspackPlugin } = require(DIST_PLUGIN);
       const injectionLoader = require(DIST_INJECTION_LOADER);
-      const defaultPhaseTaps: Array<() => void> = [];
+      const environmentTaps: Array<() => void> = [];
+      const afterEnvironmentTaps: Array<() => void> = [];
       const splitChunks: { chunks?: unknown } = { chunks: 'async' };
       const compiler = {
         context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
@@ -413,10 +414,10 @@ describe('RSCRspackPlugin', () => {
         hooks: {
           beforeCompile: { tapAsync: jest.fn() },
           environment: {
-            tap: (_name: string, callback: () => void) => defaultPhaseTaps.push(callback),
+            tap: (_name: string, callback: () => void) => environmentTaps.push(callback),
           },
           afterEnvironment: {
-            tap: (_name: string, callback: () => void) => defaultPhaseTaps.push(callback),
+            tap: (_name: string, callback: () => void) => afterEnvironmentTaps.push(callback),
           },
           thisCompilation: { tap: jest.fn() },
         },
@@ -425,10 +426,12 @@ describe('RSCRspackPlugin', () => {
       injectionLoader._generatedChunkNames = new Set(['client0']);
 
       new RSCRspackPlugin({ isServer: false }).apply(compiler);
+      for (const callback of environmentTaps) callback();
       compiler.options.optimization.splitChunks = splitChunks;
-      for (const callback of defaultPhaseTaps) callback();
+      for (const callback of afterEnvironmentTaps) callback();
 
-      expect(defaultPhaseTaps.length).toBeGreaterThan(0);
+      expect(environmentTaps.length).toBeGreaterThan(0);
+      expect(afterEnvironmentTaps.length).toBeGreaterThan(0);
       expect(typeof splitChunks.chunks).toBe('function');
 
       const chunks = splitChunks.chunks as (chunk: {

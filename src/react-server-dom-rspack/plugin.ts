@@ -341,9 +341,12 @@ export class RSCRspackPlugin {
       // webpack's AsyncDependenciesBlock behavior where splitChunks does
       // not extract from block-created async chunks.
       if (!this.options.isServer) {
+        const guardedSplitChunks = new WeakSet<{ chunks?: unknown }>();
         const installSplitChunksGuard = () => {
           const splitChunks = compiler.options.optimization?.splitChunks;
           if (!splitChunks) return;
+          if (guardedSplitChunks.has(splitChunks)) return;
+          guardedSplitChunks.add(splitChunks);
 
           const origChunks = splitChunks.chunks ?? 'async';
           splitChunks.chunks = (chunk: { name?: string }) => {
@@ -360,7 +363,11 @@ export class RSCRspackPlugin {
 
         if (compiler.hooks.environment) {
           compiler.hooks.environment.tap('RSCRspackPlugin', installSplitChunksGuard);
-        } else {
+        }
+        if (compiler.hooks.afterEnvironment) {
+          compiler.hooks.afterEnvironment.tap('RSCRspackPlugin', installSplitChunksGuard);
+        }
+        if (!compiler.hooks.environment && !compiler.hooks.afterEnvironment) {
           installSplitChunksGuard();
         }
       }

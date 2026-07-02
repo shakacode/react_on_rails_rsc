@@ -63,7 +63,9 @@ const expectManifestEntry = (
   filename: string
 ): void => {
   const keys = result.snapshots[snapshotIndex]!.manifestKeys;
-  expect(keys).toEqual(expect.arrayContaining([expect.stringMatching(`/${filename}$`)]));
+  expect(keys).toEqual(
+    expect.arrayContaining([expect.stringMatching(`/${escapeRegExp(filename)}$`)])
+  );
 };
 
 const expectNoManifestEntry = (
@@ -72,8 +74,12 @@ const expectNoManifestEntry = (
   filename: string
 ): void => {
   const keys = result.snapshots[snapshotIndex]!.manifestKeys;
-  expect(keys).not.toEqual(expect.arrayContaining([expect.stringMatching(`/${filename}$`)]));
+  expect(keys).not.toEqual(
+    expect.arrayContaining([expect.stringMatching(`/${escapeRegExp(filename)}$`)])
+  );
 };
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 describe.each(['rspack', 'webpack'] as const)('%s client-reference watch refresh', (bundler) => {
   beforeAll(() => {

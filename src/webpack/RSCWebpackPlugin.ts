@@ -233,6 +233,7 @@ type FlightModule = {
   /** Inner modules of a ConcatenatedModule. */
   modules?: FlightModule[];
   addBlock?: (block: unknown) => void;
+  buildInfo?: { cacheable?: boolean };
 };
 
 type FlightChunk = {
@@ -523,6 +524,7 @@ export class RSCWebpackPlugin {
     // named AsyncDependenciesBlock per resolved client reference, creating
     // the chunk groups the manifest is later built from.
     flightCompiler.hooks.thisCompilation.tap(PLUGIN_NAME, (compilation, params) => {
+      clientFileNameFound = false;
       addClientReferenceWatchDependencies(compilation, clientReferenceWatchDependencies);
 
       const normalModuleFactory = params.normalModuleFactory;
@@ -544,8 +546,7 @@ export class RSCWebpackPlugin {
           // webpack to rebuild this single runtime module in watch mode so the
           // parser hook re-attaches blocks after client files are added or
           // removed.
-          const buildInfo = (module as unknown as { buildInfo?: { cacheable?: boolean } })
-            .buildInfo;
+          const buildInfo = module.buildInfo;
           if (buildInfo) buildInfo.cacheable = false;
           if (!resolvedClientReferences) return;
           for (let i = 0; i < resolvedClientReferences.length; i++) {

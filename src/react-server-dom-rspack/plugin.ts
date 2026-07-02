@@ -639,7 +639,9 @@ export class RSCRspackPlugin {
     const initialChunks = this.getInitialChunks(compilation);
 
     const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
+    const diagnosticsEnabled = typeof this.options.clientReferenceDiagnosticsFilename === 'string';
     let cssPrefix =
+      diagnosticsEnabled &&
       typeof compilation.outputOptions.publicPath === 'string' &&
       compilation.outputOptions.publicPath !== 'auto'
         ? compilation.outputOptions.publicPath

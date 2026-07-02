@@ -26,6 +26,19 @@ type ManifestChunks =
 const manifestChunkFiles = (chunks: ManifestChunks): string[] =>
   chunks.filter((_chunk, index) => index % 2 === 1).map(String);
 
+const readDiagnosticCss = (result: CompileResult, entryFileSuffix: string): string => {
+  const entry = result.clientReferenceDiagnostics?.clientReferences.find((reference) =>
+    reference.file.endsWith(entryFileSuffix),
+  );
+  expect(entry).toBeTruthy();
+  return (entry!.css ?? [])
+    .map(({ file }) => {
+      const assetName = file.replace(/^\/assets\//, '');
+      return fs.readFileSync(path.join(result.outputPath, assetName), 'utf8');
+    })
+    .join('\n');
+};
+
 const staticIslandClientReferences = (include: RegExp) => [
   { directory: '.', recursive: false, include },
 ];
@@ -164,7 +177,7 @@ describe('RSCRspackPlugin', () => {
 
     it('includes CSS asset bytes in static island diagnostics', () => {
       const result = run('static-islands', {
-        clientReferences: staticIslandClientReferences(/StyledIsland\.js$/),
+        clientReferences: staticIslandClientReferences(/^\.\/StyledIsland\.js$/),
         clientReferenceDiagnosticsFilename: diagnosticsFilename,
         publicPath: '/assets',
         withCss: true,
@@ -189,6 +202,24 @@ describe('RSCRspackPlugin', () => {
         diagnosticEntry.chunks[0]!.bytes! + diagnosticEntry.css![0]!.bytes!,
       );
       expect(result.clientReferenceDiagnostics?.totalChunkBytes).toBe(diagnosticEntry.totalBytes);
+    });
+
+    it("does not attach an importing island's CSS to an imported client reference", () => {
+      const result = run('static-islands', {
+        clientReferences: staticIslandClientReferences(
+          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/,
+        ),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        publicPath: '/assets',
+        withCss: true,
+      });
+
+      const childCss = readDiagnosticCss(result, '/StyledIsland.js');
+      const parentCss = readDiagnosticCss(result, '/ParentStyledIsland.js');
+
+      expect(childCss).toContain('.styled-island');
+      expect(childCss).not.toContain('.parent-styled-island');
+      expect(parentCss).toContain('.parent-styled-island');
     });
   });
 

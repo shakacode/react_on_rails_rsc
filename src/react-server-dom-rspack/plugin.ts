@@ -52,11 +52,14 @@ type AnyLogger = {
 type AnyCompiler = {
   options: {
     module?: { rules?: unknown[] };
+    optimization?: { splitChunks?: { chunks?: unknown } | false };
     context?: string;
   };
   context: string;
   hooks: {
     beforeCompile: { tapAsync: (name: string, fn: (params: unknown, cb: (err?: Error | null) => void) => void) => void };
+    environment?: { tap: (name: string, fn: () => void) => void };
+    afterEnvironment?: { tap: (name: string, fn: () => void) => void };
     thisCompilation: { tap: (name: string, fn: (compilation: unknown) => void) => void };
   };
   rspack?: { version?: string };
@@ -338,10 +341,10 @@ export class RSCRspackPlugin {
       // webpack's AsyncDependenciesBlock behavior where splitChunks does
       // not extract from block-created async chunks.
       if (!this.options.isServer) {
-        type SplitChunksConfig = { chunks?: unknown };
-        const optimization = (compiler.options as { optimization?: { splitChunks?: SplitChunksConfig } }).optimization;
-        const splitChunks = optimization?.splitChunks;
-        if (splitChunks) {
+        const installSplitChunksGuard = () => {
+          const splitChunks = compiler.options.optimization?.splitChunks;
+          if (!splitChunks) return;
+
           const origChunks = splitChunks.chunks ?? 'async';
           splitChunks.chunks = (chunk: { name?: string }) => {
             if (chunk.name != null && getGeneratedChunkNames().has(chunk.name)) return false;
@@ -353,6 +356,12 @@ export class RSCRspackPlugin {
             if (origChunks === 'async') return !canBeInitial;
             return true; // origChunks === 'all': include every non-generated chunk.
           };
+        };
+
+        if (compiler.hooks.environment) {
+          compiler.hooks.environment.tap('RSCRspackPlugin', installSplitChunksGuard);
+        } else {
+          installSplitChunksGuard();
         }
       }
     }

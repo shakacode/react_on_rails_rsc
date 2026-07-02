@@ -448,6 +448,51 @@ describe('RSCRspackPlugin', () => {
       }
     });
 
+    it('reinstalls the splitChunks guard if the chunks selector is overwritten between hooks', () => {
+      const { RSCRspackPlugin } = require(DIST_PLUGIN);
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const environmentTaps: Array<() => void> = [];
+      const afterEnvironmentTaps: Array<() => void> = [];
+      const splitChunks: { chunks?: unknown } = { chunks: 'all' };
+      const compiler = {
+        context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
+        options: { module: {}, optimization: { splitChunks } },
+        hooks: {
+          beforeCompile: { tapAsync: jest.fn() },
+          environment: {
+            tap: (_name: string, callback: () => void) => environmentTaps.push(callback),
+          },
+          afterEnvironment: {
+            tap: (_name: string, callback: () => void) => afterEnvironmentTaps.push(callback),
+          },
+          thisCompilation: { tap: jest.fn() },
+        },
+      };
+
+      const originalGeneratedChunkNames = injectionLoader._generatedChunkNames;
+      try {
+        injectionLoader._generatedChunkNames = new Set(['client0']);
+
+        new RSCRspackPlugin({ isServer: false }).apply(compiler);
+        for (const callback of environmentTaps) callback();
+        expect(typeof splitChunks.chunks).toBe('function');
+
+        splitChunks.chunks = 'async';
+        for (const callback of afterEnvironmentTaps) callback();
+
+        expect(typeof splitChunks.chunks).toBe('function');
+        const chunks = splitChunks.chunks as (chunk: {
+          name?: string;
+          canBeInitial?: () => boolean;
+        }) => boolean;
+        expect(chunks({ name: 'client0', canBeInitial: () => false })).toBe(false);
+        expect(chunks({ name: 'client99', canBeInitial: () => false })).toBe(true);
+        expect(chunks({ name: 'main', canBeInitial: () => true })).toBe(false);
+      } finally {
+        injectionLoader._generatedChunkNames = originalGeneratedChunkNames;
+      }
+    });
+
     it('keeps generated client chunks isolated with rspack default optimization config', () => {
       const result = run('default-splitchunks');
       const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();

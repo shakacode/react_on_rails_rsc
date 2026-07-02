@@ -341,15 +341,14 @@ export class RSCRspackPlugin {
       // webpack's AsyncDependenciesBlock behavior where splitChunks does
       // not extract from block-created async chunks.
       if (!this.options.isServer) {
-        const guardedSplitChunks = new WeakSet<{ chunks?: unknown }>();
+        const guardedSplitChunks = new WeakMap<{ chunks?: unknown }, unknown>();
         const installSplitChunksGuard = () => {
           const splitChunks = compiler.options.optimization?.splitChunks;
           if (!splitChunks) return;
-          if (guardedSplitChunks.has(splitChunks)) return;
-          guardedSplitChunks.add(splitChunks);
+          if (guardedSplitChunks.get(splitChunks) === splitChunks.chunks) return;
 
           const origChunks = splitChunks.chunks ?? 'async';
-          splitChunks.chunks = (chunk: { name?: string }) => {
+          const guardedChunks = (chunk: { name?: string }) => {
             if (chunk.name != null && getGeneratedChunkNames().has(chunk.name)) return false;
             if (typeof origChunks === 'function') return origChunks(chunk);
             // Rspack/Webpack chunks expose canBeInitial(); keep the historical
@@ -359,11 +358,13 @@ export class RSCRspackPlugin {
             if (origChunks === 'async') return !canBeInitial;
             return true; // origChunks === 'all': include every non-generated chunk.
           };
+          guardedSplitChunks.set(splitChunks, guardedChunks);
+          splitChunks.chunks = guardedChunks;
         };
 
         // Rspack may attach optimization defaults after plugin apply(); retry in
-        // both hooks and rely on the WeakSet above to keep installation
-        // idempotent for whichever splitChunks object is present.
+        // both hooks and reinstall if a later normalizer/plugin overwrites
+        // splitChunks.chunks on the same object.
         if (compiler.hooks.environment) {
           compiler.hooks.environment.tap('RSCRspackPlugin', installSplitChunksGuard);
         }

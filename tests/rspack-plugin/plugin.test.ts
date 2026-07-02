@@ -448,12 +448,12 @@ describe('RSCRspackPlugin', () => {
       }
     });
 
-    it('reinstalls the splitChunks guard if the chunks selector is overwritten between hooks', () => {
+    it('installs the splitChunks guard before chunks is defaulted and reinstalls after overwrite', () => {
       const { RSCRspackPlugin } = require(DIST_PLUGIN);
       const injectionLoader = require(DIST_INJECTION_LOADER);
       const environmentTaps: Array<() => void> = [];
       const afterEnvironmentTaps: Array<() => void> = [];
-      const splitChunks: { chunks?: unknown } = { chunks: 'all' };
+      const splitChunks: { chunks?: unknown } = {};
       const compiler = {
         context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
         options: { module: {}, optimization: { splitChunks } },

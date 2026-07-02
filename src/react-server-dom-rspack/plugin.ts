@@ -387,7 +387,12 @@ export class RSCRspackPlugin {
         const installSplitChunksGuard = () => {
           const splitChunks = compiler.options.optimization?.splitChunks;
           if (!splitChunks) return;
-          if (guardedSplitChunks.get(splitChunks) === splitChunks.chunks) return;
+          if (
+            guardedSplitChunks.has(splitChunks) &&
+            guardedSplitChunks.get(splitChunks) === splitChunks.chunks
+          ) {
+            return;
+          }
 
           const origChunks = splitChunks.chunks ?? 'async';
           const guardedChunks = (chunk: { name?: string }) => {

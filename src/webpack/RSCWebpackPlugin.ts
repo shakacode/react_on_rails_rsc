@@ -421,6 +421,11 @@ type WatchInputFileSystem = ReadFileFs & {
 
 const PLUGIN_NAME = 'React Server Plugin';
 
+const toClientReferenceRelativePath = (rootDirectory: string, childPath: string): string => {
+  const relativePath = path.relative(rootDirectory, childPath).replace(/\\/g, '/');
+  return relativePath ? `./${relativePath}` : '.';
+};
+
 export class RSCWebpackPlugin {
   readonly isServer: boolean;
 
@@ -1195,12 +1200,8 @@ export class RSCWebpackPlugin {
 
         inputFs.readdir(directory, (readErr, files) => {
           if (readErr) {
-            if (readErr.code === 'ENOENT') {
-              watchDependencies.missing.add(directory);
-              done();
-              return;
-            }
-            done(readErr);
+            watchDependencies.missing.add(directory);
+            done();
             return;
           }
 
@@ -1208,18 +1209,16 @@ export class RSCWebpackPlugin {
             (files ?? []).filter((file) => file.indexOf('.') !== 0),
             (segment, mapDone) => {
               const child = path.join(directory, segment);
-              if (clientReferencePath.exclude?.test(child)) {
+              const relativeChild = toClientReferenceRelativePath(rootDirectory, child);
+              if (clientReferencePath.exclude?.test(relativeChild)) {
                 mapDone(null);
                 return;
               }
 
               inputFs.stat(child, (statErr, stats) => {
                 if (statErr) {
-                  if (statErr.code === 'ENOENT') {
-                    mapDone(null);
-                    return;
-                  }
-                  mapDone(statErr);
+                  watchDependencies.missing.add(child);
+                  mapDone(null);
                   return;
                 }
 
@@ -1243,12 +1242,8 @@ export class RSCWebpackPlugin {
 
       inputFs.realpath(directory, (realpathErr, realPath) => {
         if (realpathErr) {
-          if (realpathErr.code === 'ENOENT') {
-            watchDependencies.missing.add(directory);
-            done();
-            return;
-          }
-          done(realpathErr);
+          watchDependencies.missing.add(directory);
+          done();
           return;
         }
         visit(realPath ?? directory);

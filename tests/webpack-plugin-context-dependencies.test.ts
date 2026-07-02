@@ -55,8 +55,10 @@ const collectContextDependencies = async (
 const fsError = (code: string): NodeJS.ErrnoException =>
   Object.assign(new Error(code), { code });
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 describe('RSCWebpackPlugin context watch dependency collection', () => {
-  it('tests excluded directories against relative client-reference paths', async () => {
+  it('tests excluded directories against the same absolute paths webpack uses', async () => {
     const root = path.resolve('/project');
     const appDir = path.join(root, 'app');
     const vendorDir = path.join(root, 'vendor');
@@ -77,7 +79,7 @@ describe('RSCWebpackPlugin context watch dependency collection', () => {
       directory: '.',
       recursive: true,
       include: /\.js$/,
-      exclude: /^\.\/vendor(?:\/|$)/,
+      exclude: new RegExp(`^${escapeRegExp(vendorDir)}(?:[/\\\\]|$)`),
     });
 
     expect(watchDependencies.contexts.has(root)).toBe(true);

@@ -47,6 +47,12 @@ const asyncLib = require('neo-async') as {
     iterator: (item: T, callback: (err: Error | null, result?: R) => void) => void,
     callback: (err: Error | null, results?: R[]) => void,
   ): void;
+  mapLimit<T, R>(
+    arr: ReadonlyArray<T>,
+    limit: number,
+    iterator: (item: T, callback: (err: Error | null, result?: R) => void) => void,
+    callback: (err: Error | null, results?: R[]) => void,
+  ): void;
   filter<T>(
     arr: ReadonlyArray<T>,
     iterator: (item: T, callback: (err: Error | null, keep?: boolean) => void) => void,
@@ -421,11 +427,7 @@ type WatchInputFileSystem = ReadFileFs & {
 };
 
 const PLUGIN_NAME = 'React Server Plugin';
-
-const toClientReferenceRelativePath = (rootDirectory: string, childPath: string): string => {
-  const relativePath = path.relative(rootDirectory, childPath).replace(/\\/g, '/');
-  return relativePath ? `./${relativePath}` : '.';
-};
+const WATCH_TRAVERSAL_CONCURRENCY = 32;
 
 export class RSCWebpackPlugin {
   readonly isServer: boolean;
@@ -1217,12 +1219,12 @@ export class RSCWebpackPlugin {
             return;
           }
 
-          asyncLib.map<string, void>(
+          asyncLib.mapLimit<string, void>(
             (files ?? []).filter((file) => file.indexOf('.') !== 0),
+            WATCH_TRAVERSAL_CONCURRENCY,
             (segment, mapDone) => {
               const child = path.join(directory, segment);
-              const relativeChild = toClientReferenceRelativePath(rootDirectory, child);
-              if (clientReferencePath.exclude?.test(relativeChild)) {
+              if (clientReferencePath.exclude?.test(child)) {
                 mapDone(null);
                 return;
               }

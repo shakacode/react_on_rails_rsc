@@ -448,6 +448,28 @@ describe('RSCRspackPlugin', () => {
       }
     });
 
+    it('keeps generated client chunks isolated with rspack default optimization config', () => {
+      const result = run('default-splitchunks');
+      const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
+
+      expect(jsAssets).toContain('main.js');
+      expect(jsAssets.some((asset) => /^client\d+\.chunk\.js$/.test(asset))).toBe(true);
+      expect(jsAssets.filter((asset) => /vendors|biglib|clientlib/.test(asset))).toEqual([]);
+
+      const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(clientEntryKey).toBeTruthy();
+
+      const clientChunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+      );
+      expect(clientChunkFiles).toEqual(
+        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)]),
+      );
+      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
+    });
+
     it('preserves default async chunk selection while excluding generated client-reference chunks', () => {
       const result = run('default-splitchunks', {
         configExtra: {

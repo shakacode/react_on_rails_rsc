@@ -361,6 +361,9 @@ export class RSCRspackPlugin {
           };
         };
 
+        // Rspack may attach optimization defaults after plugin apply(); retry in
+        // both hooks and rely on the WeakSet above to keep installation
+        // idempotent for whichever splitChunks object is present.
         if (compiler.hooks.environment) {
           compiler.hooks.environment.tap('RSCRspackPlugin', installSplitChunksGuard);
         }

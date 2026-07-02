@@ -423,24 +423,29 @@ describe('RSCRspackPlugin', () => {
         },
       };
 
-      injectionLoader._generatedChunkNames = new Set(['client0']);
+      const originalGeneratedChunkNames = injectionLoader._generatedChunkNames;
+      try {
+        injectionLoader._generatedChunkNames = new Set(['client0']);
 
-      new RSCRspackPlugin({ isServer: false }).apply(compiler);
-      for (const callback of environmentTaps) callback();
-      compiler.options.optimization.splitChunks = splitChunks;
-      for (const callback of afterEnvironmentTaps) callback();
+        new RSCRspackPlugin({ isServer: false }).apply(compiler);
+        for (const callback of environmentTaps) callback();
+        compiler.options.optimization.splitChunks = splitChunks;
+        for (const callback of afterEnvironmentTaps) callback();
 
-      expect(environmentTaps.length).toBeGreaterThan(0);
-      expect(afterEnvironmentTaps.length).toBeGreaterThan(0);
-      expect(typeof splitChunks.chunks).toBe('function');
+        expect(environmentTaps.length).toBeGreaterThan(0);
+        expect(afterEnvironmentTaps.length).toBeGreaterThan(0);
+        expect(typeof splitChunks.chunks).toBe('function');
 
-      const chunks = splitChunks.chunks as (chunk: {
-        name?: string;
-        canBeInitial?: () => boolean;
-      }) => boolean;
-      expect(chunks({ name: 'client0', canBeInitial: () => false })).toBe(false);
-      expect(chunks({ name: 'client99', canBeInitial: () => false })).toBe(true);
-      expect(chunks({ name: 'main', canBeInitial: () => true })).toBe(false);
+        const chunks = splitChunks.chunks as (chunk: {
+          name?: string;
+          canBeInitial?: () => boolean;
+        }) => boolean;
+        expect(chunks({ name: 'client0', canBeInitial: () => false })).toBe(false);
+        expect(chunks({ name: 'client99', canBeInitial: () => false })).toBe(true);
+        expect(chunks({ name: 'main', canBeInitial: () => true })).toBe(false);
+      } finally {
+        injectionLoader._generatedChunkNames = originalGeneratedChunkNames;
+      }
     });
 
     it('preserves default async chunk selection while excluding generated client-reference chunks', () => {

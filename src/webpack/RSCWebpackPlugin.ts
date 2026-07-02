@@ -482,6 +482,14 @@ export class RSCWebpackPlugin {
             return;
           }
           clientFileNameFound = true;
+          // The block list below depends on the latest client-reference
+          // discovery result, not on the Flight runtime file contents. Force
+          // webpack to rebuild this single runtime module in watch mode so the
+          // parser hook re-attaches blocks after client files are added or
+          // removed.
+          const buildInfo = (module as unknown as { buildInfo?: { cacheable?: boolean } })
+            .buildInfo;
+          if (buildInfo) buildInfo.cacheable = false;
           if (!resolvedClientReferences) return;
           for (let i = 0; i < resolvedClientReferences.length; i++) {
             const dep = resolvedClientReferences[i]!;

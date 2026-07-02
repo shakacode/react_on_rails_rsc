@@ -8,6 +8,9 @@ All notable changes to this package will be documented in this file.
 - Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. The default `react-on-rails-rsc/server` fallback keeps failing fast at import time without the `react-server` condition while still publishing the expanded type surface. ([#143])
 - Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
 
+### Fixed
+- Fixed watch rebuilds so rspack and webpack refresh client-reference runtime injections when `"use client"` files are added or removed without restarting the dev server. ([#154])
+
 ## [19.2.0] - 2026-06-28
 
 ### Breaking Changes
@@ -58,6 +61,7 @@ All notable changes to this package will be documented in this file.
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
 [#143]: https://github.com/shakacode/react_on_rails_rsc/pull/143
 [#144]: https://github.com/shakacode/react_on_rails_rsc/pull/144
+[#154]: https://github.com/shakacode/react_on_rails_rsc/issues/154
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
 [#106]: https://github.com/shakacode/react_on_rails_rsc/pull/106
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23

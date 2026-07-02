@@ -1,12 +1,10 @@
 name: Dependabot auto-merge
 
-# Enables GitHub native auto-merge for low-risk Dependabot PRs (minor/patch and
-# GitHub Actions bumps). The PR still merges only once all checks GitHub treats
-# as required have passed. NOTE: `main` currently has no branch protection, so
-# "required" is empty and an enabled PR merges as soon as it is mergeable. Add
-# branch protection on `main` with the real CI checks (unit-tests, e2e-tests,
-# verify-artifacts, the compatibility matrix) marked required — but NOT
-# claude-review — to make this gate on green CI.
+# Enables GitHub native auto-merge for low-risk Dependabot minor/patch package
+# updates. Native auto-merge only waits for checks that branch protection marks
+# required, so this workflow refuses to enable auto-merge when the base branch
+# has no required checks configured. GitHub Actions ecosystem bumps stay
+# maintainer-gated because they edit workflow execution.
 
 on:
   pull_request_target:
@@ -26,10 +24,44 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Hold GitHub Actions updates for workflow audit
+        if: steps.metadata.outputs.package-ecosystem == 'github_actions'
+        run: |
+          echo "::notice::GitHub Actions Dependabot updates are not auto-merged. Review workflow permissions, triggers, secrets, and third-party action changes manually."
+
+      - name: Verify required checks protect auto-merge
+        if: |
+          steps.metadata.outputs.package-ecosystem != 'github_actions' &&
+          (
+            steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+            steps.metadata.outputs.update-type == 'version-update:semver-patch'
+          )
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if ! required_count="$(
+            gh api "repos/${REPO}/branches/${BASE_BRANCH}/protection/required_status_checks" \
+              --jq '((.contexts // []) | length) + ((.checks // []) | length)' 2>/dev/null
+          )"; then
+            required_count=0
+          fi
+
+          if [ "${required_count:-0}" -eq 0 ]; then
+            echo "::error::Dependabot auto-merge is disabled because ${BASE_BRANCH} has no required status checks configured. Configure branch protection for the deterministic CI checks before re-enabling auto-merge."
+            exit 1
+          fi
+
       - name: Enable auto-merge for minor and patch updates
         if: |
-          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-patch'
+          steps.metadata.outputs.package-ecosystem != 'github_actions' &&
+          (
+            steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+            steps.metadata.outputs.update-type == 'version-update:semver-patch'
+          )
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

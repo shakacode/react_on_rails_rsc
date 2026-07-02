@@ -356,6 +356,102 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
+  describe('CSS-only SplitChunks chunks: own CSS moved away from its JS module', () => {
+    let result: CompileResult;
+
+    beforeAll(() => {
+      result = run('split-css-only-chunk', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: {
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              styles: {
+                name: 'styles',
+                type: 'css/mini-extract',
+                chunks: 'all',
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+    });
+
+    it('emits the merged styles chunk as a CSS-only split chunk (precondition)', () => {
+      expect(result.assets).toContain('styles.chunk.css');
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(chunkFiles(button)).toContain('client-Button-js.chunk.js');
+      expect(result.assets).not.toContain('client-Button-js.chunk.css');
+    });
+
+    it("keeps the client reference's own CSS when SplitChunks moves it to a CSS-only chunk", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(button.css).toContain('/assets/styles.chunk.css');
+    });
+
+    it('produces no fallback warning', () => {
+      expectNoWarnings(result);
+    });
+  });
+
+  describe('CSS-only shared dependency chunks stay excluded from client-reference CSS', () => {
+    let result: CompileResult;
+
+    beforeAll(() => {
+      result = run('split-shared-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: {
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              sharedJs: {
+                test: /shared\.js$/,
+                name: 'shared-js',
+                minChunks: 2,
+                enforce: true,
+              },
+              sharedStyles: {
+                test: /shared\.css$/,
+                name: 'shared-styles',
+                type: 'css/mini-extract',
+                chunks: 'all',
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+    });
+
+    it('emits the shared dependency stylesheet as a CSS-only split chunk (precondition)', () => {
+      expect(result.assets).toContain('shared-styles.chunk.css');
+    });
+
+    it('does not attach the CSS-only shared dependency stylesheet to client references', () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(button.css).toContain('/assets/client-Button-js.chunk.css');
+      expect(settings.css).toContain('/assets/client-SettingsPage-js.chunk.css');
+      expect(button.css ?? []).not.toContain('/assets/shared-styles.chunk.css');
+      expect(settings.css ?? []).not.toContain('/assets/shared-styles.chunk.css');
+    });
+
+    it('produces no fallback warning', () => {
+      expectNoWarnings(result);
+    });
+  });
+
   describe('duplicated module across chunk groups (issue #19 class, no splitChunks)', () => {
     // SettingsPage imports Button; with no splitChunks, Button's module is
     // duplicated into SettingsPage's chunk, so it appears in two chunk

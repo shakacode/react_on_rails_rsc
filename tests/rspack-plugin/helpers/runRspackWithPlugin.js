@@ -97,7 +97,7 @@ if (typeof maxChunks === 'number') {
 }
 
 const config = {
-  mode: 'development',
+  mode: typeof maxChunks === 'number' ? 'none' : 'development',
   target: isServer ? 'node' : 'web',
   context,
   entry: [runtimeEntry, './index.js'],

@@ -56,6 +56,10 @@ const splitStaticIslandVendors = {
 afterAll(() => cleanupOutputDirs(created));
 
 const DIST_PLUGIN = path.resolve(__dirname, '../../dist/react-server-dom-rspack/plugin.js');
+const DIST_INJECTION_LOADER = path.resolve(
+  __dirname,
+  '../../dist/react-server-dom-rspack/injection-loader.js',
+);
 
 describe('RSCRspackPlugin', () => {
   beforeAll(() => {
@@ -451,6 +455,101 @@ describe('RSCRspackPlugin', () => {
   });
 
   describe('splitChunks integration', () => {
+    it('installs the default splitChunks guard before RspackOptionsApply snapshots options', () => {
+      const { RSCRspackPlugin } = require(DIST_PLUGIN);
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const splitChunks: { chunks?: unknown } = {};
+      type CapturedTap = {
+        name: string | { name: string; stage?: number };
+        callback: () => void;
+      };
+      const environmentTaps: CapturedTap[] = [];
+      const afterEnvironmentTaps: CapturedTap[] = [];
+      const compiler = {
+        context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
+        options: { module: {}, optimization: {} as { splitChunks?: typeof splitChunks } },
+        hooks: {
+          beforeCompile: { tapAsync: jest.fn() },
+          environment: {
+            tap: (name: CapturedTap['name'], callback: () => void) =>
+              environmentTaps.push({ name, callback }),
+          },
+          afterEnvironment: {
+            tap: (name: CapturedTap['name'], callback: () => void) =>
+              afterEnvironmentTaps.push({ name, callback }),
+          },
+          thisCompilation: { tap: jest.fn() },
+        },
+      };
+
+      const originalGeneratedChunkNames = injectionLoader._generatedChunkNames;
+      try {
+        injectionLoader._generatedChunkNames = new Set(['client0']);
+
+        new RSCRspackPlugin({ isServer: false }).apply(compiler);
+        compiler.options.optimization.splitChunks = splitChunks;
+        splitChunks.chunks = 'async';
+
+        for (const { callback } of environmentTaps) callback();
+        expect(typeof splitChunks.chunks).toBe('function');
+
+        // A later environment-stage tap can still replace the selector; the
+        // afterEnvironment tap runs late enough to reinstall before
+        // RspackOptionsApply snapshots splitChunks for the native plugin.
+        splitChunks.chunks = 'all';
+        for (const { callback } of afterEnvironmentTaps) callback();
+
+        expect(environmentTaps).toHaveLength(1);
+        expect(afterEnvironmentTaps).toHaveLength(1);
+        expect(environmentTaps[0]!.name).toEqual({
+          name: 'RSCRspackPlugin.splitChunksGuard',
+          stage: Number.MAX_SAFE_INTEGER,
+        });
+        expect(afterEnvironmentTaps[0]!.name).toEqual({
+          name: 'RSCRspackPlugin.splitChunksGuard',
+          stage: Number.MAX_SAFE_INTEGER,
+        });
+
+        const chunksCapturedByRspackOptionsApply = splitChunks.chunks as (chunk: {
+          name?: string;
+          canBeInitial?: () => boolean;
+        }) => boolean;
+        expect(chunksCapturedByRspackOptionsApply({ name: 'client0', canBeInitial: () => false })).toBe(
+          false,
+        );
+        expect(chunksCapturedByRspackOptionsApply({ name: 'client99', canBeInitial: () => false })).toBe(
+          true,
+        );
+        expect(chunksCapturedByRspackOptionsApply({ name: 'main', canBeInitial: () => true })).toBe(
+          true,
+        );
+      } finally {
+        injectionLoader._generatedChunkNames = originalGeneratedChunkNames;
+      }
+    });
+
+    it('keeps generated client chunks isolated with rspack default optimization config', () => {
+      const result = run('default-splitchunks');
+      const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
+
+      expect(jsAssets).toContain('main.js');
+      expect(jsAssets.some((asset) => /^client\d+\.chunk\.js$/.test(asset))).toBe(true);
+      expect(jsAssets.filter((asset) => /vendors|biglib|clientlib/.test(asset))).toEqual([]);
+
+      const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(clientEntryKey).toBeTruthy();
+
+      const clientChunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+      );
+      expect(clientChunkFiles).toEqual(
+        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)]),
+      );
+      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
+    });
+
     it('preserves default async chunk selection while excluding generated client-reference chunks', () => {
       const result = run('default-splitchunks', {
         configExtra: {

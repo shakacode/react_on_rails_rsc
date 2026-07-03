@@ -49,15 +49,24 @@ type AnyLogger = {
   debug(...args: unknown[]): void;
 };
 
+type TapName = string | { name: string; stage?: number };
+
 type AnyCompiler = {
   options: {
     module?: { rules?: unknown[] };
+    optimization?: { splitChunks?: { chunks?: unknown } | false };
     context?: string;
   };
   context: string;
   hooks: {
     beforeCompile: { tapAsync: (name: string, fn: (params: unknown, cb: (err?: Error | null) => void) => void) => void };
-    thisCompilation: { tap: (name: string, fn: (compilation: unknown) => void) => void };
+    environment?: { tap: (name: TapName, fn: () => void) => void };
+    afterEnvironment?: {
+      tap: (name: TapName, fn: () => void) => void;
+    };
+    thisCompilation: {
+      tap: (name: TapName, fn: (compilation: unknown) => void) => void;
+    };
   };
   rspack?: { version?: string };
   webpack?: { version?: string };
@@ -380,12 +389,19 @@ export class RSCRspackPlugin {
       // webpack's AsyncDependenciesBlock behavior where splitChunks does
       // not extract from block-created async chunks.
       if (!this.options.isServer) {
-        type SplitChunksConfig = { chunks?: unknown };
-        const optimization = (compiler.options as { optimization?: { splitChunks?: SplitChunksConfig } }).optimization;
-        const splitChunks = optimization?.splitChunks;
-        if (splitChunks) {
+        const guardedSplitChunks = new WeakMap<{ chunks?: unknown }, unknown>();
+        const installSplitChunksGuard = () => {
+          const splitChunks = compiler.options.optimization?.splitChunks;
+          if (!splitChunks) return;
+          if (
+            guardedSplitChunks.has(splitChunks) &&
+            guardedSplitChunks.get(splitChunks) === splitChunks.chunks
+          ) {
+            return;
+          }
+
           const origChunks = splitChunks.chunks ?? 'async';
-          splitChunks.chunks = (chunk: { name?: string }) => {
+          const guardedChunks = (chunk: { name?: string }) => {
             if (chunk.name != null && getGeneratedChunkNames().has(chunk.name)) return false;
             if (typeof origChunks === 'function') return origChunks(chunk);
             // Rspack/Webpack chunks expose canBeInitial(); keep the historical
@@ -395,6 +411,23 @@ export class RSCRspackPlugin {
             if (origChunks === 'async') return !canBeInitial;
             return true; // origChunks === 'all': include every non-generated chunk.
           };
+          guardedSplitChunks.set(splitChunks, guardedChunks);
+          splitChunks.chunks = guardedChunks;
+        };
+
+        // Rspack attaches optimization defaults after user plugin apply() and
+        // before RspackOptionsApply constructs the native SplitChunksPlugin.
+        // Install late in those pre-options hooks so SplitChunksPlugin snapshots
+        // the guarded selector, and reinstall if an earlier hook overwrote it.
+        const splitChunksGuardTap = {
+          name: 'RSCRspackPlugin.splitChunksGuard',
+          stage: Number.MAX_SAFE_INTEGER,
+        };
+        if (compiler.hooks.environment) {
+          compiler.hooks.environment.tap(splitChunksGuardTap, installSplitChunksGuard);
+        }
+        if (compiler.hooks.afterEnvironment) {
+          compiler.hooks.afterEnvironment.tap(splitChunksGuardTap, installSplitChunksGuard);
         }
       }
     }

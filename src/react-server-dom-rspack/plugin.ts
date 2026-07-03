@@ -49,6 +49,8 @@ type AnyLogger = {
   debug(...args: unknown[]): void;
 };
 
+type TapName = string | { name: string; stage?: number };
+
 type AnyCompiler = {
   options: {
     module?: { rules?: unknown[] };
@@ -58,10 +60,12 @@ type AnyCompiler = {
   context: string;
   hooks: {
     beforeCompile: { tapAsync: (name: string, fn: (params: unknown, cb: (err?: Error | null) => void) => void) => void };
-    environment?: { tap: (name: string, fn: () => void) => void };
-    afterEnvironment?: { tap: (name: string, fn: () => void) => void };
+    environment?: { tap: (name: TapName, fn: () => void) => void };
+    afterEnvironment?: {
+      tap: (name: TapName, fn: () => void) => void;
+    };
     thisCompilation: {
-      tap: (name: string | { name: string; stage?: number }, fn: (compilation: unknown) => void) => void;
+      tap: (name: TapName, fn: (compilation: unknown) => void) => void;
     };
   };
   rspack?: { version?: string };
@@ -411,19 +415,20 @@ export class RSCRspackPlugin {
           splitChunks.chunks = guardedChunks;
         };
 
-        // Rspack may attach optimization defaults after plugin apply(); retry
-        // before compilation starts and reinstall if a later normalizer/plugin
-        // overwrites splitChunks.chunks on the same object.
+        // Rspack attaches optimization defaults after user plugin apply() and
+        // before RspackOptionsApply constructs the native SplitChunksPlugin.
+        // Install late in those pre-options hooks so SplitChunksPlugin snapshots
+        // the guarded selector, and reinstall if an earlier hook overwrote it.
+        const splitChunksGuardTap = {
+          name: 'RSCRspackPlugin.splitChunksGuard',
+          stage: Number.MAX_SAFE_INTEGER,
+        };
         if (compiler.hooks.environment) {
-          compiler.hooks.environment.tap('RSCRspackPlugin', installSplitChunksGuard);
+          compiler.hooks.environment.tap(splitChunksGuardTap, installSplitChunksGuard);
         }
         if (compiler.hooks.afterEnvironment) {
-          compiler.hooks.afterEnvironment.tap('RSCRspackPlugin', installSplitChunksGuard);
+          compiler.hooks.afterEnvironment.tap(splitChunksGuardTap, installSplitChunksGuard);
         }
-        compiler.hooks.thisCompilation.tap(
-          { name: 'RSCRspackPlugin.splitChunksGuard', stage: Number.MAX_SAFE_INTEGER },
-          installSplitChunksGuard,
-        );
       }
     }
 

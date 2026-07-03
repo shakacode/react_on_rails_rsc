@@ -424,9 +424,6 @@ export class RSCRspackPlugin {
           { name: 'RSCRspackPlugin.splitChunksGuard', stage: Number.MAX_SAFE_INTEGER },
           installSplitChunksGuard,
         );
-        if (!compiler.hooks.environment && !compiler.hooks.afterEnvironment) {
-          installSplitChunksGuard();
-        }
       }
     }
 

@@ -113,6 +113,47 @@ describe('RSCRspackPlugin', () => {
 
   describe('static island diagnostics', () => {
     const diagnosticsFilename = 'rsc-client-reference-diagnostics.json';
+    const captureBuildManifestCssPrefixes = (
+      options: { clientReferenceDiagnosticsFilename?: string | false } = {},
+    ): Array<string | null> => {
+      const { RSCRspackPlugin } = require(DIST_PLUGIN);
+      const plugin = new RSCRspackPlugin({ isServer: false, ...options });
+      const cssPrefixes: Array<string | null> = [];
+      const internals = plugin as {
+        getGroupAssets: (
+          chunkGroup: unknown,
+          initialChunks: Set<unknown>,
+          cssPrefix: string | null,
+        ) => { chunks: (string | number | null)[]; css: string[] };
+        buildManifest: (
+          compilation: unknown,
+          bundler: unknown,
+          diagnosticsCssFiles: Map<string, string[]>,
+        ) => unknown;
+      };
+      internals.getGroupAssets = (
+        _chunkGroup: unknown,
+        _initialChunks: Set<unknown>,
+        cssPrefix: string | null,
+      ) => {
+        cssPrefixes.push(cssPrefix);
+        return { chunks: [], css: [] };
+      };
+
+      internals.buildManifest(
+        {
+          outputOptions: { publicPath: '/assets' },
+          entrypoints: new Map(),
+          chunkGroups: [{ chunks: [] }],
+          chunkGraph: { getChunkModulesIterable: () => [] },
+          warnings: [],
+        },
+        {},
+        new Map(),
+      );
+
+      return cssPrefixes;
+    };
 
     it('emits empty diagnostics for an explicitly server-only static page config', () => {
       const result = run('static-islands', {
@@ -240,6 +281,18 @@ describe('RSCRspackPlugin', () => {
       expect(childCss).not.toContain('.parent-styled-island');
       expect(parentCss).toContain('.parent-styled-island');
       expect(result.clientReferenceDiagnostics?.isServer).toBe(true);
+    });
+
+    it('skips CSS asset collection when diagnostics are disabled', () => {
+      expect(captureBuildManifestCssPrefixes()).toEqual([null]);
+    });
+
+    it('keeps CSS asset collection enabled for diagnostics output', () => {
+      expect(
+        captureBuildManifestCssPrefixes({
+          clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        }),
+      ).toEqual(['/assets/']);
     });
   });
 

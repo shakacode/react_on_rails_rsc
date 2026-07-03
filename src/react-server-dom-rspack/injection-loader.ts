@@ -15,6 +15,7 @@
  */
 
 import type { LoaderDefinition } from 'webpack';
+import { getGeneratedChunkName } from './shared';
 
 export let _discoveredClientFiles: string[] = [];
 export let _chunkName = 'client[index]';
@@ -31,9 +32,7 @@ const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
 
   const names: string[] = [];
   const imports = _discoveredClientFiles.map((file, i) => {
-    const name = _chunkName
-      .replace(/\[index\]/g, String(i))
-      .replace(/\[request\]/g, file.replace(/[^a-zA-Z0-9_]/g, '_'));
+    const name = getGeneratedChunkName(_chunkName, file, i);
     names.push(name);
     return `import(/* webpackChunkName: ${JSON.stringify(name)} */ ${JSON.stringify(file)});`;
   });

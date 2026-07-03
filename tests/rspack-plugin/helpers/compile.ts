@@ -24,6 +24,8 @@ export interface CompileOptions {
   crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   clientReferences?: unknown;
   withCss?: boolean;
+  /** Applies rspack.optimize.LimitChunkCountPlugin({ maxChunks }). */
+  maxChunks?: number;
   /** Additional rspack config to merge. Use sparingly. */
   configExtra?: Record<string, unknown>;
 }
@@ -78,6 +80,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     publicPath: options.publicPath,
     crossOriginLoading: options.crossOriginLoading,
     withCss: options.withCss,
+    maxChunks: options.maxChunks,
     configExtra: serializeForRunner(options.configExtra ?? {}),
   };
   const argsFile = path.join(outputPath, '__args__.json');

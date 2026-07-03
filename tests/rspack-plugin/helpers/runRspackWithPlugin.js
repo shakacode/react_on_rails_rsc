@@ -16,6 +16,7 @@
  *     publicPath?: string,
  *     crossOriginLoading?: false|'anonymous'|'use-credentials',
  *     withCss?: boolean,
+ *     maxChunks?: number,
  *     configExtra?: object,
  *   }
  *
@@ -48,6 +49,7 @@ const {
   publicPath,
   crossOriginLoading,
   withCss,
+  maxChunks,
   configExtra,
 } = args;
 
@@ -90,9 +92,12 @@ if (withCss) {
     }),
   );
 }
+if (typeof maxChunks === 'number') {
+  plugins.push(new rspack.optimize.LimitChunkCountPlugin({ maxChunks }));
+}
 
 const config = {
-  mode: 'development',
+  mode: typeof maxChunks === 'number' ? 'none' : 'development',
   target: isServer ? 'node' : 'web',
   context,
   entry: [runtimeEntry, './index.js'],

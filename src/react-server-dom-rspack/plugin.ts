@@ -636,11 +636,13 @@ export class RSCRspackPlugin {
     let clientFileNameFound = false;
 
     const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
-    const generatedChunkNamesByResource = this.getGeneratedChunkNamesByResource();
+    const diagnosticsEnabled = typeof this.options.clientReferenceDiagnosticsFilename === 'string';
+    const generatedChunkNamesByResource = diagnosticsEnabled
+      ? this.getGeneratedChunkNamesByResource()
+      : undefined;
     const initialChunks = this.getInitialChunks(compilation);
 
     const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
-    const diagnosticsEnabled = typeof this.options.clientReferenceDiagnosticsFilename === 'string';
     const isResolvedClientReference = (resource: string | undefined): resource is string =>
       !!resource && resolvedClientFiles.has(resource);
     let cssPrefix =
@@ -852,9 +854,9 @@ export class RSCRspackPlugin {
     resource: string | undefined,
     chunkGroup: AnyChunkGroup,
     css: string[],
-    generatedChunkNamesByResource: ReadonlyMap<string, string>,
+    generatedChunkNamesByResource: ReadonlyMap<string, string> | undefined,
   ): string[] {
-    if (!resource || css.length === 0) return css;
+    if (!resource || css.length === 0 || !generatedChunkNamesByResource) return css;
     const generatedChunkName = generatedChunkNamesByResource.get(resource);
     if (!generatedChunkName) return css;
     return this.chunkGroupHasName(chunkGroup, generatedChunkName) ? css : [];

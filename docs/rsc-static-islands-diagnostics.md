@@ -58,10 +58,10 @@ the bundler exposes them:
 manifest emission. `totalChunkBytes` counts each emitted JS or CSS asset file
 once even when multiple client references share that asset.
 
-On client builds, CSS entries are reported from the generated chunk group for
-the listed client reference. If one island imports another client reference, the
-imported child reference keeps its own diagnostics CSS instead of inheriting the
-importing island's CSS.
+On client and server builds, CSS entries are reported from the generated chunk
+group for the listed client reference. If one island imports another client
+reference, the imported child reference keeps its own diagnostics CSS instead of
+inheriting the importing island's CSS.
 
 ## Static Page Patterns
 

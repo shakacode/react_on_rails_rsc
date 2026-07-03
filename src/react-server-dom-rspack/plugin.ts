@@ -641,6 +641,8 @@ export class RSCRspackPlugin {
 
     const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
     const diagnosticsEnabled = typeof this.options.clientReferenceDiagnosticsFilename === 'string';
+    const isResolvedClientReference = (resource: string | undefined): resource is string =>
+      !!resource && resolvedClientFiles.has(resource);
     let cssPrefix =
       diagnosticsEnabled &&
       typeof compilation.outputOptions.publicPath === 'string' &&
@@ -666,24 +668,27 @@ export class RSCRspackPlugin {
           if (isRuntimeResource(mod.resource, this.options.isServer)) clientFileNameFound = true;
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
-          const diagnosticsCss = this.getDiagnosticsCssForModule(
-            mod.resource,
-            chunkGroup,
-            groupAssets.css,
-            generatedChunkNamesByResource,
-          );
-          this.recordModule(
-            mod,
-            moduleId,
-            groupAssets.chunks,
-            diagnosticsCss,
-            resolvedClientFiles,
-            filePathToModuleMetadata,
-            diagnosticsCssFiles,
-          );
+          if (isResolvedClientReference(mod.resource)) {
+            const diagnosticsCss = this.getDiagnosticsCssForModule(
+              mod.resource,
+              chunkGroup,
+              groupAssets.css,
+              generatedChunkNamesByResource,
+            );
+            this.recordModule(
+              mod,
+              moduleId,
+              groupAssets.chunks,
+              diagnosticsCss,
+              resolvedClientFiles,
+              filePathToModuleMetadata,
+              diagnosticsCssFiles,
+            );
+          }
           if (mod.modules) {
             for (const inner of mod.modules) {
               if (isRuntimeResource(inner.resource, this.options.isServer)) clientFileNameFound = true;
+              if (!isResolvedClientReference(inner.resource)) continue;
               const diagnosticsCss = this.getDiagnosticsCssForModule(
                 inner.resource,
                 chunkGroup,
@@ -816,7 +821,8 @@ export class RSCRspackPlugin {
     const css: string[] = [];
     for (const chunkUnknown of chunkGroup.chunks) {
       const c = chunkUnknown as AnyChunk;
-      if (this.isInitialChunk(c, initialChunks)) continue;
+      const isInitial = this.isInitialChunk(c, initialChunks);
+      if (isInitial && !this.options.isServer) continue;
       const files = c.files instanceof Set ? c.files : new Set(c.files);
       let recordedJs = false;
       for (const file of files) {
@@ -824,6 +830,7 @@ export class RSCRspackPlugin {
           css.push(cssPrefix + file);
           continue;
         }
+        if (isInitial) continue;
         if (recordedJs || !file.endsWith('.js') || file.endsWith('.hot-update.js')) continue;
         chunks.push(c.id, file);
         recordedJs = true;

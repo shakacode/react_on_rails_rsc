@@ -283,6 +283,28 @@ describe('RSCRspackPlugin', () => {
       expect(result.clientReferenceDiagnostics?.isServer).toBe(true);
     });
 
+    it('keeps server diagnostics CSS when chunks merge into the initial bundle', () => {
+      const result = run('static-islands', {
+        isServer: true,
+        clientReferences: staticIslandClientReferences(
+          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/,
+        ),
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+        publicPath: '/assets',
+        withCss: true,
+        maxChunks: 1,
+      });
+
+      expect(result.assets).toContain('main.css');
+
+      const childCss = readDiagnosticCss(result, '/StyledIsland.js');
+      const parentCss = readDiagnosticCss(result, '/ParentStyledIsland.js');
+
+      expect(childCss).toContain('.styled-island');
+      expect(parentCss).toContain('.parent-styled-island');
+      expect(result.clientReferenceDiagnostics?.isServer).toBe(true);
+    });
+
     it('skips CSS asset collection when diagnostics are disabled', () => {
       expect(captureBuildManifestCssPrefixes()).toEqual([null]);
     });
@@ -293,6 +315,33 @@ describe('RSCRspackPlugin', () => {
           clientReferenceDiagnosticsFilename: diagnosticsFilename,
         }),
       ).toEqual(['/assets/']);
+    });
+
+    it('keeps server diagnostics CSS from merged initial chunks without initial JS', () => {
+      const { RSCRspackPlugin } = require(DIST_PLUGIN);
+      const plugin = new RSCRspackPlugin({
+        isServer: true,
+        clientReferenceDiagnosticsFilename: diagnosticsFilename,
+      });
+      const internals = plugin as {
+        getGroupAssets: (
+          chunkGroup: unknown,
+          initialChunks: Set<unknown>,
+          cssPrefix: string | null,
+        ) => { chunks: (string | number | null)[]; css: string[] };
+      };
+      const initialChunk = {
+        id: 'server',
+        files: new Set(['server-bundle.js', 'server-bundle.css']),
+        canBeInitial: () => true,
+      };
+
+      expect(
+        internals.getGroupAssets({ chunks: [initialChunk] }, new Set([initialChunk]), '/assets/'),
+      ).toEqual({
+        chunks: [],
+        css: ['/assets/server-bundle.css'],
+      });
     });
   });
 

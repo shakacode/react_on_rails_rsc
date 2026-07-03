@@ -60,7 +60,9 @@ type AnyCompiler = {
     beforeCompile: { tapAsync: (name: string, fn: (params: unknown, cb: (err?: Error | null) => void) => void) => void };
     environment?: { tap: (name: string, fn: () => void) => void };
     afterEnvironment?: { tap: (name: string, fn: () => void) => void };
-    thisCompilation: { tap: (name: string, fn: (compilation: unknown) => void) => void };
+    thisCompilation: {
+      tap: (name: string | { name: string; stage?: number }, fn: (compilation: unknown) => void) => void;
+    };
   };
   rspack?: { version?: string };
   webpack?: { version?: string };
@@ -409,15 +411,19 @@ export class RSCRspackPlugin {
           splitChunks.chunks = guardedChunks;
         };
 
-        // Rspack may attach optimization defaults after plugin apply(); retry in
-        // both hooks and reinstall if a later normalizer/plugin overwrites
-        // splitChunks.chunks on the same object.
+        // Rspack may attach optimization defaults after plugin apply(); retry
+        // before compilation starts and reinstall if a later normalizer/plugin
+        // overwrites splitChunks.chunks on the same object.
         if (compiler.hooks.environment) {
           compiler.hooks.environment.tap('RSCRspackPlugin', installSplitChunksGuard);
         }
         if (compiler.hooks.afterEnvironment) {
           compiler.hooks.afterEnvironment.tap('RSCRspackPlugin', installSplitChunksGuard);
         }
+        compiler.hooks.thisCompilation.tap(
+          { name: 'RSCRspackPlugin.splitChunksGuard', stage: Number.MAX_SAFE_INTEGER },
+          installSplitChunksGuard,
+        );
         if (!compiler.hooks.environment && !compiler.hooks.afterEnvironment) {
           installSplitChunksGuard();
         }

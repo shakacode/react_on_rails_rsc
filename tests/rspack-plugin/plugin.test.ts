@@ -453,6 +453,7 @@ describe('RSCRspackPlugin', () => {
       const injectionLoader = require(DIST_INJECTION_LOADER);
       const environmentTaps: Array<() => void> = [];
       const afterEnvironmentTaps: Array<() => void> = [];
+      const splitChunksGuardTaps: Array<() => void> = [];
       const splitChunks: { chunks?: unknown } = {};
       const compiler = {
         context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
@@ -465,7 +466,14 @@ describe('RSCRspackPlugin', () => {
           afterEnvironment: {
             tap: (_name: string, callback: () => void) => afterEnvironmentTaps.push(callback),
           },
-          thisCompilation: { tap: jest.fn() },
+          thisCompilation: {
+            tap: (name: string | { name: string }, callback: () => void) => {
+              const tapName = typeof name === 'string' ? name : name.name;
+              if (tapName === 'RSCRspackPlugin.splitChunksGuard') {
+                splitChunksGuardTaps.push(callback);
+              }
+            },
+          },
         },
       };
 
@@ -480,6 +488,10 @@ describe('RSCRspackPlugin', () => {
         splitChunks.chunks = 'async';
         for (const callback of afterEnvironmentTaps) callback();
 
+        expect(splitChunksGuardTaps.length).toBeGreaterThan(0);
+        splitChunks.chunks = 'all';
+        for (const callback of splitChunksGuardTaps) callback();
+
         expect(typeof splitChunks.chunks).toBe('function');
         const chunks = splitChunks.chunks as (chunk: {
           name?: string;
@@ -487,7 +499,7 @@ describe('RSCRspackPlugin', () => {
         }) => boolean;
         expect(chunks({ name: 'client0', canBeInitial: () => false })).toBe(false);
         expect(chunks({ name: 'client99', canBeInitial: () => false })).toBe(true);
-        expect(chunks({ name: 'main', canBeInitial: () => true })).toBe(false);
+        expect(chunks({ name: 'main', canBeInitial: () => true })).toBe(true);
       } finally {
         injectionLoader._generatedChunkNames = originalGeneratedChunkNames;
       }

@@ -21,6 +21,7 @@
  *     outputPath: string,
  *     isServer: boolean,
  *     clientManifestFilename?: string,
+ *     clientReferenceDiagnosticsFilename?: string|false,
  *     clientReferences?: unknown,   // RegExps encoded as {__type:'RegExp',...}
  *     chunkName?: string,
  *     publicPath?: string,
@@ -71,6 +72,7 @@ const {
   outputPath,
   isServer,
   clientManifestFilename,
+  clientReferenceDiagnosticsFilename,
   clientReferences: rawClientReferences,
   chunkName,
   publicPath,
@@ -95,6 +97,7 @@ const plugins = [
   new ReactFlightWebpackPlugin({
     isServer,
     clientManifestFilename,
+    clientReferenceDiagnosticsFilename,
     clientReferences,
     chunkName,
   }),

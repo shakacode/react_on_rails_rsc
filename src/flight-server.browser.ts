@@ -1,5 +1,29 @@
 import * as server from 'react-server-dom-webpack/server.browser';
 import { withStylesheetHints } from './flight-stylesheet-hints';
+export {
+  preconnect,
+  prefetchDNS,
+  preinitScript,
+  preinitStyle,
+  preloadAsset,
+  preloadFont,
+  preloadImage,
+  preloadScript,
+  preloadStyle,
+} from './resource-hints';
+export type {
+  PreconnectResourceOptions,
+  PreinitScriptOptions,
+  PreinitStyleOptions,
+  PreloadAssetOptions,
+  PreloadFontOptions,
+  PreloadImageOptions,
+  PreloadScriptOptions,
+  PreloadStyleOptions,
+  ResourceHintAs,
+  ResourceHintCrossOrigin,
+  ResourceHintFetchPriority,
+} from './resource-hints';
 
 type ServerFunction = (...args: unknown[]) => unknown;
 type RegisterClientReference = (

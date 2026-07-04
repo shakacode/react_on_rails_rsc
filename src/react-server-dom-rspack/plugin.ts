@@ -6,13 +6,12 @@
  * system (`rspackExperiments.reactServerComponents`, `experiments.rsc`,
  * `react-server-dom-rspack`).
  *
- * Discovery technique: a small loader (`loader.ts`) tags modules containing
- * a `"use client"` directive during parse by adding the module's resource
- * path to a per-compilation Set keyed under the `CLIENT_MODULES_KEY`
- * Symbol. A second loader prepends dynamic imports to the Flight client
- * runtime so file-system-discovered client references become async chunk
- * groups. At `processAssets`, the plugin walks chunk groups and emits the
- * React on Rails client-manifest JSON schema.
+ * Discovery technique: the plugin walks configured client-reference paths
+ * before compilation and finds files with a `"use client"` directive. A loader
+ * then prepends dynamic imports to the Flight client runtime so those
+ * file-system-discovered references become async chunk groups. At
+ * `processAssets`, the plugin walks chunk groups and emits the React on Rails
+ * client-manifest JSON schema.
  *
  * Output schema matches RoR's existing webpack-side plugin so
  * `buildServerRenderer` / `buildClientRenderer` in server.node.ts /
@@ -26,19 +25,11 @@ import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from '../clientReferences';
-import { CLIENT_MODULES_KEY, hasUseClientDirective } from './shared';
-import type {} from './injection-loader';
-
-function setInjectionState(files: string[], chunkName: string): void {
-  const injLoader = require('./injection-loader') as { _discoveredClientFiles: string[]; _chunkName: string };
-  injLoader._discoveredClientFiles = files;
-  injLoader._chunkName = chunkName;
-}
-
-function getGeneratedChunkNames(): Set<string> {
-  const injLoader = require('./injection-loader') as { _generatedChunkNames: Set<string> };
-  return injLoader._generatedChunkNames;
-}
+import {
+  getGeneratedChunkNamesForCompiler,
+  setInjectionStateForCompiler,
+} from './injection-loader';
+import { getGeneratedChunkName, hasUseClientDirective } from './shared';
 
 // Accept any bundler that looks compatible — webpack 5 or rspack. Typed loose
 // because we cannot depend on `@rspack/core` types without making it a hard
@@ -49,15 +40,24 @@ type AnyLogger = {
   debug(...args: unknown[]): void;
 };
 
+type TapName = string | { name: string; stage?: number };
+
 type AnyCompiler = {
   options: {
     module?: { rules?: unknown[] };
+    optimization?: { splitChunks?: { chunks?: unknown } | false };
     context?: string;
   };
   context: string;
   hooks: {
     beforeCompile: { tapAsync: (name: string, fn: (params: unknown, cb: (err?: Error | null) => void) => void) => void };
-    thisCompilation: { tap: (name: string, fn: (compilation: unknown) => void) => void };
+    environment?: { tap: (name: TapName, fn: () => void) => void };
+    afterEnvironment?: {
+      tap: (name: TapName, fn: () => void) => void;
+    };
+    thisCompilation: {
+      tap: (name: TapName, fn: (compilation: unknown) => void) => void;
+    };
   };
   rspack?: { version?: string };
   webpack?: { version?: string };
@@ -94,21 +94,53 @@ type AnyCompilation = {
   };
   entrypoints?: ReadonlyMap<string, AnyEntrypoint>;
   emitAsset(filename: string, source: unknown): void;
+  assets?: Record<string, AssetSource>;
+  getAsset?: (filename: string) => { source?: AssetSource } | undefined;
   warnings: unknown[];
   compiler: AnyCompiler;
+  fileDependencies?: WatchDependencySet;
+  contextDependencies?: WatchDependencySet;
+  missingDependencies?: WatchDependencySet;
   getLogger?(name: string): AnyLogger;
 };
 
-// Helper to read/write our private Symbol key on the compilation. Using a
-// symbol requires a cast because TS structural types can't easily express
-// "indexable by this specific symbol." All accesses funnel through this
-// pair so the cast is isolated.
-type SymbolIndexable = Record<symbol, unknown>;
-const getTagSet = (compilation: AnyCompilation): Set<string> | undefined =>
-  (compilation as unknown as SymbolIndexable)[CLIENT_MODULES_KEY] as Set<string> | undefined;
-const setTagSet = (compilation: AnyCompilation, set: Set<string>): void => {
-  (compilation as unknown as SymbolIndexable)[CLIENT_MODULES_KEY] = set;
+type AssetSource = {
+  size?: () => number;
+  source?: () => string | Buffer;
 };
+
+type WatchDependencySet = {
+  add(dependency: string): unknown;
+};
+
+type ClientReferenceWatchDependencies = {
+  files: Set<string>;
+  contexts: Set<string>;
+  missing: Set<string>;
+};
+
+function createClientReferenceWatchDependencies(): ClientReferenceWatchDependencies {
+  return {
+    files: new Set<string>(),
+    contexts: new Set<string>(),
+    missing: new Set<string>(),
+  };
+}
+
+function addClientReferenceWatchDependencies(
+  compilation: AnyCompilation,
+  dependencies: ClientReferenceWatchDependencies,
+): void {
+  for (const file of dependencies.files) {
+    compilation.fileDependencies?.add(file);
+  }
+  for (const context of dependencies.contexts) {
+    compilation.contextDependencies?.add(context);
+  }
+  for (const missing of dependencies.missing) {
+    compilation.missingDependencies?.add(missing);
+  }
+}
 
 type AnyModule = {
   resource?: string;
@@ -119,6 +151,12 @@ type AnyChunk = {
   id: string | number | null;
   files: Set<string> | string[];
   canBeInitial?: () => boolean;
+};
+
+type ModuleMetadata = {
+  id: string | number | null;
+  chunks: (string | number | null)[];
+  name: string;
 };
 
 type Bundler = {
@@ -177,16 +215,19 @@ export interface Options {
    * file path). Default: `"client[index]"`.
    */
   chunkName?: string;
+  /**
+   * Optional diagnostics asset that lists client references, their emitted
+   * chunk files, and known emitted asset byte sizes. Disabled by default.
+   */
+  clientReferenceDiagnosticsFilename?: string | false;
 }
 
-// Default loader rule — applied to all JS/TS files so our directive detector
-// sees every user module.
+// Legacy rule export kept for consumers that imported the historical symbol.
+// RSCRspackPlugin no longer injects this rule; the loader it references is a
+// no-op compatibility pass-through and does not disable rspack caching.
 export const RSC_LOADER_RULE = {
   test: /\.[cm]?[jt]sx?$/,
   exclude: /node_modules/,
-  // `enforce: 'pre'` ensures we run before any transpiling loader, so we see
-  // the original source text and can detect "use client" even in TS/JSX files
-  // that other loaders will later transform.
   enforce: 'pre' as const,
   use: [{ loader: require.resolve('./loader') }],
 };
@@ -244,23 +285,26 @@ export class RSCRspackPlugin {
 
     const bundler = this.resolveBundler(compiler);
 
-    // Inject the tagging loader so every JS/TS module passes through it.
-    this.ensureLoaderRule(compiler);
-
     // ── Phase 1: FS-walk discovery (before compilation starts) ──────
     // Mirrors the webpack plugin's `beforeCompile` / `resolveAllClientFiles`.
     // We synchronously walk each `clientReferences` search path, read files
     // from disk, check for a `"use client"` directive, and stash the
     // absolute paths.  This list is used in Phase 2 to inject async chunks.
     let discoveredClientFiles: string[] = [];
+    let clientReferenceWatchDependencies = createClientReferenceWatchDependencies();
 
     compiler.hooks.beforeCompile.tapAsync(
       'RSCRspackPlugin',
       (_params: unknown, callback: (err?: Error | null) => void) => {
         try {
-          discoveredClientFiles = this.resolveAllClientFiles(compiler.context);
+          const nextWatchDependencies = createClientReferenceWatchDependencies();
+          discoveredClientFiles = this.resolveAllClientFiles(
+            compiler.context,
+            nextWatchDependencies,
+          );
+          clientReferenceWatchDependencies = nextWatchDependencies;
           this._resolvedClientFiles = discoveredClientFiles;
-          setInjectionState(discoveredClientFiles, this.chunkName);
+          setInjectionStateForCompiler(compiler, discoveredClientFiles, this.chunkName);
           callback();
         } catch (err) {
           callback(err instanceof Error ? err : new Error(String(err)));
@@ -320,13 +364,22 @@ export class RSCRspackPlugin {
       // webpack's AsyncDependenciesBlock behavior where splitChunks does
       // not extract from block-created async chunks.
       if (!this.options.isServer) {
-        type SplitChunksConfig = { chunks?: unknown };
-        const optimization = (compiler.options as { optimization?: { splitChunks?: SplitChunksConfig } }).optimization;
-        const splitChunks = optimization?.splitChunks;
-        if (splitChunks) {
+        const guardedSplitChunks = new WeakMap<{ chunks?: unknown }, unknown>();
+        const installSplitChunksGuard = () => {
+          const splitChunks = compiler.options.optimization?.splitChunks;
+          if (!splitChunks) return;
+          if (
+            guardedSplitChunks.has(splitChunks) &&
+            guardedSplitChunks.get(splitChunks) === splitChunks.chunks
+          ) {
+            return;
+          }
+
           const origChunks = splitChunks.chunks ?? 'async';
-          splitChunks.chunks = (chunk: { name?: string }) => {
-            if (chunk.name != null && getGeneratedChunkNames().has(chunk.name)) return false;
+          const guardedChunks = (chunk: { name?: string }) => {
+            if (chunk.name != null && getGeneratedChunkNamesForCompiler(compiler).has(chunk.name)) {
+              return false;
+            }
             if (typeof origChunks === 'function') return origChunks(chunk);
             // Rspack/Webpack chunks expose canBeInitial(); keep the historical
             // fallback for non-standard chunk shapes explicit.
@@ -335,18 +388,31 @@ export class RSCRspackPlugin {
             if (origChunks === 'async') return !canBeInitial;
             return true; // origChunks === 'all': include every non-generated chunk.
           };
+          guardedSplitChunks.set(splitChunks, guardedChunks);
+          splitChunks.chunks = guardedChunks;
+        };
+
+        // Rspack attaches optimization defaults after user plugin apply() and
+        // before RspackOptionsApply constructs the native SplitChunksPlugin.
+        // Install late in those pre-options hooks so SplitChunksPlugin snapshots
+        // the guarded selector, and reinstall if an earlier hook overwrote it.
+        const splitChunksGuardTap = {
+          name: 'RSCRspackPlugin.splitChunksGuard',
+          stage: Number.MAX_SAFE_INTEGER,
+        };
+        if (compiler.hooks.environment) {
+          compiler.hooks.environment.tap(splitChunksGuardTap, installSplitChunksGuard);
+        }
+        if (compiler.hooks.afterEnvironment) {
+          compiler.hooks.afterEnvironment.tap(splitChunksGuardTap, installSplitChunksGuard);
         }
       }
     }
 
-    // ── Phase 3: tag set + manifest emission ────────────────────────
+    // ── Phase 3: manifest emission ──────────────────────────────────
     compiler.hooks.thisCompilation.tap('RSCRspackPlugin', (compilationUnknown) => {
       const compilation = compilationUnknown as AnyCompilation;
-
-      // Eagerly create the shared Set so the loader never races on init.
-      if (!getTagSet(compilation)) {
-        setTagSet(compilation, new Set<string>());
-      }
+      addClientReferenceWatchDependencies(compilation, clientReferenceWatchDependencies);
 
       compilation.hooks.processAssets.tap(
         {
@@ -364,11 +430,24 @@ export class RSCRspackPlugin {
           } else {
             logger?.debug(`Resolved ${resolvedClientCount} RSC client reference(s)`);
           }
-          const manifest = this.buildManifest(compilation, bundler);
+          const diagnosticsCssFiles = new Map<string, string[]>();
+          const manifest = this.buildManifest(compilation, bundler, diagnosticsCssFiles);
           logger?.debug(
             `Emitting ${manifestFilename} with ` +
               `${Object.keys(manifest.filePathToModuleMetadata).length} entries`,
           );
+          if (typeof this.options.clientReferenceDiagnosticsFilename === 'string') {
+            const diagnostics = this.buildDiagnostics(
+              compilation,
+              manifest,
+              manifestFilename,
+              diagnosticsCssFiles,
+            );
+            compilation.emitAsset(
+              this.options.clientReferenceDiagnosticsFilename,
+              new bundler.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false),
+            );
+          }
           compilation.emitAsset(
             manifestFilename,
             new bundler.sources.RawSource(JSON.stringify(manifest, null, 2), false),
@@ -384,7 +463,10 @@ export class RSCRspackPlugin {
   //   - string → direct file reference (unconditionally included, matching
   //     the webpack plugin's behavior — no "use client" check)
   //   - search descriptor → walk directory, read files, check for directive
-  private resolveAllClientFiles(compilerContext: string): string[] {
+  private resolveAllClientFiles(
+    compilerContext: string,
+    watchDependencies: ClientReferenceWatchDependencies,
+  ): string[] {
     const results = new Set<string>();
     for (const ref of this.clientReferences) {
       if (typeof ref === 'string') {
@@ -392,16 +474,23 @@ export class RSCRspackPlugin {
         // a ClientReferenceDependency unconditionally (line 337). We do
         // the same: include it without checking for "use client".
         const resolved = path.resolve(compilerContext, ref);
+        watchDependencies.files.add(resolved);
         try {
           if (fs.statSync(resolved).isFile()) this.addResolvedClientFile(results, resolved);
-        } catch { /* not found — skip */ }
+        } catch {
+          watchDependencies.missing.add(resolved);
+        }
         continue;
       }
       const dir = path.resolve(compilerContext, ref.directory);
       try {
         if (!fs.statSync(dir).isDirectory()) continue;
-      } catch { continue; }
-      this.walkDir(dir, dir, ref, results);
+      } catch {
+        watchDependencies.missing.add(dir);
+        continue;
+      }
+      watchDependencies.contexts.add(dir);
+      this.walkDir(dir, dir, ref, results, watchDependencies);
     }
     return [...results];
   }
@@ -411,11 +500,14 @@ export class RSCRspackPlugin {
     walkRoot: string,
     ref: ClientReferenceSearchPath,
     out: Set<string>,
+    watchDependencies = createClientReferenceWatchDependencies(),
   ): void {
+    watchDependencies.contexts.add(dir);
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
+      watchDependencies.missing.add(dir);
       return;
     }
     for (const entry of entries) {
@@ -429,7 +521,7 @@ export class RSCRspackPlugin {
       if (stat.isDirectory()) {
         const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
         if (ref.exclude && ref.exclude.test(relPath)) continue;
-        if (ref.recursive !== false) this.walkDir(full, walkRoot, ref, out);
+        if (ref.recursive !== false) this.walkDir(full, walkRoot, ref, out, watchDependencies);
       } else if (stat.isFile()) {
         // Test include/exclude against the RELATIVE path from the walk
         // root (e.g. "./components/Button.tsx"), matching the webpack
@@ -438,6 +530,7 @@ export class RSCRspackPlugin {
         const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
         if (!ref.include.test(relPath)) continue;
         if (ref.exclude && ref.exclude.test(relPath)) continue;
+        watchDependencies.files.add(full);
         try {
           const source = fs.readFileSync(full, 'utf-8');
           if (hasUseClientDirective(source)) this.addResolvedClientFile(out, full);
@@ -486,20 +579,6 @@ export class RSCRspackPlugin {
     return require('webpack') as Bundler;
   }
 
-  /**
-   * Injects the tagging loader rule into compiler.options.module.rules at
-   * position 0 (so it runs `pre` relative to user rules). Idempotent — if
-   * the rule is already present, do nothing.
-   */
-  private ensureLoaderRule(compiler: AnyCompiler): void {
-    const moduleConfig = (compiler.options.module ??= {}) as { rules?: unknown[] };
-    const rules = (moduleConfig.rules ??= []) as unknown[];
-    // Detect duplicate injection by checking for our loader path.
-    const ourLoaderPath = require.resolve('./loader');
-    const alreadyInjected = this.hasLoaderRule(rules, ourLoaderPath);
-    if (!alreadyInjected) rules.unshift(RSC_LOADER_RULE);
-  }
-
   private hasLoaderRule(rules: unknown[], loaderPath: string, test?: RegExp): boolean {
     return rules.some((r) => {
       if (!r || typeof r !== 'object') return false;
@@ -520,7 +599,7 @@ export class RSCRspackPlugin {
   }
 
   /**
-   * Build the RoR-shape manifest from the tagged module set.
+   * Build the RoR-shape manifest from filesystem-discovered client references.
    *
    * Iterates `compilation.chunkGroups` (matching the webpack plugin's
    * pattern) so the `chunks` array for each module reflects ALL chunks
@@ -531,9 +610,10 @@ export class RSCRspackPlugin {
   private buildManifest(
     compilation: AnyCompilation,
     bundler: Bundler,
+    diagnosticsCssFiles: Map<string, string[]>,
   ): {
     moduleLoading: { prefix: string; crossOrigin: string | null };
-    filePathToModuleMetadata: Record<string, { id: string | number | null; chunks: (string | number | null)[]; name: string }>;
+    filePathToModuleMetadata: Record<string, ModuleMetadata>;
   } {
     // Check if the client runtime module was found in this compilation.
     // The webpack plugin emits a warning and skips manifest emission if
@@ -547,19 +627,31 @@ export class RSCRspackPlugin {
     let clientFileNameFound = false;
 
     const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
+    const diagnosticsEnabled = typeof this.options.clientReferenceDiagnosticsFilename === 'string';
+    const generatedChunkNamesByResource = diagnosticsEnabled
+      ? this.getGeneratedChunkNamesByResource()
+      : undefined;
     const initialChunks = this.getInitialChunks(compilation);
 
-    const filePathToModuleMetadata: Record<
-      string,
-      { id: string | number | null; chunks: (string | number | null)[]; name: string }
-    > = {};
+    const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
+    const isResolvedClientReference = (resource: string | undefined): resource is string =>
+      !!resource && resolvedClientFiles.has(resource);
+    let cssPrefix =
+      diagnosticsEnabled &&
+      typeof compilation.outputOptions.publicPath === 'string' &&
+      compilation.outputOptions.publicPath !== 'auto'
+        ? compilation.outputOptions.publicPath
+        : null;
+    if (cssPrefix && !cssPrefix.endsWith('/')) {
+      cssPrefix += '/';
+    }
 
     // Walk chunk groups using group-level chunks (matching the webpack
     // plugin, lines 241-294). Each module gets the full list of sibling
     // chunks in its group — this ensures splitChunks dependencies are
     // included.
     for (const chunkGroup of compilation.chunkGroups) {
-      const groupChunks = this.getGroupChunks(chunkGroup, initialChunks);
+      const groupAssets = this.getGroupAssets(chunkGroup, initialChunks, cssPrefix);
 
       for (const chunkUnknown of chunkGroup.chunks) {
         const chunk = chunkUnknown as AnyChunk;
@@ -569,11 +661,42 @@ export class RSCRspackPlugin {
           if (isRuntimeResource(mod.resource, this.options.isServer)) clientFileNameFound = true;
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
-          this.recordModule(mod, moduleId, groupChunks, resolvedClientFiles, filePathToModuleMetadata);
+          if (isResolvedClientReference(mod.resource)) {
+            const diagnosticsCss = this.getDiagnosticsCssForModule(
+              mod.resource,
+              chunkGroup,
+              groupAssets.css,
+              generatedChunkNamesByResource,
+            );
+            this.recordModule(
+              mod,
+              moduleId,
+              groupAssets.chunks,
+              diagnosticsCss,
+              resolvedClientFiles,
+              filePathToModuleMetadata,
+              diagnosticsCssFiles,
+            );
+          }
           if (mod.modules) {
             for (const inner of mod.modules) {
               if (isRuntimeResource(inner.resource, this.options.isServer)) clientFileNameFound = true;
-              this.recordModule(inner, moduleId, groupChunks, resolvedClientFiles, filePathToModuleMetadata);
+              if (!isResolvedClientReference(inner.resource)) continue;
+              const diagnosticsCss = this.getDiagnosticsCssForModule(
+                inner.resource,
+                chunkGroup,
+                groupAssets.css,
+                generatedChunkNamesByResource,
+              );
+              this.recordModule(
+                inner,
+                moduleId,
+                groupAssets.chunks,
+                diagnosticsCss,
+                resolvedClientFiles,
+                filePathToModuleMetadata,
+                diagnosticsCssFiles,
+              );
             }
           }
         }
@@ -611,27 +734,132 @@ export class RSCRspackPlugin {
     };
   }
 
+  private buildDiagnostics(
+    compilation: AnyCompilation,
+    manifest: {
+      moduleLoading: { prefix: string; crossOrigin: string | null };
+      filePathToModuleMetadata: Record<string, ModuleMetadata>;
+    },
+    manifestFilename: string,
+    diagnosticsCssFiles: ReadonlyMap<string, string[]>,
+  ): {
+    version: 1;
+    manifestFilename: string;
+    isServer: boolean;
+    clientReferenceCount: number;
+    totalChunkBytes: number;
+    clientReferences: Array<{
+      file: string;
+      id: string | number | null;
+      name: string;
+      totalBytes: number;
+      chunks: Array<{ id: string | number | null; file: string; bytes: number | null }>;
+      css?: Array<{ file: string; bytes: number | null }>;
+    }>;
+  } {
+    const clientReferences = Object.entries(manifest.filePathToModuleMetadata)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([file, metadata]) => {
+        const chunks = [];
+        for (let i = 0; i < metadata.chunks.length; i += 2) {
+          const chunkFile = String(metadata.chunks[i + 1]);
+          chunks.push({
+            id: metadata.chunks[i] ?? null,
+            file: chunkFile,
+            bytes: getCompilationAssetSize(compilation, chunkFile, manifest.moduleLoading.prefix),
+          });
+        }
+        const cssFiles = diagnosticsCssFiles.get(file);
+        const css =
+          cssFiles && cssFiles.length > 0
+            ? cssFiles.map((fileName) => ({
+                file: fileName,
+                bytes: getCompilationAssetSize(compilation, fileName, manifest.moduleLoading.prefix),
+              }))
+            : undefined;
+        const totalBytes = [...chunks, ...(css || [])].reduce(
+          (sum, entry) => sum + (entry.bytes ?? 0),
+          0,
+        );
+        return {
+          file,
+          id: metadata.id,
+          name: metadata.name,
+          totalBytes,
+          chunks,
+          ...(css ? { css } : {}),
+        };
+      });
+
+    return {
+      version: 1,
+      manifestFilename,
+      isServer: this.options.isServer,
+      clientReferenceCount: clientReferences.length,
+      totalChunkBytes: sumUniqueKnownBytes(clientReferences),
+      clientReferences,
+    };
+  }
+
   /** Stash resolved client files so buildManifest can filter by them. */
   private _resolvedClientFiles: string[] = [];
 
   /** Build the chunks array from all async-loadable chunks in a chunk group. */
-  private getGroupChunks(
+  private getGroupAssets(
     chunkGroup: AnyChunkGroup,
     initialChunks: Set<unknown>,
-  ): (string | number | null)[] {
+    cssPrefix: string | null,
+  ): { chunks: (string | number | null)[]; css: string[] } {
     const chunks: (string | number | null)[] = [];
+    const css: string[] = [];
     for (const chunkUnknown of chunkGroup.chunks) {
       const c = chunkUnknown as AnyChunk;
-      if (this.isInitialChunk(c, initialChunks)) continue;
+      const isInitial = this.isInitialChunk(c, initialChunks);
+      if (isInitial && !this.options.isServer) continue;
       const files = c.files instanceof Set ? c.files : new Set(c.files);
+      let recordedJs = false;
       for (const file of files) {
-        if (!file.endsWith('.js')) continue;
-        if (file.endsWith('.hot-update.js')) continue;
+        if (file.endsWith('.css') && !file.endsWith('.hot-update.css') && cssPrefix !== null) {
+          css.push(cssPrefix + file);
+          continue;
+        }
+        if (isInitial) continue;
+        if (recordedJs || !file.endsWith('.js') || file.endsWith('.hot-update.js')) continue;
         chunks.push(c.id, file);
-        break;
+        recordedJs = true;
       }
     }
-    return this.sortChunkPairs(chunks);
+    return { chunks: this.sortChunkPairs(chunks), css };
+  }
+
+  private getGeneratedChunkNamesByResource(): ReadonlyMap<string, string> {
+    return new Map(
+      (this._resolvedClientFiles ?? []).map((file, index) => [
+        file,
+        getGeneratedChunkName(this.chunkName, file, index),
+      ]),
+    );
+  }
+
+  private getDiagnosticsCssForModule(
+    resource: string | undefined,
+    chunkGroup: AnyChunkGroup,
+    css: string[],
+    generatedChunkNamesByResource: ReadonlyMap<string, string> | undefined,
+  ): string[] {
+    if (!resource || css.length === 0 || !generatedChunkNamesByResource) return css;
+    const generatedChunkName = generatedChunkNamesByResource.get(resource);
+    if (!generatedChunkName) return css;
+    return this.chunkGroupHasName(chunkGroup, generatedChunkName) ? css : [];
+  }
+
+  private chunkGroupHasName(chunkGroup: AnyChunkGroup, generatedChunkName: string): boolean {
+    if (chunkGroup.name === generatedChunkName) return true;
+    for (const chunkUnknown of chunkGroup.chunks) {
+      const chunk = chunkUnknown as { name?: string };
+      if (chunk.name === generatedChunkName) return true;
+    }
+    return false;
   }
 
   private sortChunkPairs(chunks: (string | number | null)[]): (string | number | null)[] {
@@ -685,8 +913,10 @@ export class RSCRspackPlugin {
     module: AnyModule,
     moduleId: string | number | null,
     chunks: (string | number | null)[],
+    css: string[],
     resolvedClientFiles: Set<string>,
-    filePathToModuleMetadata: Record<string, { id: string | number | null; chunks: (string | number | null)[]; name: string }>,
+    filePathToModuleMetadata: Record<string, ModuleMetadata>,
+    diagnosticsCssFiles: Map<string, string[]>,
   ): void {
     if (!module.resource) return;
     if (!resolvedClientFiles.has(module.resource)) return;
@@ -702,14 +932,86 @@ export class RSCRspackPlugin {
         if (!seen.has(chunks[i]!)) existing.chunks.push(chunks[i]!, chunks[i + 1]!);
       }
       existing.chunks = this.sortChunkPairs(existing.chunks);
+      this.recordDiagnosticsCssFiles(href, css, diagnosticsCssFiles);
     } else {
       filePathToModuleMetadata[href] = {
         id: moduleId,
         chunks: this.sortChunkPairs(chunks),
         name: '*',
       };
+      this.recordDiagnosticsCssFiles(href, css, diagnosticsCssFiles);
     }
   }
+
+  private recordDiagnosticsCssFiles(
+    href: string,
+    css: string[],
+    diagnosticsCssFiles: Map<string, string[]>,
+  ): void {
+    if (css.length === 0) return;
+    const existing = diagnosticsCssFiles.get(href) ?? [];
+    for (const cssFile of css) {
+      if (!existing.includes(cssFile)) existing.push(cssFile);
+    }
+    diagnosticsCssFiles.set(href, existing);
+  }
+}
+
+function sumUniqueKnownBytes(
+  clientReferences: Array<{
+    chunks: Array<{ file: string; bytes: number | null }>;
+    css?: Array<{ file: string; bytes: number | null }>;
+  }>,
+): number {
+  const seen = new Set<string>();
+  let total = 0;
+  for (const reference of clientReferences) {
+    for (const chunk of [...reference.chunks, ...(reference.css ?? [])]) {
+      if (chunk.bytes === null || seen.has(chunk.file)) continue;
+      seen.add(chunk.file);
+      total += chunk.bytes;
+    }
+  }
+  return total;
+}
+
+function getCompilationAssetSize(
+  compilation: AnyCompilation,
+  file: string,
+  publicPath: string,
+): number | null {
+  const candidates = new Set<string>();
+  const addCandidate = (candidate: string): void => {
+    candidates.add(candidate);
+    if (candidate.startsWith('/')) {
+      candidates.add(candidate.slice(1));
+    }
+  };
+
+  addCandidate(file);
+  if (publicPath && publicPath !== 'auto' && file.startsWith(publicPath)) {
+    addCandidate(file.slice(publicPath.length));
+  }
+
+  for (const candidate of candidates) {
+    const source = compilation.getAsset?.(candidate)?.source ?? compilation.assets?.[candidate];
+    const size = getSourceSize(source);
+    if (size !== null) return size;
+  }
+  return null;
+}
+
+function getSourceSize(source: AssetSource | undefined): number | null {
+  if (!source) return null;
+  if (typeof source.size === 'function') {
+    const size = source.size();
+    return Number.isFinite(size) ? size : null;
+  }
+  if (typeof source.source === 'function') {
+    const value = source.source();
+    return typeof value === 'string' ? Buffer.byteLength(value) : value.length;
+  }
+  return null;
 }
 
 // Also export as default to match how `WebpackPlugin` is imported elsewhere.

@@ -1,3 +1,27 @@
+import type {
+  PreconnectResourceOptions,
+  PreinitScriptOptions,
+  PreinitStyleOptions,
+  PreloadAssetOptions,
+  PreloadFontOptions,
+  PreloadImageOptions,
+  PreloadScriptOptions,
+  PreloadStyleOptions,
+} from './resource-hints';
+export type {
+  PreconnectResourceOptions,
+  PreinitScriptOptions,
+  PreinitStyleOptions,
+  PreloadAssetOptions,
+  PreloadFontOptions,
+  PreloadImageOptions,
+  PreloadScriptOptions,
+  PreloadStyleOptions,
+  ResourceHintAs,
+  ResourceHintCrossOrigin,
+  ResourceHintFetchPriority,
+} from './resource-hints';
+
 type ServerFunction = (...args: unknown[]) => unknown;
 type RegisterClientReference = (
   proxyImplementation: unknown,
@@ -23,3 +47,20 @@ export const registerServerReference: RegisterServerReference = undefined as nev
 export const registerClientReference: RegisterClientReference = undefined as never;
 export const createClientModuleProxy: (moduleId: string) => unknown = undefined as never;
 export const createTemporaryReferenceSet: () => unknown = undefined as never;
+export const prefetchDNS: (href: string) => void = undefined as never;
+export const preconnect: (href: string, options?: PreconnectResourceOptions) => void =
+  undefined as never;
+export const preloadAsset: (href: string, options: PreloadAssetOptions) => void =
+  undefined as never;
+export const preloadStyle: (href: string, options?: PreloadStyleOptions) => void =
+  undefined as never;
+export const preinitStyle: (href: string, options?: PreinitStyleOptions) => void =
+  undefined as never;
+export const preloadScript: (href: string, options?: PreloadScriptOptions) => void =
+  undefined as never;
+export const preinitScript: (href: string, options?: PreinitScriptOptions) => void =
+  undefined as never;
+export const preloadFont: (href: string, options?: PreloadFontOptions) => void =
+  undefined as never;
+export const preloadImage: (href: string, options?: PreloadImageOptions) => void =
+  undefined as never;

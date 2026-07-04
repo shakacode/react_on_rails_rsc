@@ -1,5 +1,29 @@
 import * as server from 'react-server-dom-webpack/server.node';
 import { withStylesheetHints } from './flight-stylesheet-hints';
+export {
+  preconnect,
+  prefetchDNS,
+  preinitScript,
+  preinitStyle,
+  preloadAsset,
+  preloadFont,
+  preloadImage,
+  preloadScript,
+  preloadStyle,
+} from './resource-hints';
+export type {
+  PreconnectResourceOptions,
+  PreinitScriptOptions,
+  PreinitStyleOptions,
+  PreloadAssetOptions,
+  PreloadFontOptions,
+  PreloadImageOptions,
+  PreloadScriptOptions,
+  PreloadStyleOptions,
+  ResourceHintAs,
+  ResourceHintCrossOrigin,
+  ResourceHintFetchPriority,
+} from './resource-hints';
 
 // Plain Node can reuse stock render/registration helpers; decode APIs below
 // still fail explicitly because they need the removed unbundled loader runtime.

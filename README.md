@@ -23,6 +23,12 @@ release, see [`docs/consuming-unreleased-builds.md`](docs/consuming-unreleased-b
 for the yalc, canary publish, throwaway dist branch, and version-pairing
 workflows.
 
+## Critical Resource Hints
+
+RSC server components can emit preload, preconnect, DNS-prefetch, and critical
+stylesheet hints for already-resolved production asset URLs. See
+[`docs/critical-resource-hints.md`](docs/critical-resource-hints.md).
+
 ## Package Contents
 
 This package provides internal tooling for React Server Components integration:

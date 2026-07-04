@@ -19,9 +19,13 @@ const FIXTURES_ROOT = path.resolve(__dirname, '../fixtures');
 export interface CompileOptions {
   isServer?: boolean;
   clientManifestFilename?: string;
+  clientReferenceDiagnosticsFilename?: string | false;
   publicPath?: string;
   crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   clientReferences?: unknown;
+  withCss?: boolean;
+  /** Applies rspack.optimize.LimitChunkCountPlugin({ maxChunks }). */
+  maxChunks?: number;
   /** Additional rspack config to merge. Use sparingly. */
   configExtra?: Record<string, unknown>;
 }
@@ -36,6 +40,22 @@ export interface CompileResult {
   };
   manifestSource: string;
   manifestPath: string;
+  clientReferenceDiagnostics?: {
+    version: 1;
+    manifestFilename: string;
+    isServer: boolean;
+    clientReferenceCount: number;
+    totalChunkBytes: number;
+    clientReferences: Array<{
+      file: string;
+      id: string | number | null;
+      name: string;
+      totalBytes: number;
+      chunks: Array<{ id: string | number | null; file: string; bytes: number | null }>;
+      css?: Array<{ file: string; bytes: number | null }>;
+    }>;
+  };
+  clientReferenceDiagnosticsSource?: string;
   assets: string[];
   outputPath: string;
 }
@@ -55,10 +75,13 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     outputPath,
     isServer: options.isServer ?? false,
     clientManifestFilename: options.clientManifestFilename,
+    clientReferenceDiagnosticsFilename: options.clientReferenceDiagnosticsFilename,
     clientReferences: serializeForRunner(options.clientReferences),
     publicPath: options.publicPath,
     crossOriginLoading: options.crossOriginLoading,
-    configExtra: options.configExtra ?? {},
+    withCss: options.withCss,
+    maxChunks: options.maxChunks,
+    configExtra: serializeForRunner(options.configExtra ?? {}),
   };
   const argsFile = path.join(outputPath, '__args__.json');
   fs.writeFileSync(argsFile, JSON.stringify(runnerArgs));
@@ -98,11 +121,23 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
   }
   const manifestSource = fs.readFileSync(manifestPath, 'utf8');
   const manifest = JSON.parse(manifestSource) as CompileResult['manifest'];
+  const diagnosticsFilename = options.clientReferenceDiagnosticsFilename;
+  const diagnosticsPath =
+    typeof diagnosticsFilename === 'string' ? path.join(outputPath, diagnosticsFilename) : undefined;
+  const clientReferenceDiagnosticsSource =
+    diagnosticsPath && fs.existsSync(diagnosticsPath)
+      ? fs.readFileSync(diagnosticsPath, 'utf8')
+      : undefined;
+  const clientReferenceDiagnostics = clientReferenceDiagnosticsSource
+    ? (JSON.parse(clientReferenceDiagnosticsSource) as CompileResult['clientReferenceDiagnostics'])
+    : undefined;
 
   return {
     manifest,
     manifestSource,
     manifestPath,
+    clientReferenceDiagnostics,
+    clientReferenceDiagnosticsSource,
     assets: result.assets ?? [],
     outputPath,
   };

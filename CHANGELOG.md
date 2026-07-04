@@ -4,6 +4,21 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. The default `react-on-rails-rsc/server` fallback keeps failing fast at import time without the `react-server` condition while still publishing the expanded type surface. ([#143])
+- Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
+
+### Changed
+- Stopped `RSCRspackPlugin` from injecting a no-op `"use client"` tagging loader into every first-party module, preserving rspack incremental caching while keeping filesystem-based client-reference discovery. ([#167])
+- Skipped rspack diagnostics CSS collection when client-reference diagnostics are disabled, avoiding dead per-chunk-group CSS scans on the default build path. ([#152])
+
+### Fixed
+- Fixed `RSCRspackPlugin` runtime injection state to be scoped by compiler, avoiding MultiCompiler and sequential-build cross-talk between rspack client/server builds with different client references or chunk names. ([#168])
+- Fixed `RSCRspackPlugin` to install the generated client-reference `splitChunks` guard after Rspack applies option defaults, so default optimization configs keep generated client chunks self-contained. ([#165])
+- Fixed watch rebuilds so rspack and webpack refresh client-reference runtime injections when `"use client"` files are added or removed without restarting the dev server. ([#164])
+- Restored RSC stylesheet hints when a CSS-merging SplitChunks cache group, such as mini-css-extract's `styles` group, moves a client reference's own CSS into a CSS-only split chunk. ([#151])
+- Scoped Rspack diagnostics CSS to the generated chunk group for the reported client reference, avoiding importer-island CSS being counted against an imported child reference. ([#166])
+
 ## [19.2.0] - 2026-06-28
 
 ### Breaking Changes
@@ -52,6 +67,15 @@ All notable changes to this package will be documented in this file.
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
+[#143]: https://github.com/shakacode/react_on_rails_rsc/pull/143
+[#144]: https://github.com/shakacode/react_on_rails_rsc/pull/144
+[#167]: https://github.com/shakacode/react_on_rails_rsc/pull/167
+[#168]: https://github.com/shakacode/react_on_rails_rsc/pull/168
+[#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
+[#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
+[#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151
+[#152]: https://github.com/shakacode/react_on_rails_rsc/pull/152
+[#166]: https://github.com/shakacode/react_on_rails_rsc/pull/166
 [#102]: https://github.com/shakacode/react_on_rails_rsc/pull/102
 [#106]: https://github.com/shakacode/react_on_rails_rsc/pull/106
 [#23]: https://github.com/shakacode/react_on_rails_rsc/pull/23

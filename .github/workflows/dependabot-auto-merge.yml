@@ -1,12 +1,11 @@
 name: Dependabot auto-merge
 
-# Enables GitHub native auto-merge for low-risk Dependabot PRs (minor/patch and
-# GitHub Actions bumps). The PR still merges only once all checks GitHub treats
-# as required have passed. NOTE: `main` currently has no branch protection, so
-# "required" is empty and an enabled PR merges as soon as it is mergeable. Add
-# branch protection on `main` with the real CI checks (unit-tests, e2e-tests,
-# verify-artifacts, the compatibility matrix) marked required — but NOT
-# claude-review — to make this gate on green CI.
+# Enables GitHub native auto-merge for low-risk Dependabot minor/patch package
+# updates. Native auto-merge only waits for checks that branch protection marks
+# required, so this workflow refuses to enable auto-merge when the base branch
+# has no required checks configured through classic branch protection or active
+# branch rulesets. GitHub Actions ecosystem bumps stay maintainer-gated because
+# they edit workflow execution.
 
 on:
   pull_request_target:
@@ -26,10 +25,86 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Classify auto-merge eligibility
+        id: auto-merge-eligibility
+        env:
+          PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+        run: |
+          set -euo pipefail
+
+          eligible=false
+          if [ "${PACKAGE_ECOSYSTEM}" = "github_actions" ]; then
+            echo "::notice::GitHub Actions Dependabot updates are not auto-merged. Review workflow permissions, triggers, secrets, and third-party action changes manually."
+          elif [ "${UPDATE_TYPE}" = "version-update:semver-minor" ] || [ "${UPDATE_TYPE}" = "version-update:semver-patch" ]; then
+            eligible=true
+          else
+            echo "::notice::Dependabot update type ${UPDATE_TYPE} is not auto-merged."
+          fi
+
+          echo "eligible=${eligible}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify required checks protect auto-merge
+        if: steps.auto-merge-eligibility.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDABOT_AUTOMERGE_TOKEN || secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          ruleset_error="$(mktemp)"
+          ruleset_required_count=0
+          ruleset_read_error=false
+          ruleset_output="$(
+            gh api "repos/${REPO}/rules/branches/${BASE_BRANCH}" \
+              --jq '[.[] | select(.type == "required_status_checks") | ((.parameters.required_status_checks // []) | length)] | add // 0' 2>"${ruleset_error}"
+          )" || ruleset_status=$?
+          ruleset_status="${ruleset_status:-0}"
+
+          if [ "${ruleset_status}" -eq 0 ]; then
+            ruleset_required_count="${ruleset_output}"
+          else
+            ruleset_read_error=true
+          fi
+
+          legacy_error="$(mktemp)"
+          legacy_required_count=0
+          legacy_read_error=false
+          legacy_output="$(
+            gh api "repos/${REPO}/branches/${BASE_BRANCH}/protection/required_status_checks" \
+              --jq 'if ((.checks // []) | length) > 0 then ((.checks // []) | length) else ((.contexts // []) | length) end' 2>"${legacy_error}"
+          )" || legacy_status=$?
+          legacy_status="${legacy_status:-0}"
+
+          if [ "${legacy_status}" -eq 0 ]; then
+            legacy_required_count="${legacy_output}"
+          elif printf '%s\n%s\n' "${legacy_output}" "$(cat "${legacy_error}")" | grep -Eq '"status":"404"|Branch not protected|Required status checks not enabled'; then
+            legacy_required_count=0
+          else
+            legacy_read_error=true
+          fi
+
+          required_count=$((legacy_required_count + ruleset_required_count))
+          if [ "${required_count}" -eq 0 ]; then
+            if [ "${ruleset_read_error}" = "true" ]; then
+              echo "::error::Unable to read active branch rules for ${BASE_BRANCH}, and no required checks were found in classic branch protection. Refusing to enable Dependabot auto-merge."
+              cat "${ruleset_error}" >&2
+              printf '%s\n' "${ruleset_output}" >&2
+              exit 1
+            fi
+            if [ "${legacy_read_error}" = "true" ]; then
+              echo "::error::Unable to read classic branch-protection required checks for ${BASE_BRANCH}, and no required checks were found in active branch rulesets. If classic branch protection is used, configure DEPENDABOT_AUTOMERGE_TOKEN with Administration: read access. Refusing to enable Dependabot auto-merge."
+              cat "${legacy_error}" >&2
+              printf '%s\n' "${legacy_output}" >&2
+              exit 1
+            fi
+            echo "::error::Dependabot auto-merge is disabled because ${BASE_BRANCH} has no required status checks configured in classic branch protection or active branch rulesets. Configure deterministic required CI checks before re-enabling auto-merge."
+            exit 1
+          fi
+
       - name: Enable auto-merge for minor and patch updates
-        if: |
-          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        if: steps.auto-merge-eligibility.outputs.eligible == 'true'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

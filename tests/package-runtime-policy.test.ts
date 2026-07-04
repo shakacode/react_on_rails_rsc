@@ -86,6 +86,19 @@ describe('19.2 runtime release policy', () => {
       })
     );
 
+    const expectedServerExports = [
+      'registerClientReference',
+      'preloadAsset',
+      'preloadStyle',
+      'preinitStyle',
+      'preloadScript',
+      'preinitScript',
+      'preloadFont',
+      'preloadImage',
+      'preconnect',
+      'prefetchDNS',
+    ];
+
     for (const fileName of [
       'src/flight-server.ts',
       'src/flight-server.browser.ts',
@@ -95,7 +108,9 @@ describe('19.2 runtime release policy', () => {
     ]) {
       const source = fs.readFileSync(path.join(repoRoot, fileName), 'utf8');
 
-      expect(source).toContain('registerClientReference');
+      for (const exportName of expectedServerExports) {
+        expect(source).toContain(exportName);
+      }
       expect(source).not.toMatch(/export\s+\*\s+from\s+['"]react-server-dom-webpack\/server/);
     }
 
@@ -112,6 +127,36 @@ describe('19.2 runtime release policy', () => {
     );
     expect(runtimeTypes).not.toMatch(
       /declare module 'react-server-dom-webpack\/server\.(browser|edge)' \{\s*export \* from 'react-server-dom-webpack\/server\.node';\s*\}/
+    );
+  });
+
+  it('keeps default server fallback fail-fast while declaring resource hint exports', () => {
+    const defaultServerSource = fs.readFileSync(
+      path.join(repoRoot, 'src/flight-server.ts'),
+      'utf8'
+    );
+    const expectedResourceHintExports = [
+      'prefetchDNS',
+      'preconnect',
+      'preloadAsset',
+      'preloadStyle',
+      'preinitStyle',
+      'preloadScript',
+      'preinitScript',
+      'preloadFont',
+      'preloadImage',
+    ];
+
+    expect(() => {
+      jest.isolateModules(() => {
+        require('../src/flight-server');
+      });
+    }).toThrow(/React Server Writer cannot be used.*--conditions react-server/);
+    for (const exportName of expectedResourceHintExports) {
+      expect(defaultServerSource).toContain(`export const ${exportName}`);
+    }
+    expect(defaultServerSource).toMatch(
+      /export const (prefetchDNS|preconnect|preloadAsset|preloadStyle|preinitStyle|preloadScript|preinitScript|preloadFont|preloadImage)[\s\S]*?undefined as never/
     );
   });
 });

@@ -9,6 +9,8 @@
  */
 
 import * as fs from 'fs';
+import { execFileSync } from 'child_process';
+import * as os from 'os';
 import * as path from 'path';
 import { compile, cleanupOutputDirs, type CompileResult } from './helpers/compile';
 
@@ -77,6 +79,8 @@ const DIST_RSPACK_LOADER = path.resolve(
   __dirname,
   '../../dist/react-server-dom-rspack/loader.js',
 );
+const MULTICOMPILER_CHILD_TIMEOUT_MS = 30_000;
+const MULTICOMPILER_JEST_TIMEOUT_MS = MULTICOMPILER_CHILD_TIMEOUT_MS + 5_000;
 
 describe('RSCRspackPlugin', () => {
   beforeAll(() => {
@@ -559,77 +563,380 @@ describe('RSCRspackPlugin', () => {
   });
 
   describe('splitChunks integration', () => {
+    type CapturedTap = {
+      name: string | { name: string; stage?: number };
+      callback: () => void;
+    };
+
+    const createSplitChunksCompiler = (initialSplitChunks?: { chunks?: unknown }) => {
+      const environmentTaps: CapturedTap[] = [];
+      const afterEnvironmentTaps: CapturedTap[] = [];
+      const optimization = {} as { splitChunks?: { chunks?: unknown } };
+      if (initialSplitChunks) optimization.splitChunks = initialSplitChunks;
+
+      return {
+        compiler: {
+          context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
+          options: { module: {}, optimization },
+          hooks: {
+            beforeCompile: { tapAsync: jest.fn() },
+            environment: {
+              tap: (name: CapturedTap['name'], callback: () => void) =>
+                environmentTaps.push({ name, callback }),
+            },
+            afterEnvironment: {
+              tap: (name: CapturedTap['name'], callback: () => void) =>
+                afterEnvironmentTaps.push({ name, callback }),
+            },
+            thisCompilation: { tap: jest.fn() },
+          },
+        },
+        environmentTaps,
+        afterEnvironmentTaps,
+      };
+    };
+
+    const runInjectionLoaderForCompiler = (
+      injectionLoader: { default?: unknown },
+      compiler: object | undefined,
+      source = 'runtime();',
+      context: { emitWarning?: (warning: Error) => void } = {},
+    ): string => {
+      const loader = (injectionLoader.default ?? injectionLoader) as (
+        this: {
+          cacheable: (flag: boolean) => void;
+          _compiler?: object;
+          emitWarning?: (warning: Error) => void;
+        },
+        source: string,
+      ) => string;
+
+      return loader.call({ cacheable: jest.fn(), _compiler: compiler, ...context }, source);
+    };
+
+    it('keeps client-reference injection scoped in a real rspack MultiCompiler build', () => {
+      const outputRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'ror-rsc-rspack-plugin-multicompiler-'),
+      );
+
+      try {
+        const firstOutput = path.join(outputRoot, 'first');
+        const secondOutput = path.join(outputRoot, 'second');
+        const runtimeEntry = path.resolve(__dirname, '../../dist/client.browser.js');
+        const staticIslandsFixture = path.resolve(__dirname, 'fixtures/static-islands');
+        const script = `
+          const fs = require('fs');
+          const path = require('path');
+          const { rspack } = require('@rspack/core');
+          const { RSCRspackPlugin } = require(${JSON.stringify(DIST_PLUGIN)});
+
+          const firstOutput = ${JSON.stringify(firstOutput)};
+          const secondOutput = ${JSON.stringify(secondOutput)};
+          for (const outputPath of [firstOutput, secondOutput]) {
+            fs.mkdirSync(outputPath, { recursive: true });
+          }
+
+          const makeConfig = (name, context, outputPath, include, chunkName) => ({
+            name,
+            mode: 'development',
+            target: 'web',
+            context,
+            entry: [${JSON.stringify(runtimeEntry)}, './index.js'],
+            output: {
+              path: outputPath,
+              filename: '[name].js',
+              chunkFilename: '[name].chunk.js',
+              publicPath: '',
+            },
+            optimization: {
+              chunkIds: 'named',
+              moduleIds: 'named',
+              minimize: false,
+            },
+            devtool: false,
+            plugins: [
+              new RSCRspackPlugin({
+                isServer: false,
+                clientReferences: [{ directory: '.', recursive: false, include }],
+                chunkName,
+              }),
+            ],
+          });
+
+          const readOutput = (outputPath) => ({
+            assets: fs.readdirSync(outputPath).sort(),
+            manifest: JSON.parse(
+              fs.readFileSync(path.join(outputPath, 'react-client-manifest.json'), 'utf8'),
+            ),
+          });
+
+          rspack([
+            makeConfig(
+              'first',
+              ${JSON.stringify(staticIslandsFixture)},
+              firstOutput,
+              /TinyIsland\\.js$/,
+              'first-[index]',
+            ),
+            makeConfig(
+              'second',
+              ${JSON.stringify(staticIslandsFixture)},
+              secondOutput,
+              /HeavyIsland\\.js$/,
+              'second-[index]',
+            ),
+          ], (err, stats) => {
+            const finish = (result) => {
+              process.stdout.write(JSON.stringify(result));
+              process.exit(result.ok ? 0 : 1);
+            };
+
+            if (err) {
+              finish({ ok: false, errors: [String(err)] });
+              return;
+            }
+            if (!stats) {
+              finish({ ok: false, errors: ['no stats returned'] });
+              return;
+            }
+
+            const info = stats.toJson({
+              errors: true,
+              warnings: true,
+              assets: true,
+              children: true,
+            });
+            const warnings = (info.children || [])
+              .flatMap((child) => child.warnings || [])
+              .map((warning) => warning.message || String(warning));
+
+            if (stats.hasErrors()) {
+              finish({
+                ok: false,
+                errors: (info.children || [])
+                  .flatMap((child) => child.errors || [])
+                  .map((error) => error.message || String(error)),
+                warnings,
+              });
+              return;
+            }
+
+            finish({
+              ok: true,
+              first: readOutput(firstOutput),
+              second: readOutput(secondOutput),
+              warnings,
+            });
+          });
+        `;
+
+        let raw: string;
+        try {
+          raw = execFileSync(process.execPath, ['-e', script], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: MULTICOMPILER_CHILD_TIMEOUT_MS,
+          });
+        } catch (error) {
+          const childError = error as Error & { stdout?: string | Buffer; stderr?: string | Buffer };
+          const stdout = childError.stdout?.toString() ?? '';
+          const stderr = childError.stderr?.toString() ?? '';
+          throw new Error(
+            [
+              `rspack MultiCompiler child process failed: ${childError.message}`,
+              stdout && `stdout:\n${stdout}`,
+              stderr && `stderr:\n${stderr}`,
+            ]
+              .filter(Boolean)
+              .join('\n\n'),
+          );
+        }
+        const result = JSON.parse(raw) as {
+          ok: true;
+          first: { assets: string[]; manifest: CompileResult['manifest'] };
+          second: { assets: string[]; manifest: CompileResult['manifest'] };
+          warnings: string[];
+        };
+        const firstFiles = Object.keys(result.first.manifest.filePathToModuleMetadata);
+        const secondFiles = Object.keys(result.second.manifest.filePathToModuleMetadata);
+
+        expect(result.ok).toBe(true);
+        expect(result.warnings.join('\n')).not.toContain('RSCRspackPlugin injection loader');
+        expect(firstFiles.some((file) => file.endsWith('/TinyIsland.js'))).toBe(true);
+        expect(firstFiles.join('\n')).not.toContain('/HeavyIsland.js');
+        expect(secondFiles.some((file) => file.endsWith('/HeavyIsland.js'))).toBe(true);
+        expect(secondFiles.join('\n')).not.toContain('/TinyIsland.js');
+        expect(result.first.assets).toContain('first-0.chunk.js');
+        expect(result.first.assets).not.toContain('second-0.chunk.js');
+        expect(result.second.assets).toContain('second-0.chunk.js');
+        expect(result.second.assets).not.toContain('first-0.chunk.js');
+      } finally {
+        fs.rmSync(outputRoot, { recursive: true, force: true });
+      }
+    }, MULTICOMPILER_JEST_TIMEOUT_MS);
+
+    it('scopes injected files and chunk names to the loader compiler context', () => {
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const firstCompiler = {};
+      const secondCompiler = {};
+      const firstFile = path.join(__dirname, 'fixtures/basic-client/ClientButton.js');
+      const secondFile = path.join(__dirname, 'fixtures/basic-client/ServerHeader.js');
+
+      injectionLoader.setInjectionStateForCompiler(firstCompiler, [firstFile], 'first-[index]');
+      injectionLoader.setInjectionStateForCompiler(secondCompiler, [secondFile], 'second-[index]');
+
+      const firstSource = runInjectionLoaderForCompiler(injectionLoader, firstCompiler);
+      const secondSource = runInjectionLoaderForCompiler(injectionLoader, secondCompiler);
+
+      expect(firstSource).toContain('webpackChunkName: "first-0"');
+      expect(firstSource).toContain(JSON.stringify(firstFile));
+      expect(firstSource).not.toContain(JSON.stringify(secondFile));
+      expect(secondSource).toContain('webpackChunkName: "second-0"');
+      expect(secondSource).toContain(JSON.stringify(secondFile));
+      expect(secondSource).not.toContain(JSON.stringify(firstFile));
+      expect(
+        Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(firstCompiler)),
+      ).toEqual(['first-0']);
+      expect(
+        Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(secondCompiler)),
+      ).toEqual(['second-0']);
+    });
+
+    it('keeps legacy fallback state populated when the loader has no compiler context', () => {
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const compiler = {};
+      const clientFile = path.join(__dirname, 'fixtures/basic-client/ClientButton.js');
+
+      injectionLoader.setInjectionStateForCompiler(compiler, [clientFile], 'fallback-[index]');
+
+      const source = runInjectionLoaderForCompiler(injectionLoader, undefined);
+
+      expect(source).toContain('webpackChunkName: "fallback-0"');
+      expect(source).toContain(JSON.stringify(clientFile));
+      expect(Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(undefined))).toEqual([
+        'fallback-0',
+      ]);
+    });
+
+    it('warns once for compiler-less fallback invocations', () => {
+      jest.isolateModules(() => {
+        const injectionLoader = require(DIST_INJECTION_LOADER);
+        const emitWarning = jest.fn();
+
+        runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
+        runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
+
+        expect(emitWarning).toHaveBeenCalledTimes(1);
+        expect((emitWarning.mock.calls[0]![0] as Error).message).toContain(
+          'without a compiler context',
+        );
+      });
+    });
+
+    it('warns once per unknown compiler context', () => {
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const firstCompiler = {};
+      const secondCompiler = {};
+      const firstEmitWarning = jest.fn();
+      const secondEmitWarning = jest.fn();
+
+      runInjectionLoaderForCompiler(injectionLoader, firstCompiler, 'runtime();', {
+        emitWarning: firstEmitWarning,
+      });
+      runInjectionLoaderForCompiler(injectionLoader, firstCompiler, 'runtime();', {
+        emitWarning: firstEmitWarning,
+      });
+      runInjectionLoaderForCompiler(injectionLoader, secondCompiler, 'runtime();', {
+        emitWarning: secondEmitWarning,
+      });
+
+      expect(firstEmitWarning).toHaveBeenCalledTimes(1);
+      expect((firstEmitWarning.mock.calls[0]![0] as Error).message).toContain(
+        'unknown compiler context',
+      );
+      expect(secondEmitWarning).toHaveBeenCalledTimes(1);
+      expect((secondEmitWarning.mock.calls[0]![0] as Error).message).toContain(
+        'unknown compiler context',
+      );
+    });
+
+    it('keeps splitChunks generated chunk filters scoped by compiler', () => {
+      const { RSCRspackPlugin } = require(DIST_PLUGIN);
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const firstSplitChunks: { chunks?: unknown } = { chunks: 'async' };
+      const secondSplitChunks: { chunks?: unknown } = { chunks: 'async' };
+      const first = createSplitChunksCompiler(firstSplitChunks);
+      const second = createSplitChunksCompiler(secondSplitChunks);
+
+      new RSCRspackPlugin({ isServer: false }).apply(first.compiler);
+      new RSCRspackPlugin({ isServer: false }).apply(second.compiler);
+
+      for (const { callback } of first.environmentTaps) callback();
+      for (const { callback } of second.environmentTaps) callback();
+
+      injectionLoader.setGeneratedChunkNamesForCompiler(first.compiler, ['first-client']);
+      injectionLoader.setGeneratedChunkNamesForCompiler(second.compiler, ['second-client']);
+
+      const firstGuard = firstSplitChunks.chunks as (chunk: {
+        name?: string;
+        canBeInitial?: () => boolean;
+      }) => boolean;
+      const secondGuard = secondSplitChunks.chunks as (chunk: {
+        name?: string;
+        canBeInitial?: () => boolean;
+      }) => boolean;
+
+      expect(firstGuard({ name: 'first-client', canBeInitial: () => false })).toBe(false);
+      expect(firstGuard({ name: 'second-client', canBeInitial: () => false })).toBe(true);
+      expect(secondGuard({ name: 'second-client', canBeInitial: () => false })).toBe(false);
+      expect(secondGuard({ name: 'first-client', canBeInitial: () => false })).toBe(true);
+    });
+
     it('installs the default splitChunks guard before RspackOptionsApply snapshots options', () => {
       const { RSCRspackPlugin } = require(DIST_PLUGIN);
       const injectionLoader = require(DIST_INJECTION_LOADER);
       const splitChunks: { chunks?: unknown } = {};
-      type CapturedTap = {
-        name: string | { name: string; stage?: number };
-        callback: () => void;
-      };
-      const environmentTaps: CapturedTap[] = [];
-      const afterEnvironmentTaps: CapturedTap[] = [];
-      const compiler = {
-        context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
-        options: { module: {}, optimization: {} as { splitChunks?: typeof splitChunks } },
-        hooks: {
-          beforeCompile: { tapAsync: jest.fn() },
-          environment: {
-            tap: (name: CapturedTap['name'], callback: () => void) =>
-              environmentTaps.push({ name, callback }),
-          },
-          afterEnvironment: {
-            tap: (name: CapturedTap['name'], callback: () => void) =>
-              afterEnvironmentTaps.push({ name, callback }),
-          },
-          thisCompilation: { tap: jest.fn() },
-        },
-      };
+      const { compiler, environmentTaps, afterEnvironmentTaps } = createSplitChunksCompiler();
 
-      const originalGeneratedChunkNames = injectionLoader._generatedChunkNames;
-      try {
-        injectionLoader._generatedChunkNames = new Set(['client0']);
+      injectionLoader.setGeneratedChunkNamesForCompiler(compiler, ['client0']);
 
-        new RSCRspackPlugin({ isServer: false }).apply(compiler);
-        compiler.options.optimization.splitChunks = splitChunks;
-        splitChunks.chunks = 'async';
+      new RSCRspackPlugin({ isServer: false }).apply(compiler);
+      compiler.options.optimization.splitChunks = splitChunks;
+      splitChunks.chunks = 'async';
 
-        for (const { callback } of environmentTaps) callback();
-        expect(typeof splitChunks.chunks).toBe('function');
+      for (const { callback } of environmentTaps) callback();
+      expect(typeof splitChunks.chunks).toBe('function');
 
-        // A later environment-stage tap can still replace the selector; the
-        // afterEnvironment tap runs late enough to reinstall before
-        // RspackOptionsApply snapshots splitChunks for the native plugin.
-        splitChunks.chunks = 'all';
-        for (const { callback } of afterEnvironmentTaps) callback();
+      // A later environment-stage tap can still replace the selector; the
+      // afterEnvironment tap runs late enough to reinstall before
+      // RspackOptionsApply snapshots splitChunks for the native plugin.
+      splitChunks.chunks = 'all';
+      for (const { callback } of afterEnvironmentTaps) callback();
 
-        expect(environmentTaps).toHaveLength(1);
-        expect(afterEnvironmentTaps).toHaveLength(1);
-        expect(environmentTaps[0]!.name).toEqual({
-          name: 'RSCRspackPlugin.splitChunksGuard',
-          stage: Number.MAX_SAFE_INTEGER,
-        });
-        expect(afterEnvironmentTaps[0]!.name).toEqual({
-          name: 'RSCRspackPlugin.splitChunksGuard',
-          stage: Number.MAX_SAFE_INTEGER,
-        });
+      expect(environmentTaps).toHaveLength(1);
+      expect(afterEnvironmentTaps).toHaveLength(1);
+      expect(environmentTaps[0]!.name).toEqual({
+        name: 'RSCRspackPlugin.splitChunksGuard',
+        stage: Number.MAX_SAFE_INTEGER,
+      });
+      expect(afterEnvironmentTaps[0]!.name).toEqual({
+        name: 'RSCRspackPlugin.splitChunksGuard',
+        stage: Number.MAX_SAFE_INTEGER,
+      });
 
-        const chunksCapturedByRspackOptionsApply = splitChunks.chunks as (chunk: {
-          name?: string;
-          canBeInitial?: () => boolean;
-        }) => boolean;
-        expect(chunksCapturedByRspackOptionsApply({ name: 'client0', canBeInitial: () => false })).toBe(
-          false,
-        );
-        expect(chunksCapturedByRspackOptionsApply({ name: 'client99', canBeInitial: () => false })).toBe(
-          true,
-        );
-        expect(chunksCapturedByRspackOptionsApply({ name: 'main', canBeInitial: () => true })).toBe(
-          true,
-        );
-      } finally {
-        injectionLoader._generatedChunkNames = originalGeneratedChunkNames;
-      }
+      const chunksCapturedByRspackOptionsApply = splitChunks.chunks as (chunk: {
+        name?: string;
+        canBeInitial?: () => boolean;
+      }) => boolean;
+      expect(chunksCapturedByRspackOptionsApply({ name: 'client0', canBeInitial: () => false })).toBe(
+        false,
+      );
+      expect(
+        chunksCapturedByRspackOptionsApply({ name: 'client99', canBeInitial: () => false }),
+      ).toBe(true);
+      expect(chunksCapturedByRspackOptionsApply({ name: 'main', canBeInitial: () => true })).toBe(
+        true,
+      );
     });
 
     it('keeps generated client chunks isolated with rspack default optimization config', () => {

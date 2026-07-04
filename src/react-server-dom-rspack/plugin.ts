@@ -25,19 +25,11 @@ import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from '../clientReferences';
+import {
+  getGeneratedChunkNamesForCompiler,
+  setInjectionStateForCompiler,
+} from './injection-loader';
 import { getGeneratedChunkName, hasUseClientDirective } from './shared';
-import type {} from './injection-loader';
-
-function setInjectionState(files: string[], chunkName: string): void {
-  const injLoader = require('./injection-loader') as { _discoveredClientFiles: string[]; _chunkName: string };
-  injLoader._discoveredClientFiles = files;
-  injLoader._chunkName = chunkName;
-}
-
-function getGeneratedChunkNames(): Set<string> {
-  const injLoader = require('./injection-loader') as { _generatedChunkNames: Set<string> };
-  return injLoader._generatedChunkNames;
-}
 
 // Accept any bundler that looks compatible — webpack 5 or rspack. Typed loose
 // because we cannot depend on `@rspack/core` types without making it a hard
@@ -312,7 +304,7 @@ export class RSCRspackPlugin {
           );
           clientReferenceWatchDependencies = nextWatchDependencies;
           this._resolvedClientFiles = discoveredClientFiles;
-          setInjectionState(discoveredClientFiles, this.chunkName);
+          setInjectionStateForCompiler(compiler, discoveredClientFiles, this.chunkName);
           callback();
         } catch (err) {
           callback(err instanceof Error ? err : new Error(String(err)));
@@ -385,7 +377,9 @@ export class RSCRspackPlugin {
 
           const origChunks = splitChunks.chunks ?? 'async';
           const guardedChunks = (chunk: { name?: string }) => {
-            if (chunk.name != null && getGeneratedChunkNames().has(chunk.name)) return false;
+            if (chunk.name != null && getGeneratedChunkNamesForCompiler(compiler).has(chunk.name)) {
+              return false;
+            }
             if (typeof origChunks === 'function') return origChunks(chunk);
             // Rspack/Webpack chunks expose canBeInitial(); keep the historical
             // fallback for non-standard chunk shapes explicit.

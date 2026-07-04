@@ -13,6 +13,7 @@ All notable changes to this package will be documented in this file.
 - Skipped rspack diagnostics CSS collection when client-reference diagnostics are disabled, avoiding dead per-chunk-group CSS scans on the default build path. ([#152])
 
 ### Fixed
+- Fixed `RSCRspackPlugin` runtime injection state to be scoped by compiler, avoiding MultiCompiler and sequential-build cross-talk between rspack client/server builds with different client references or chunk names. ([#168])
 - Fixed `RSCRspackPlugin` to install the generated client-reference `splitChunks` guard after Rspack applies option defaults, so default optimization configs keep generated client chunks self-contained. ([#165])
 - Fixed watch rebuilds so rspack and webpack refresh client-reference runtime injections when `"use client"` files are added or removed without restarting the dev server. ([#164])
 - Restored RSC stylesheet hints when a CSS-merging SplitChunks cache group, such as mini-css-extract's `styles` group, moves a client reference's own CSS into a CSS-only split chunk. ([#151])
@@ -69,6 +70,7 @@ All notable changes to this package will be documented in this file.
 [#143]: https://github.com/shakacode/react_on_rails_rsc/pull/143
 [#144]: https://github.com/shakacode/react_on_rails_rsc/pull/144
 [#167]: https://github.com/shakacode/react_on_rails_rsc/pull/167
+[#168]: https://github.com/shakacode/react_on_rails_rsc/pull/168
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
 [#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151

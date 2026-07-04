@@ -6,13 +6,12 @@
  * system (`rspackExperiments.reactServerComponents`, `experiments.rsc`,
  * `react-server-dom-rspack`).
  *
- * Discovery technique: a small loader (`loader.ts`) tags modules containing
- * a `"use client"` directive during parse by adding the module's resource
- * path to a per-compilation Set keyed under the `CLIENT_MODULES_KEY`
- * Symbol. A second loader prepends dynamic imports to the Flight client
- * runtime so file-system-discovered client references become async chunk
- * groups. At `processAssets`, the plugin walks chunk groups and emits the
- * React on Rails client-manifest JSON schema.
+ * Discovery technique: the plugin walks configured client-reference paths
+ * before compilation and finds files with a `"use client"` directive. A loader
+ * then prepends dynamic imports to the Flight client runtime so those
+ * file-system-discovered references become async chunk groups. At
+ * `processAssets`, the plugin walks chunk groups and emits the React on Rails
+ * client-manifest JSON schema.
  *
  * Output schema matches RoR's existing webpack-side plugin so
  * `buildServerRenderer` / `buildClientRenderer` in server.node.ts /
@@ -26,7 +25,7 @@ import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from '../clientReferences';
-import { CLIENT_MODULES_KEY, getGeneratedChunkName, hasUseClientDirective } from './shared';
+import { getGeneratedChunkName, hasUseClientDirective } from './shared';
 import type {} from './injection-loader';
 
 function setInjectionState(files: string[], chunkName: string): void {
@@ -151,17 +150,6 @@ function addClientReferenceWatchDependencies(
   }
 }
 
-// Helper to read/write our private Symbol key on the compilation. Using a
-// symbol requires a cast because TS structural types can't easily express
-// "indexable by this specific symbol." All accesses funnel through this
-// pair so the cast is isolated.
-type SymbolIndexable = Record<symbol, unknown>;
-const getTagSet = (compilation: AnyCompilation): Set<string> | undefined =>
-  (compilation as unknown as SymbolIndexable)[CLIENT_MODULES_KEY] as Set<string> | undefined;
-const setTagSet = (compilation: AnyCompilation, set: Set<string>): void => {
-  (compilation as unknown as SymbolIndexable)[CLIENT_MODULES_KEY] = set;
-};
-
 type AnyModule = {
   resource?: string;
   modules?: AnyModule[]; // for ConcatenatedModule
@@ -242,14 +230,12 @@ export interface Options {
   clientReferenceDiagnosticsFilename?: string | false;
 }
 
-// Default loader rule — applied to all JS/TS files so our directive detector
-// sees every user module.
+// Legacy rule export kept for consumers that imported the historical symbol.
+// RSCRspackPlugin no longer injects this rule; the loader it references is a
+// no-op compatibility pass-through and does not disable rspack caching.
 export const RSC_LOADER_RULE = {
   test: /\.[cm]?[jt]sx?$/,
   exclude: /node_modules/,
-  // `enforce: 'pre'` ensures we run before any transpiling loader, so we see
-  // the original source text and can detect "use client" even in TS/JSX files
-  // that other loaders will later transform.
   enforce: 'pre' as const,
   use: [{ loader: require.resolve('./loader') }],
 };
@@ -306,9 +292,6 @@ export class RSCRspackPlugin {
     const manifestFilename = this.options.clientManifestFilename ?? defaultFilename;
 
     const bundler = this.resolveBundler(compiler);
-
-    // Inject the tagging loader so every JS/TS module passes through it.
-    this.ensureLoaderRule(compiler);
 
     // ── Phase 1: FS-walk discovery (before compilation starts) ──────
     // Mirrors the webpack plugin's `beforeCompile` / `resolveAllClientFiles`.
@@ -432,15 +415,10 @@ export class RSCRspackPlugin {
       }
     }
 
-    // ── Phase 3: tag set + manifest emission ────────────────────────
+    // ── Phase 3: manifest emission ──────────────────────────────────
     compiler.hooks.thisCompilation.tap('RSCRspackPlugin', (compilationUnknown) => {
       const compilation = compilationUnknown as AnyCompilation;
       addClientReferenceWatchDependencies(compilation, clientReferenceWatchDependencies);
-
-      // Eagerly create the shared Set so the loader never races on init.
-      if (!getTagSet(compilation)) {
-        setTagSet(compilation, new Set<string>());
-      }
 
       compilation.hooks.processAssets.tap(
         {
@@ -607,20 +585,6 @@ export class RSCRspackPlugin {
     return require('webpack') as Bundler;
   }
 
-  /**
-   * Injects the tagging loader rule into compiler.options.module.rules at
-   * position 0 (so it runs `pre` relative to user rules). Idempotent — if
-   * the rule is already present, do nothing.
-   */
-  private ensureLoaderRule(compiler: AnyCompiler): void {
-    const moduleConfig = (compiler.options.module ??= {}) as { rules?: unknown[] };
-    const rules = (moduleConfig.rules ??= []) as unknown[];
-    // Detect duplicate injection by checking for our loader path.
-    const ourLoaderPath = require.resolve('./loader');
-    const alreadyInjected = this.hasLoaderRule(rules, ourLoaderPath);
-    if (!alreadyInjected) rules.unshift(RSC_LOADER_RULE);
-  }
-
   private hasLoaderRule(rules: unknown[], loaderPath: string, test?: RegExp): boolean {
     return rules.some((r) => {
       if (!r || typeof r !== 'object') return false;
@@ -641,7 +605,7 @@ export class RSCRspackPlugin {
   }
 
   /**
-   * Build the RoR-shape manifest from the tagged module set.
+   * Build the RoR-shape manifest from filesystem-discovered client references.
    *
    * Iterates `compilation.chunkGroups` (matching the webpack plugin's
    * pattern) so the `chunks` array for each module reflects ALL chunks

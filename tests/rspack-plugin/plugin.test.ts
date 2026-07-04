@@ -73,6 +73,10 @@ const DIST_INJECTION_LOADER = path.resolve(
   __dirname,
   '../../dist/react-server-dom-rspack/injection-loader.js',
 );
+const DIST_RSPACK_LOADER = path.resolve(
+  __dirname,
+  '../../dist/react-server-dom-rspack/loader.js',
+);
 
 describe('RSCRspackPlugin', () => {
   beforeAll(() => {
@@ -891,8 +895,38 @@ describe('RSCRspackPlugin', () => {
       ).not.toThrow();
     });
 
-    it('does not attach the directive detector to node_modules', () => {
+    it('keeps the historical loader rule export as a no-op compatibility rule', () => {
       expect(RSC_LOADER_RULE.exclude.test('/app/node_modules/pkg/index.ts')).toBe(true);
+      expect(RSC_LOADER_RULE.use).toEqual([{ loader: DIST_RSPACK_LOADER }]);
+    });
+
+    it('injects only the runtime loader needed for filesystem-discovered client references', () => {
+      const compiler = {
+        context: path.resolve(__dirname, 'fixtures/basic-client'),
+        options: { module: {} as { rules?: unknown[] } },
+        hooks: {
+          beforeCompile: { tapAsync: jest.fn() },
+          environment: { tap: jest.fn() },
+          afterEnvironment: { tap: jest.fn() },
+          thisCompilation: { tap: jest.fn() },
+        },
+      };
+
+      new RSCRspackPlugin({ isServer: false }).apply(compiler);
+
+      const rules = (compiler.options.module.rules ?? []) as Array<{ use?: unknown }>;
+      const ruleLoaders = rules.flatMap((rule: { use?: unknown }) =>
+        Array.isArray(rule.use)
+          ? rule.use.map((entry) =>
+              typeof entry === 'string'
+                ? entry
+                : (entry as { loader?: string } | undefined)?.loader,
+            )
+          : [],
+      );
+
+      expect(ruleLoaders).not.toContain(DIST_RSPACK_LOADER);
+      expect(ruleLoaders).toContain(DIST_INJECTION_LOADER);
     });
   });
 

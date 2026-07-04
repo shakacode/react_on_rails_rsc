@@ -9,6 +9,8 @@
  */
 
 import * as fs from 'fs';
+import { execFileSync } from 'child_process';
+import * as os from 'os';
 import * as path from 'path';
 import { compile, cleanupOutputDirs, type CompileResult } from './helpers/compile';
 
@@ -604,6 +606,150 @@ describe('RSCRspackPlugin', () => {
 
       return loader.call({ cacheable: jest.fn(), _compiler: compiler }, source);
     };
+
+    it('keeps client-reference injection scoped in a real rspack MultiCompiler build', () => {
+      const outputRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'ror-rsc-rspack-plugin-multicompiler-'),
+      );
+
+      try {
+        const firstOutput = path.join(outputRoot, 'first');
+        const secondOutput = path.join(outputRoot, 'second');
+        const runtimeEntry = path.resolve(__dirname, '../../dist/client.browser.js');
+        const staticIslandsFixture = path.resolve(__dirname, 'fixtures/static-islands');
+        const script = `
+          const fs = require('fs');
+          const path = require('path');
+          const { rspack } = require('@rspack/core');
+          const { RSCRspackPlugin } = require(${JSON.stringify(DIST_PLUGIN)});
+
+          const firstOutput = ${JSON.stringify(firstOutput)};
+          const secondOutput = ${JSON.stringify(secondOutput)};
+          for (const outputPath of [firstOutput, secondOutput]) {
+            fs.mkdirSync(outputPath, { recursive: true });
+          }
+
+          const makeConfig = (name, context, outputPath, include, chunkName) => ({
+            name,
+            mode: 'development',
+            target: 'web',
+            context,
+            entry: [${JSON.stringify(runtimeEntry)}, './index.js'],
+            output: {
+              path: outputPath,
+              filename: '[name].js',
+              chunkFilename: '[name].chunk.js',
+              publicPath: '',
+            },
+            optimization: {
+              chunkIds: 'named',
+              moduleIds: 'named',
+              minimize: false,
+            },
+            devtool: false,
+            plugins: [
+              new RSCRspackPlugin({
+                isServer: false,
+                clientReferences: [{ directory: '.', recursive: false, include }],
+                chunkName,
+              }),
+            ],
+          });
+
+          const readOutput = (outputPath) => ({
+            assets: fs.readdirSync(outputPath).sort(),
+            manifest: JSON.parse(
+              fs.readFileSync(path.join(outputPath, 'react-client-manifest.json'), 'utf8'),
+            ),
+          });
+
+          rspack([
+            makeConfig(
+              'first',
+              ${JSON.stringify(staticIslandsFixture)},
+              firstOutput,
+              /TinyIsland\\.js$/,
+              'first-[index]',
+            ),
+            makeConfig(
+              'second',
+              ${JSON.stringify(staticIslandsFixture)},
+              secondOutput,
+              /HeavyIsland\\.js$/,
+              'second-[index]',
+            ),
+          ], (err, stats) => {
+            const finish = (result) => {
+              process.stdout.write(JSON.stringify(result));
+              process.exit(result.ok ? 0 : 1);
+            };
+
+            if (err) {
+              finish({ ok: false, errors: [String(err)] });
+              return;
+            }
+            if (!stats) {
+              finish({ ok: false, errors: ['no stats returned'] });
+              return;
+            }
+
+            const info = stats.toJson({
+              errors: true,
+              warnings: true,
+              assets: true,
+              children: true,
+            });
+            const warnings = (info.children || [])
+              .flatMap((child) => child.warnings || [])
+              .map((warning) => warning.message || String(warning));
+
+            if (stats.hasErrors()) {
+              finish({
+                ok: false,
+                errors: (info.children || [])
+                  .flatMap((child) => child.errors || [])
+                  .map((error) => error.message || String(error)),
+                warnings,
+              });
+              return;
+            }
+
+            finish({
+              ok: true,
+              first: readOutput(firstOutput),
+              second: readOutput(secondOutput),
+              warnings,
+            });
+          });
+        `;
+
+        const raw = execFileSync(process.execPath, ['-e', script], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        const result = JSON.parse(raw) as {
+          ok: true;
+          first: { assets: string[]; manifest: CompileResult['manifest'] };
+          second: { assets: string[]; manifest: CompileResult['manifest'] };
+          warnings: string[];
+        };
+        const firstFiles = Object.keys(result.first.manifest.filePathToModuleMetadata);
+        const secondFiles = Object.keys(result.second.manifest.filePathToModuleMetadata);
+
+        expect(result.ok).toBe(true);
+        expect(result.warnings.join('\n')).not.toContain('RSCRspackPlugin injection loader');
+        expect(firstFiles.some((file) => file.endsWith('/TinyIsland.js'))).toBe(true);
+        expect(firstFiles.join('\n')).not.toContain('/HeavyIsland.js');
+        expect(secondFiles.some((file) => file.endsWith('/HeavyIsland.js'))).toBe(true);
+        expect(secondFiles.join('\n')).not.toContain('/TinyIsland.js');
+        expect(result.first.assets).toContain('first-0.chunk.js');
+        expect(result.first.assets).not.toContain('second-0.chunk.js');
+        expect(result.second.assets).toContain('second-0.chunk.js');
+        expect(result.second.assets).not.toContain('first-0.chunk.js');
+      } finally {
+        fs.rmSync(outputRoot, { recursive: true, force: true });
+      }
+    });
 
     it('scopes injected files and chunk names to the loader compiler context', () => {
       const injectionLoader = require(DIST_INJECTION_LOADER);

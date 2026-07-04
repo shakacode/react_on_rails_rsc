@@ -30,6 +30,8 @@ export type InjectionState = {
 };
 
 const compilerInjectionState = new WeakMap<CompilerKey, InjectionState>();
+let warnedMissingCompilerContext = false;
+let warnedMissingCompilerState = false;
 
 const emptyInjectionState = (): InjectionState => ({
   discoveredClientFiles: [],
@@ -66,6 +68,9 @@ export function getInjectionStateForCompiler(
   if (!compiler) return fallbackInjectionState();
   return compilerInjectionState.get(compiler) ?? emptyInjectionState();
 }
+
+const hasInjectionStateForCompiler = (compiler: CompilerKey): boolean =>
+  compilerInjectionState.has(compiler);
 
 export function setGeneratedChunkNamesForCompiler(
   compiler: CompilerKey | undefined,
@@ -106,6 +111,27 @@ const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
   this.cacheable(false);
 
   const compiler = (this as unknown as { _compiler?: CompilerKey })._compiler;
+  const emitWarning = (this as unknown as { emitWarning?: (warning: Error) => void }).emitWarning;
+  if (!compiler) {
+    if (!warnedMissingCompilerContext) {
+      warnedMissingCompilerContext = true;
+      emitWarning?.(
+        new Error(
+          'RSCRspackPlugin injection loader ran without a compiler context; ' +
+            'falling back to the latest legacy injection state.',
+        ),
+      );
+    }
+  } else if (!hasInjectionStateForCompiler(compiler) && !warnedMissingCompilerState) {
+    warnedMissingCompilerState = true;
+    emitWarning?.(
+      new Error(
+        'RSCRspackPlugin injection loader received an unknown compiler context; ' +
+          'client reference imports were not injected for this loader run.',
+      ),
+    );
+  }
+
   const { discoveredClientFiles, chunkName } = getInjectionStateForCompiler(compiler);
 
   if (!discoveredClientFiles.length) {

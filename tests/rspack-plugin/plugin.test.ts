@@ -559,77 +559,156 @@ describe('RSCRspackPlugin', () => {
   });
 
   describe('splitChunks integration', () => {
+    type CapturedTap = {
+      name: string | { name: string; stage?: number };
+      callback: () => void;
+    };
+
+    const createSplitChunksCompiler = (initialSplitChunks?: { chunks?: unknown }) => {
+      const environmentTaps: CapturedTap[] = [];
+      const afterEnvironmentTaps: CapturedTap[] = [];
+      const optimization = {} as { splitChunks?: { chunks?: unknown } };
+      if (initialSplitChunks) optimization.splitChunks = initialSplitChunks;
+
+      return {
+        compiler: {
+          context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
+          options: { module: {}, optimization },
+          hooks: {
+            beforeCompile: { tapAsync: jest.fn() },
+            environment: {
+              tap: (name: CapturedTap['name'], callback: () => void) =>
+                environmentTaps.push({ name, callback }),
+            },
+            afterEnvironment: {
+              tap: (name: CapturedTap['name'], callback: () => void) =>
+                afterEnvironmentTaps.push({ name, callback }),
+            },
+            thisCompilation: { tap: jest.fn() },
+          },
+        },
+        environmentTaps,
+        afterEnvironmentTaps,
+      };
+    };
+
+    const runInjectionLoaderForCompiler = (
+      injectionLoader: { default?: unknown },
+      compiler: object,
+      source = 'runtime();',
+    ): string => {
+      const loader = (injectionLoader.default ?? injectionLoader) as (
+        this: { cacheable: (flag: boolean) => void; _compiler?: object },
+        source: string,
+      ) => string;
+
+      return loader.call({ cacheable: jest.fn(), _compiler: compiler }, source);
+    };
+
+    it('scopes injected files and chunk names to the loader compiler context', () => {
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const firstCompiler = {};
+      const secondCompiler = {};
+      const firstFile = path.join(__dirname, 'fixtures/basic-client/ClientButton.js');
+      const secondFile = path.join(__dirname, 'fixtures/basic-client/ServerHeader.js');
+
+      injectionLoader.setInjectionStateForCompiler(firstCompiler, [firstFile], 'first-[index]');
+      injectionLoader.setInjectionStateForCompiler(secondCompiler, [secondFile], 'second-[index]');
+
+      const firstSource = runInjectionLoaderForCompiler(injectionLoader, firstCompiler);
+      const secondSource = runInjectionLoaderForCompiler(injectionLoader, secondCompiler);
+
+      expect(firstSource).toContain('webpackChunkName: "first-0"');
+      expect(firstSource).toContain(JSON.stringify(firstFile));
+      expect(firstSource).not.toContain(JSON.stringify(secondFile));
+      expect(secondSource).toContain('webpackChunkName: "second-0"');
+      expect(secondSource).toContain(JSON.stringify(secondFile));
+      expect(secondSource).not.toContain(JSON.stringify(firstFile));
+      expect(
+        Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(firstCompiler)),
+      ).toEqual(['first-0']);
+      expect(
+        Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(secondCompiler)),
+      ).toEqual(['second-0']);
+    });
+
+    it('keeps splitChunks generated chunk filters scoped by compiler', () => {
+      const { RSCRspackPlugin } = require(DIST_PLUGIN);
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const firstSplitChunks: { chunks?: unknown } = { chunks: 'async' };
+      const secondSplitChunks: { chunks?: unknown } = { chunks: 'async' };
+      const first = createSplitChunksCompiler(firstSplitChunks);
+      const second = createSplitChunksCompiler(secondSplitChunks);
+
+      new RSCRspackPlugin({ isServer: false }).apply(first.compiler);
+      new RSCRspackPlugin({ isServer: false }).apply(second.compiler);
+
+      for (const { callback } of first.environmentTaps) callback();
+      for (const { callback } of second.environmentTaps) callback();
+
+      injectionLoader.setGeneratedChunkNamesForCompiler(first.compiler, ['first-client']);
+      injectionLoader.setGeneratedChunkNamesForCompiler(second.compiler, ['second-client']);
+
+      const firstGuard = firstSplitChunks.chunks as (chunk: {
+        name?: string;
+        canBeInitial?: () => boolean;
+      }) => boolean;
+      const secondGuard = secondSplitChunks.chunks as (chunk: {
+        name?: string;
+        canBeInitial?: () => boolean;
+      }) => boolean;
+
+      expect(firstGuard({ name: 'first-client', canBeInitial: () => false })).toBe(false);
+      expect(firstGuard({ name: 'second-client', canBeInitial: () => false })).toBe(true);
+      expect(secondGuard({ name: 'second-client', canBeInitial: () => false })).toBe(false);
+      expect(secondGuard({ name: 'first-client', canBeInitial: () => false })).toBe(true);
+    });
+
     it('installs the default splitChunks guard before RspackOptionsApply snapshots options', () => {
       const { RSCRspackPlugin } = require(DIST_PLUGIN);
       const injectionLoader = require(DIST_INJECTION_LOADER);
       const splitChunks: { chunks?: unknown } = {};
-      type CapturedTap = {
-        name: string | { name: string; stage?: number };
-        callback: () => void;
-      };
-      const environmentTaps: CapturedTap[] = [];
-      const afterEnvironmentTaps: CapturedTap[] = [];
-      const compiler = {
-        context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
-        options: { module: {}, optimization: {} as { splitChunks?: typeof splitChunks } },
-        hooks: {
-          beforeCompile: { tapAsync: jest.fn() },
-          environment: {
-            tap: (name: CapturedTap['name'], callback: () => void) =>
-              environmentTaps.push({ name, callback }),
-          },
-          afterEnvironment: {
-            tap: (name: CapturedTap['name'], callback: () => void) =>
-              afterEnvironmentTaps.push({ name, callback }),
-          },
-          thisCompilation: { tap: jest.fn() },
-        },
-      };
+      const { compiler, environmentTaps, afterEnvironmentTaps } = createSplitChunksCompiler();
 
-      const originalGeneratedChunkNames = injectionLoader._generatedChunkNames;
-      try {
-        injectionLoader._generatedChunkNames = new Set(['client0']);
+      injectionLoader.setGeneratedChunkNamesForCompiler(compiler, ['client0']);
 
-        new RSCRspackPlugin({ isServer: false }).apply(compiler);
-        compiler.options.optimization.splitChunks = splitChunks;
-        splitChunks.chunks = 'async';
+      new RSCRspackPlugin({ isServer: false }).apply(compiler);
+      compiler.options.optimization.splitChunks = splitChunks;
+      splitChunks.chunks = 'async';
 
-        for (const { callback } of environmentTaps) callback();
-        expect(typeof splitChunks.chunks).toBe('function');
+      for (const { callback } of environmentTaps) callback();
+      expect(typeof splitChunks.chunks).toBe('function');
 
-        // A later environment-stage tap can still replace the selector; the
-        // afterEnvironment tap runs late enough to reinstall before
-        // RspackOptionsApply snapshots splitChunks for the native plugin.
-        splitChunks.chunks = 'all';
-        for (const { callback } of afterEnvironmentTaps) callback();
+      // A later environment-stage tap can still replace the selector; the
+      // afterEnvironment tap runs late enough to reinstall before
+      // RspackOptionsApply snapshots splitChunks for the native plugin.
+      splitChunks.chunks = 'all';
+      for (const { callback } of afterEnvironmentTaps) callback();
 
-        expect(environmentTaps).toHaveLength(1);
-        expect(afterEnvironmentTaps).toHaveLength(1);
-        expect(environmentTaps[0]!.name).toEqual({
-          name: 'RSCRspackPlugin.splitChunksGuard',
-          stage: Number.MAX_SAFE_INTEGER,
-        });
-        expect(afterEnvironmentTaps[0]!.name).toEqual({
-          name: 'RSCRspackPlugin.splitChunksGuard',
-          stage: Number.MAX_SAFE_INTEGER,
-        });
+      expect(environmentTaps).toHaveLength(1);
+      expect(afterEnvironmentTaps).toHaveLength(1);
+      expect(environmentTaps[0]!.name).toEqual({
+        name: 'RSCRspackPlugin.splitChunksGuard',
+        stage: Number.MAX_SAFE_INTEGER,
+      });
+      expect(afterEnvironmentTaps[0]!.name).toEqual({
+        name: 'RSCRspackPlugin.splitChunksGuard',
+        stage: Number.MAX_SAFE_INTEGER,
+      });
 
-        const chunksCapturedByRspackOptionsApply = splitChunks.chunks as (chunk: {
-          name?: string;
-          canBeInitial?: () => boolean;
-        }) => boolean;
-        expect(chunksCapturedByRspackOptionsApply({ name: 'client0', canBeInitial: () => false })).toBe(
-          false,
-        );
-        expect(chunksCapturedByRspackOptionsApply({ name: 'client99', canBeInitial: () => false })).toBe(
-          true,
-        );
-        expect(chunksCapturedByRspackOptionsApply({ name: 'main', canBeInitial: () => true })).toBe(
-          true,
-        );
-      } finally {
-        injectionLoader._generatedChunkNames = originalGeneratedChunkNames;
-      }
+      const chunksCapturedByRspackOptionsApply = splitChunks.chunks as (chunk: {
+        name?: string;
+        canBeInitial?: () => boolean;
+      }) => boolean;
+      expect(chunksCapturedByRspackOptionsApply({ name: 'client0', canBeInitial: () => false })).toBe(
+        false,
+      );
+      expect(
+        chunksCapturedByRspackOptionsApply({ name: 'client99', canBeInitial: () => false }),
+      ).toBe(true);
+      expect(chunksCapturedByRspackOptionsApply({ name: 'main', canBeInitial: () => true })).toBe(
+        true,
+      );
     });
 
     it('keeps generated client chunks isolated with rspack default optimization config', () => {

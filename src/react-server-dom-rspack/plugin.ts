@@ -230,6 +230,16 @@ export interface Options {
   clientReferenceDiagnosticsFilename?: string | false;
 }
 
+// Legacy rule export kept for consumers that imported the historical symbol.
+// RSCRspackPlugin no longer injects this rule; the loader it references is a
+// no-op compatibility pass-through and does not disable rspack caching.
+export const RSC_LOADER_RULE = {
+  test: /\.[cm]?[jt]sx?$/,
+  exclude: /node_modules/,
+  enforce: 'pre' as const,
+  use: [{ loader: require.resolve('./loader') }],
+};
+
 export class RSCRspackPlugin {
   private readonly options: Options;
   private readonly clientReferences: (string | ClientReferenceSearchPath)[];

@@ -855,7 +855,7 @@ describe('RSCRspackPlugin', () => {
   describe('plugin option validation', () => {
     // Importing from dist so we don't need TS types here.
     // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
-    const { RSCRspackPlugin } = require(DIST_PLUGIN);
+    const { RSC_LOADER_RULE, RSCRspackPlugin } = require(DIST_PLUGIN);
 
     it('throws when options is null', () => {
       expect(() => new RSCRspackPlugin(null)).toThrow(/isServer/);
@@ -893,6 +893,11 @@ describe('RSCRspackPlugin', () => {
             clientManifestFilename: 'custom.json',
           }),
       ).not.toThrow();
+    });
+
+    it('keeps the historical loader rule export as a no-op compatibility rule', () => {
+      expect(RSC_LOADER_RULE.exclude.test('/app/node_modules/pkg/index.ts')).toBe(true);
+      expect(RSC_LOADER_RULE.use).toEqual([{ loader: DIST_RSPACK_LOADER }]);
     });
 
     it('injects only the runtime loader needed for filesystem-discovered client references', () => {

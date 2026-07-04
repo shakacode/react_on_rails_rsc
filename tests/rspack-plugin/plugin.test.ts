@@ -819,16 +819,18 @@ describe('RSCRspackPlugin', () => {
     });
 
     it('warns once for compiler-less fallback invocations', () => {
-      const injectionLoader = require(DIST_INJECTION_LOADER);
-      const emitWarning = jest.fn();
+      jest.isolateModules(() => {
+        const injectionLoader = require(DIST_INJECTION_LOADER);
+        const emitWarning = jest.fn();
 
-      runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
-      runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
+        runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
+        runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
 
-      expect(emitWarning).toHaveBeenCalledTimes(1);
-      expect((emitWarning.mock.calls[0]![0] as Error).message).toContain(
-        'without a compiler context',
-      );
+        expect(emitWarning).toHaveBeenCalledTimes(1);
+        expect((emitWarning.mock.calls[0]![0] as Error).message).toContain(
+          'without a compiler context',
+        );
+      });
     });
 
     it('warns once per unknown compiler context', () => {

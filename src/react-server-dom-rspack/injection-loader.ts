@@ -110,8 +110,12 @@ const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
   // loader output.
   this.cacheable(false);
 
+  // Rspack follows webpack's loader-context convention here: `_compiler` is
+  // the same Compiler object passed to plugin.apply(). The MultiCompiler
+  // integration test exercises that identity against real rspack compilers.
   const compiler = (this as unknown as { _compiler?: CompilerKey })._compiler;
-  const emitWarning = (this as unknown as { emitWarning?: (warning: Error) => void }).emitWarning;
+  const emitWarning = (this as unknown as { emitWarning?: (warning: Error) => void })
+    .emitWarning;
   if (!compiler) {
     if (!warnedMissingCompilerContext) {
       warnedMissingCompilerContext = true;

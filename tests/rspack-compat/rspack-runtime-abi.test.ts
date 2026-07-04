@@ -16,49 +16,30 @@
  */
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
-
-const { rspack } = require('@rspack/core') as typeof import('@rspack/core');
-
-const makeTmpDir = (): string =>
-  fs.mkdtempSync(path.join(os.tmpdir(), 'ror-rsc-rspack-abi-'));
-
-const cleanupTmpDir = (dir: string): void => {
-  fs.rmSync(dir, { recursive: true, force: true });
-};
-
-const runRspack = (
-  config: Parameters<typeof rspack>[0],
-): Promise<void> =>
-  new Promise((resolve, reject) => {
-    rspack(config, (err, stats) => {
-      if (err) return reject(err);
-      if (!stats) return reject(new Error('rspack returned no stats'));
-      if (stats.hasErrors()) {
-        const info = stats.toJson({ errors: true });
-        return reject(
-          new Error(
-            `rspack build errors:\n${info.errors?.map((e) => e.message).join('\n')}`,
-          ),
-        );
-      }
-      resolve();
-    });
-  });
+import {
+  cleanupTmpDir,
+  expectRspackSuccess,
+  makeTmpDir,
+  runRspack,
+} from './helpers/rspackRunner';
 
 describe('Rspack runtime ABI — webpack-compatible globals', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTmpDir('ror-rsc-rspack-abi-');
   });
 
   afterEach(() => {
     cleanupTmpDir(tmpDir);
   });
 
-  it('rspack bundle for web target defines __webpack_require__', async () => {
+  const compile = (config: unknown): void => {
+    expectRspackSuccess(runRspack(config, tmpDir));
+  };
+
+  it('rspack bundle for web target defines __webpack_require__', () => {
     const entryFile = path.join(tmpDir, 'entry.js');
     const chunkFile = path.join(tmpDir, 'chunk.js');
     fs.writeFileSync(chunkFile, "module.exports = { value: 42 };");
@@ -67,7 +48,7 @@ describe('Rspack runtime ABI — webpack-compatible globals', () => {
       `const promise = import('./chunk.js'); promise.then(m => m.value);`,
     );
 
-    await runRspack({
+    compile({
       mode: 'development',
       target: 'web',
       entry: entryFile,
@@ -80,7 +61,7 @@ describe('Rspack runtime ABI — webpack-compatible globals', () => {
     expect(bundle).toMatch(/__webpack_require__/);
   });
 
-  it('rspack bundle with dynamic import defines __webpack_require__.u (chunk filename fn)', async () => {
+  it('rspack bundle with dynamic import defines __webpack_require__.u (chunk filename fn)', () => {
     const entryFile = path.join(tmpDir, 'entry.js');
     const chunkA = path.join(tmpDir, 'a.js');
     const chunkB = path.join(tmpDir, 'b.js');
@@ -94,7 +75,7 @@ describe('Rspack runtime ABI — webpack-compatible globals', () => {
       `,
     );
 
-    await runRspack({
+    compile({
       mode: 'development',
       target: 'web',
       entry: entryFile,
@@ -110,7 +91,7 @@ describe('Rspack runtime ABI — webpack-compatible globals', () => {
     expect(bundle).toMatch(/__webpack_require__\.u\s*=/);
   });
 
-  it('rspack-emitted __webpack_require__.u is a plain assignable function property (mutable)', async () => {
+  it('rspack-emitted __webpack_require__.u is a plain assignable function property (mutable)', () => {
     // This is critical: React monkey-patches __webpack_require__.u at runtime.
     // If rspack emits it as a getter/readonly, the monkey-patch fails silently.
     const entryFile = path.join(tmpDir, 'entry.js');
@@ -118,7 +99,7 @@ describe('Rspack runtime ABI — webpack-compatible globals', () => {
     fs.writeFileSync(chunk, "module.exports = 42;");
     fs.writeFileSync(entryFile, `export default () => import('./chunk.js');`);
 
-    await runRspack({
+    compile({
       mode: 'development',
       target: 'web',
       entry: entryFile,
@@ -140,7 +121,7 @@ describe('Rspack runtime ABI — webpack-compatible globals', () => {
     expect(bundle).not.toMatch(dangerousShape);
   });
 
-  it('rspack bundle defines __webpack_chunk_load__ when chunks exist', async () => {
+  it('rspack bundle defines __webpack_chunk_load__ when chunks exist', () => {
     // __webpack_chunk_load__ is Rspack's promise-returning chunk loader.
     // React's Flight client calls this directly (not via import()).
     const entryFile = path.join(tmpDir, 'entry.js');
@@ -148,7 +129,7 @@ describe('Rspack runtime ABI — webpack-compatible globals', () => {
     fs.writeFileSync(chunk, "module.exports = 'lazy';");
     fs.writeFileSync(entryFile, `export default () => import('./lazy.js');`);
 
-    await runRspack({
+    compile({
       mode: 'development',
       target: 'web',
       entry: entryFile,
@@ -165,13 +146,13 @@ describe('Rspack runtime ABI — webpack-compatible globals', () => {
     expect(hasChunkLoad).toBe(true);
   });
 
-  it('rspack bundle for node target also defines __webpack_require__', async () => {
+  it('rspack bundle for node target also defines __webpack_require__', () => {
     const entryFile = path.join(tmpDir, 'entry.js');
     const chunk = path.join(tmpDir, 'chunk.js');
     fs.writeFileSync(chunk, "module.exports = 1;");
     fs.writeFileSync(entryFile, `export default () => import('./chunk.js');`);
 
-    await runRspack({
+    compile({
       mode: 'development',
       target: 'node',
       entry: entryFile,

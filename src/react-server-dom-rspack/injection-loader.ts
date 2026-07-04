@@ -48,8 +48,13 @@ export function setInjectionStateForCompiler(
   discoveredClientFiles: string[],
   chunkName: string,
 ): void {
+  const nextDiscoveredClientFiles = discoveredClientFiles.slice();
+  _discoveredClientFiles = nextDiscoveredClientFiles;
+  _chunkName = chunkName;
+  _generatedChunkNames = new Set();
+
   compilerInjectionState.set(compiler, {
-    discoveredClientFiles: discoveredClientFiles.slice(),
+    discoveredClientFiles: nextDiscoveredClientFiles,
     chunkName,
     generatedChunkNames: new Set(),
   });
@@ -75,9 +80,11 @@ export function setGeneratedChunkNamesForCompiler(
   const state = compilerInjectionState.get(compiler);
   if (state) {
     state.generatedChunkNames = nextGeneratedChunkNames;
+    _generatedChunkNames = nextGeneratedChunkNames;
     return;
   }
 
+  _generatedChunkNames = nextGeneratedChunkNames;
   compilerInjectionState.set(compiler, {
     discoveredClientFiles: [],
     chunkName: _chunkName,

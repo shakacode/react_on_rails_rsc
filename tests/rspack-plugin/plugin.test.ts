@@ -594,7 +594,7 @@ describe('RSCRspackPlugin', () => {
 
     const runInjectionLoaderForCompiler = (
       injectionLoader: { default?: unknown },
-      compiler: object,
+      compiler: object | undefined,
       source = 'runtime();',
     ): string => {
       const loader = (injectionLoader.default ?? injectionLoader) as (
@@ -630,6 +630,22 @@ describe('RSCRspackPlugin', () => {
       expect(
         Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(secondCompiler)),
       ).toEqual(['second-0']);
+    });
+
+    it('keeps legacy fallback state populated when the loader has no compiler context', () => {
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const compiler = {};
+      const clientFile = path.join(__dirname, 'fixtures/basic-client/ClientButton.js');
+
+      injectionLoader.setInjectionStateForCompiler(compiler, [clientFile], 'fallback-[index]');
+
+      const source = runInjectionLoaderForCompiler(injectionLoader, undefined);
+
+      expect(source).toContain('webpackChunkName: "fallback-0"');
+      expect(source).toContain(JSON.stringify(clientFile));
+      expect(Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(undefined))).toEqual([
+        'fallback-0',
+      ]);
     });
 
     it('keeps splitChunks generated chunk filters scoped by compiler', () => {

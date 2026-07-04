@@ -79,6 +79,8 @@ const DIST_RSPACK_LOADER = path.resolve(
   __dirname,
   '../../dist/react-server-dom-rspack/loader.js',
 );
+const MULTICOMPILER_CHILD_TIMEOUT_MS = 30_000;
+const MULTICOMPILER_JEST_TIMEOUT_MS = MULTICOMPILER_CHILD_TIMEOUT_MS + 5_000;
 
 describe('RSCRspackPlugin', () => {
   beforeAll(() => {
@@ -728,10 +730,27 @@ describe('RSCRspackPlugin', () => {
           });
         `;
 
-        const raw = execFileSync(process.execPath, ['-e', script], {
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
+        let raw: string;
+        try {
+          raw = execFileSync(process.execPath, ['-e', script], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: MULTICOMPILER_CHILD_TIMEOUT_MS,
+          });
+        } catch (error) {
+          const childError = error as Error & { stdout?: string | Buffer; stderr?: string | Buffer };
+          const stdout = childError.stdout?.toString() ?? '';
+          const stderr = childError.stderr?.toString() ?? '';
+          throw new Error(
+            [
+              `rspack MultiCompiler child process failed: ${childError.message}`,
+              stdout && `stdout:\n${stdout}`,
+              stderr && `stderr:\n${stderr}`,
+            ]
+              .filter(Boolean)
+              .join('\n\n'),
+          );
+        }
         const result = JSON.parse(raw) as {
           ok: true;
           first: { assets: string[]; manifest: CompileResult['manifest'] };
@@ -754,7 +773,7 @@ describe('RSCRspackPlugin', () => {
       } finally {
         fs.rmSync(outputRoot, { recursive: true, force: true });
       }
-    });
+    }, MULTICOMPILER_JEST_TIMEOUT_MS);
 
     it('scopes injected files and chunk names to the loader compiler context', () => {
       const injectionLoader = require(DIST_INJECTION_LOADER);
@@ -799,14 +818,14 @@ describe('RSCRspackPlugin', () => {
       ]);
     });
 
-    it('warns for every compiler-less fallback invocation', () => {
+    it('warns once for compiler-less fallback invocations', () => {
       const injectionLoader = require(DIST_INJECTION_LOADER);
       const emitWarning = jest.fn();
 
       runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
       runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
 
-      expect(emitWarning).toHaveBeenCalledTimes(2);
+      expect(emitWarning).toHaveBeenCalledTimes(1);
       expect((emitWarning.mock.calls[0]![0] as Error).message).toContain(
         'without a compiler context',
       );

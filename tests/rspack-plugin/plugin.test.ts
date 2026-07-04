@@ -598,13 +598,18 @@ describe('RSCRspackPlugin', () => {
       injectionLoader: { default?: unknown },
       compiler: object | undefined,
       source = 'runtime();',
+      context: { emitWarning?: (warning: Error) => void } = {},
     ): string => {
       const loader = (injectionLoader.default ?? injectionLoader) as (
-        this: { cacheable: (flag: boolean) => void; _compiler?: object },
+        this: {
+          cacheable: (flag: boolean) => void;
+          _compiler?: object;
+          emitWarning?: (warning: Error) => void;
+        },
         source: string,
       ) => string;
 
-      return loader.call({ cacheable: jest.fn(), _compiler: compiler }, source);
+      return loader.call({ cacheable: jest.fn(), _compiler: compiler, ...context }, source);
     };
 
     it('keeps client-reference injection scoped in a real rspack MultiCompiler build', () => {
@@ -792,6 +797,46 @@ describe('RSCRspackPlugin', () => {
       expect(Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(undefined))).toEqual([
         'fallback-0',
       ]);
+    });
+
+    it('warns for every compiler-less fallback invocation', () => {
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const emitWarning = jest.fn();
+
+      runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
+      runInjectionLoaderForCompiler(injectionLoader, undefined, 'runtime();', { emitWarning });
+
+      expect(emitWarning).toHaveBeenCalledTimes(2);
+      expect((emitWarning.mock.calls[0]![0] as Error).message).toContain(
+        'without a compiler context',
+      );
+    });
+
+    it('warns once per unknown compiler context', () => {
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const firstCompiler = {};
+      const secondCompiler = {};
+      const firstEmitWarning = jest.fn();
+      const secondEmitWarning = jest.fn();
+
+      runInjectionLoaderForCompiler(injectionLoader, firstCompiler, 'runtime();', {
+        emitWarning: firstEmitWarning,
+      });
+      runInjectionLoaderForCompiler(injectionLoader, firstCompiler, 'runtime();', {
+        emitWarning: firstEmitWarning,
+      });
+      runInjectionLoaderForCompiler(injectionLoader, secondCompiler, 'runtime();', {
+        emitWarning: secondEmitWarning,
+      });
+
+      expect(firstEmitWarning).toHaveBeenCalledTimes(1);
+      expect((firstEmitWarning.mock.calls[0]![0] as Error).message).toContain(
+        'unknown compiler context',
+      );
+      expect(secondEmitWarning).toHaveBeenCalledTimes(1);
+      expect((secondEmitWarning.mock.calls[0]![0] as Error).message).toContain(
+        'unknown compiler context',
+      );
     });
 
     it('keeps splitChunks generated chunk filters scoped by compiler', () => {

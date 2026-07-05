@@ -624,7 +624,7 @@ export class RSCWebpackPlugin {
           const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
           const manifest = {
             moduleLoading: {
-              prefix: publicPathIsAuto ? '' : compilation.outputOptions.publicPath || '',
+              prefix: publicPathIsAuto ? '' : configuredPublicPath || '',
               crossOrigin,
             },
             filePathToModuleMetadata,

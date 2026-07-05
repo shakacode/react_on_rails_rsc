@@ -567,7 +567,22 @@ describe('RSCRspackPlugin', () => {
       expect(paths[0]).toContain('/A.js');
     });
 
-    it('records initial entry chunks for statically imported client references', () => {
+    it('excludes default initial entry chunks for statically imported client references', () => {
+      const result = run('basic-client');
+      const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientButton.js'),
+      );
+      expect(key).toBeTruthy();
+
+      const entry = result.manifest.filePathToModuleMetadata[key!]!;
+      const chunkFiles = manifestChunkFiles(entry.chunks);
+
+      expect(result.assets).toContain('main.js');
+      expect(entry.id).toBe('./ClientButton.js');
+      expect(chunkFiles).not.toContain('main.js');
+    });
+
+    it('records split-runtime entry chunks for statically imported client references', () => {
       const result = run('basic-client', {
         configExtra: {
           optimization: {

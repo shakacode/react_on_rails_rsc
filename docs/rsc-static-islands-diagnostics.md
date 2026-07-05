@@ -125,8 +125,9 @@ actually renders it as a `"use client"` component.
 Recommended shape:
 
 1. Render the mostly static page from an isolated RSC build target.
-2. Keep `clientReferences: []` for pages that cannot render Flight client
-   components, or declare only the tiny islands that the page may render.
+2. Follow the static page patterns above: use `clientReferences: []` for pages
+   that cannot render Flight client components, or declare only the tiny islands
+   that the page may render.
 3. Add a dedicated browser entry, for example `public-page-client-effects`, for
    page effects that do not need to be in the Flight manifest.
 4. Hand server data to the sidecar with inert JSON, such as an
@@ -134,6 +135,12 @@ Recommended shape:
    page load.
 5. Lazy-import React, React DOM, dashboard clients, and other heavy modules only
    after user intent or after the browser condition that needs them.
+
+Do not write raw serialized JSON into the script tag. Even inert
+`application/json` blocks are parsed as HTML, so a string containing
+`</script>` can close the element. Escape the JSON for an HTML script context
+before embedding it; Rails apps can use `json_escape` or an equivalent safe
+serializer that prevents user-controlled values from breaking out of the tag.
 
 The browser entry should avoid importing the normal application pack. If the
 normal pack includes global dashboard code, analytics setup, or authenticated

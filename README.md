@@ -29,6 +29,15 @@ RSC server components can emit preload, preconnect, DNS-prefetch, and critical
 stylesheet hints for already-resolved production asset URLs. See
 [`docs/critical-resource-hints.md`](docs/critical-resource-hints.md).
 
+## Static RSC Page Guides
+
+For static or mostly static page integrations, see
+[`docs/rsc-static-islands-diagnostics.md`](docs/rsc-static-islands-diagnostics.md)
+for client-reference diagnostics, static islands, and tiny browser sidecar
+patterns. Downstream Rails apps that need system specs for streamed payloads
+should use
+[`docs/rails-system-spec-streaming-rsc.md`](docs/rails-system-spec-streaming-rsc.md).
+
 ## Package Contents
 
 This package provides internal tooling for React Server Components integration:

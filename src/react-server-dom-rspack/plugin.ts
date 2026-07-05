@@ -731,6 +731,9 @@ export class RSCRspackPlugin {
           const mayBeClientReference =
             isResolvedClientReference(mod.resource) ||
             (!!mod.modules && mod.modules.some((inner) => isResolvedClientReference(inner.resource)));
+          // Match the webpack plugin: client references are injected as async
+          // boundaries, so any concatenated wrapper owns the CSS dependency
+          // edges needed for sibling CSS-only chunk recovery.
           const manifestCss = mayBeClientReference ? mergeDirectCss(chunkCss, mod) : chunkCss;
           if (isResolvedClientReference(mod.resource)) {
             const moduleCss = this.getCssForModule(

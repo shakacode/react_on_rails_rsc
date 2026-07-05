@@ -728,11 +728,15 @@ export class RSCRspackPlugin {
           if (isRuntimeResource(mod.resource, this.options.isServer)) clientFileNameFound = true;
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
+          const mayBeClientReference =
+            isResolvedClientReference(mod.resource) ||
+            (!!mod.modules && mod.modules.some((inner) => isResolvedClientReference(inner.resource)));
+          const manifestCss = mayBeClientReference ? mergeDirectCss(chunkCss, mod) : chunkCss;
           if (isResolvedClientReference(mod.resource)) {
             const moduleCss = this.getCssForModule(
               mod.resource,
               normalizedChunkGroup,
-              mergeDirectCss(chunkCss, mod),
+              manifestCss,
               generatedChunkNamesByResource,
             );
             this.recordModule(
@@ -752,7 +756,7 @@ export class RSCRspackPlugin {
               const moduleCss = this.getCssForModule(
                 inner.resource,
                 normalizedChunkGroup,
-                mergeDirectCss(chunkCss, inner),
+                manifestCss,
                 generatedChunkNamesByResource,
               );
               this.recordModule(

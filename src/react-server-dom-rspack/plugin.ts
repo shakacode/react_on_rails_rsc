@@ -74,6 +74,7 @@ type AnyChunkGroup = {
 type AnyEntrypoint = {
   chunks?: Iterable<unknown>;
   getChunks?: () => Iterable<unknown>;
+  getRuntimeChunk?: () => { files: Iterable<string> } | null;
 };
 
 type AnyCompilation = {
@@ -89,7 +90,7 @@ type AnyCompilation = {
   };
   chunkGroups: Iterable<AnyChunkGroup>;
   outputOptions: {
-    publicPath?: string;
+    publicPath?: string | ((...args: unknown[]) => string);
     crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   };
   entrypoints?: ReadonlyMap<string, AnyEntrypoint>;
@@ -156,6 +157,7 @@ type AnyChunk = {
 type ModuleMetadata = {
   id: string | number | null;
   chunks: (string | number | null)[];
+  css?: string[];
   name: string;
 };
 
@@ -631,16 +633,28 @@ export class RSCRspackPlugin {
     const generatedChunkNamesByResource = diagnosticsEnabled
       ? this.getGeneratedChunkNamesByResource()
       : undefined;
-    const initialChunks = this.getInitialChunks(compilation);
+    const runtimeChunkFiles = this.getRuntimeChunkFiles(compilation);
 
     const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
     const isResolvedClientReference = (resource: string | undefined): resource is string =>
       !!resource && resolvedClientFiles.has(resource);
+    const configuredPublicPath = compilation.outputOptions.publicPath;
+    const publicPathIsAuto = configuredPublicPath === 'auto';
+    if (publicPathIsAuto) {
+      const warning = bundler.WebpackError
+        ? new bundler.WebpackError(
+            "React Server Components: output.publicPath is 'auto', which cannot be serialized into the RSC manifest. " +
+              'moduleLoading.prefix will be emitted as an empty string, and CSS files are omitted from the RSC manifest because their final URLs are only known at runtime. ' +
+              'Set output.publicPath to a concrete URL or path to enable Flight chunk loading and stylesheet hints.',
+          )
+        : new Error(
+            "React Server Components: output.publicPath is 'auto', which cannot be serialized into the RSC manifest.",
+          );
+      compilation.warnings.push(warning);
+    }
     let cssPrefix =
-      diagnosticsEnabled &&
-      typeof compilation.outputOptions.publicPath === 'string' &&
-      compilation.outputOptions.publicPath !== 'auto'
-        ? compilation.outputOptions.publicPath
+      typeof configuredPublicPath === 'string' && !publicPathIsAuto
+        ? configuredPublicPath
         : null;
     if (cssPrefix && !cssPrefix.endsWith('/')) {
       cssPrefix += '/';
@@ -651,7 +665,7 @@ export class RSCRspackPlugin {
     // chunks in its group — this ensures splitChunks dependencies are
     // included.
     for (const chunkGroup of compilation.chunkGroups) {
-      const groupAssets = this.getGroupAssets(chunkGroup, initialChunks, cssPrefix);
+      const groupAssets = this.getGroupAssets(chunkGroup, runtimeChunkFiles, cssPrefix);
 
       for (const chunkUnknown of chunkGroup.chunks) {
         const chunk = chunkUnknown as AnyChunk;
@@ -727,7 +741,11 @@ export class RSCRspackPlugin {
 
     return {
       moduleLoading: {
-        prefix: compilation.outputOptions.publicPath || '',
+        prefix: publicPathIsAuto
+          ? ''
+          : typeof configuredPublicPath === 'string'
+            ? configuredPublicPath
+            : '',
         crossOrigin,
       },
       filePathToModuleMetadata,
@@ -807,24 +825,36 @@ export class RSCRspackPlugin {
   /** Build the chunks array from all async-loadable chunks in a chunk group. */
   private getGroupAssets(
     chunkGroup: AnyChunkGroup,
-    initialChunks: Set<unknown>,
+    runtimeChunkFiles: ReadonlySet<string>,
     cssPrefix: string | null,
   ): { chunks: (string | number | null)[]; css: string[] } {
     const chunks: (string | number | null)[] = [];
     const css: string[] = [];
     for (const chunkUnknown of chunkGroup.chunks) {
       const c = chunkUnknown as AnyChunk;
-      const isInitial = this.isInitialChunk(c, initialChunks);
-      if (isInitial && !this.options.isServer) continue;
       const files = c.files instanceof Set ? c.files : new Set(c.files);
       let recordedJs = false;
       for (const file of files) {
-        if (file.endsWith('.css') && !file.endsWith('.hot-update.css') && cssPrefix !== null) {
+        const isRuntimeFile = runtimeChunkFiles.has(file);
+        if (
+          file.endsWith('.css') &&
+          !file.endsWith('.hot-update.css') &&
+          cssPrefix !== null &&
+          (this.options.isServer || !isRuntimeFile)
+        ) {
           css.push(cssPrefix + file);
           continue;
         }
-        if (isInitial) continue;
-        if (recordedJs || !file.endsWith('.js') || file.endsWith('.hot-update.js')) continue;
+        const isJavaScriptFile = file.endsWith('.js') || file.endsWith('.mjs');
+        const isHotUpdateFile = file.endsWith('.hot-update.js') || file.endsWith('.hot-update.mjs');
+        if (
+          recordedJs ||
+          !isJavaScriptFile ||
+          isHotUpdateFile ||
+          (!this.options.isServer && isRuntimeFile)
+        ) {
+          continue;
+        }
         chunks.push(c.id, file);
         recordedJs = true;
       }
@@ -886,22 +916,17 @@ export class RSCRspackPlugin {
     return pairs.flatMap(([id, file]) => [id, file]);
   }
 
-  private getInitialChunks(compilation: AnyCompilation): Set<unknown> {
-    const initialChunks = new Set<unknown>();
+  private getRuntimeChunkFiles(compilation: AnyCompilation): Set<string> {
+    const runtimeChunkFiles = new Set<string>();
     for (const entrypoint of compilation.entrypoints?.values() ?? []) {
-      const chunks =
-        typeof entrypoint.getChunks === 'function'
-          ? entrypoint.getChunks()
-          : entrypoint.chunks;
-      if (!chunks) continue;
-      for (const chunk of chunks) initialChunks.add(chunk);
+      const runtimeChunk =
+        typeof entrypoint.getRuntimeChunk === 'function'
+          ? entrypoint.getRuntimeChunk()
+          : null;
+      if (!runtimeChunk) continue;
+      for (const file of runtimeChunk.files) runtimeChunkFiles.add(file);
     }
-    return initialChunks;
-  }
-
-  private isInitialChunk(chunk: AnyChunk, initialChunks: Set<unknown>): boolean {
-    if (typeof chunk.canBeInitial === 'function') return chunk.canBeInitial();
-    return initialChunks.has(chunk);
+    return runtimeChunkFiles;
   }
 
   /**
@@ -932,14 +957,25 @@ export class RSCRspackPlugin {
         if (!seen.has(chunks[i]!)) existing.chunks.push(chunks[i]!, chunks[i + 1]!);
       }
       existing.chunks = this.sortChunkPairs(existing.chunks);
+      this.recordManifestCssFiles(existing, css);
       this.recordDiagnosticsCssFiles(href, css, diagnosticsCssFiles);
     } else {
-      filePathToModuleMetadata[href] = {
+      const metadata: ModuleMetadata = {
         id: moduleId,
         chunks: this.sortChunkPairs(chunks),
         name: '*',
       };
+      this.recordManifestCssFiles(metadata, css);
+      filePathToModuleMetadata[href] = metadata;
       this.recordDiagnosticsCssFiles(href, css, diagnosticsCssFiles);
+    }
+  }
+
+  private recordManifestCssFiles(metadata: ModuleMetadata, css: string[]): void {
+    if (css.length === 0) return;
+    if (!metadata.css) metadata.css = [];
+    for (const cssFile of css) {
+      if (!metadata.css.includes(cssFile)) metadata.css.push(cssFile);
     }
   }
 

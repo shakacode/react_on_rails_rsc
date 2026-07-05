@@ -241,7 +241,7 @@ describe('RSCRspackPlugin', () => {
       const manifestEntry = Object.entries(result.manifest.filePathToModuleMetadata).find(([file]) =>
         file.endsWith('/StyledIsland.js'),
       )?.[1];
-      expect(manifestEntry).not.toHaveProperty('css');
+      expect(manifestEntry?.css).toEqual(['/assets/client0.chunk.css']);
 
       const diagnosticEntry = result.clientReferenceDiagnostics?.clientReferences[0]!;
       expect(diagnosticEntry.file).toContain('/StyledIsland.js');
@@ -317,8 +317,8 @@ describe('RSCRspackPlugin', () => {
       expect(result.clientReferenceDiagnostics?.isServer).toBe(true);
     });
 
-    it('skips CSS asset collection when diagnostics are disabled', () => {
-      expect(captureBuildManifestCssPrefixes()).toEqual([null]);
+    it('keeps CSS asset collection enabled for manifest output', () => {
+      expect(captureBuildManifestCssPrefixes()).toEqual(['/assets/']);
     });
 
     it('keeps CSS asset collection enabled for diagnostics output', () => {
@@ -351,7 +351,7 @@ describe('RSCRspackPlugin', () => {
       expect(
         internals.getGroupAssets({ chunks: [initialChunk] }, new Set([initialChunk]), '/assets/'),
       ).toEqual({
-        chunks: [],
+        chunks: ['server', 'server-bundle.js'],
         css: ['/assets/server-bundle.css'],
       });
     });
@@ -453,8 +453,17 @@ describe('RSCRspackPlugin', () => {
       expect(paths[0]).toContain('/A.js');
     });
 
-    it('does not preload initial entry chunks for statically imported client references', () => {
-      const result = run('basic-client');
+    it('records initial entry chunks for statically imported client references', () => {
+      const result = run('basic-client', {
+        configExtra: {
+          optimization: {
+            runtimeChunk: 'single',
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+          },
+        },
+      });
       const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
         p.endsWith('ClientButton.js'),
       );
@@ -462,13 +471,14 @@ describe('RSCRspackPlugin', () => {
 
       const entry = result.manifest.filePathToModuleMetadata[key!]!;
       const chunkFiles = manifestChunkFiles(entry.chunks);
-      const initialAssets = new Set(
-        result.assets.filter((asset) => asset === 'main.js' || asset.startsWith('vendors-')),
+      const initialAssets = new Set<string>(
+        result.assets.filter((asset) => asset === 'main.js' || asset === 'runtime.js'),
       );
 
       expect(entry.id).toBe('./ClientButton.js');
       expect(initialAssets.size).toBeGreaterThan(0);
-      expect(chunkFiles.filter((file) => initialAssets.has(file))).toEqual([]);
+      expect(chunkFiles.filter((file) => initialAssets.has(file))).toEqual(['main.js']);
+      expect(chunkFiles).not.toContain('runtime.js');
     });
 
     it('preserves client references discovered through symlinked directories', () => {
@@ -1042,12 +1052,10 @@ describe('RSCRspackPlugin', () => {
   });
 
   describe('publicPath handling', () => {
-    it('passes publicPath "auto" through verbatim (matches webpack)', () => {
+    it('warns and avoids emitting literal publicPath "auto"', () => {
       const result = run('basic-client', { publicPath: 'auto' });
-      // Matches webpack plugin behavior: publicPath || "" — since "auto"
-      // is truthy, it passes through. The runtime may produce broken URLs
-      // like "auto/main.js" but this matches the webpack contract.
-      expect(result.manifest.moduleLoading.prefix).toBe('auto');
+      expect(result.manifest.moduleLoading.prefix).toBe('');
+      expect(result.warnings.join('\n')).toContain("output.publicPath is 'auto'");
     });
 
     it('preserves an absolute URL publicPath', () => {
@@ -1154,8 +1162,33 @@ describe('RSCRspackPlugin', () => {
       // Every second entry should look like a filename
       for (let i = 1; i < entry.chunks.length; i += 2) {
         expect(typeof entry.chunks[i]).toBe('string');
-        expect(String(entry.chunks[i]).endsWith('.js')).toBe(true);
+        expect(String(entry.chunks[i])).toMatch(/\.m?js$/);
       }
+    });
+
+    it('records .mjs chunk files', () => {
+      const result = run('basic-client', {
+        outputFilename: '[name].mjs',
+        outputChunkFilename: '[name].chunk.mjs',
+        configExtra: {
+          optimization: {
+            runtimeChunk: 'single',
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+          },
+        },
+      });
+      const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientButton.js'),
+      );
+      expect(key).toBeTruthy();
+
+      const chunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[key!]!.chunks,
+      );
+      expect(chunkFiles).toEqual(['main.mjs']);
+      expect(chunkFiles).not.toContain('runtime.mjs');
     });
   });
 

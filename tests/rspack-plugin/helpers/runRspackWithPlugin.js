@@ -50,6 +50,8 @@ const {
   crossOriginLoading,
   withCss,
   maxChunks,
+  outputFilename,
+  outputChunkFilename,
   configExtra,
 } = args;
 
@@ -103,8 +105,8 @@ const config = {
   entry: [runtimeEntry, './index.js'],
   output: {
     path: outputPath,
-    filename: '[name].js',
-    chunkFilename: '[name].chunk.js',
+    filename: outputFilename ?? '[name].js',
+    chunkFilename: outputChunkFilename ?? '[name].chunk.js',
     publicPath: publicPath ?? '',
     crossOriginLoading: crossOriginLoading ?? false,
   },

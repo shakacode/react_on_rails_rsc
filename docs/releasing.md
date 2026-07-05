@@ -14,7 +14,7 @@ release PR merges. Publish from the GitHub Actions release workflow; the local
    ```
 
    Use `/update-changelog release`, `/update-changelog beta`, or an explicit
-   version such as `/update-changelog 19.2.0-rc.4` when that is the intended
+   version such as `/update-changelog 19.2.1-rc.1` when that is the intended
    release type.
 
 2. Review the stamped `CHANGELOG.md` and matching `package.json`, do a final

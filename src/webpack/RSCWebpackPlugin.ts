@@ -610,10 +610,21 @@ export class RSCWebpackPlugin {
           const resolvedClientFiles = new Set(
             (resolvedClientReferences || []).map((ref) => ref.request),
           );
+          const configuredPublicPath = compilation.outputOptions.publicPath;
+          const publicPathIsAuto = configuredPublicPath === 'auto';
+          if (publicPathIsAuto) {
+            compilation.warnings.push(
+              new webpack.WebpackError(
+                "React Server Components: output.publicPath is 'auto', which cannot be serialized into the RSC manifest. " +
+                  'moduleLoading.prefix will be emitted as an empty string, and CSS files are omitted from the RSC manifest because their final URLs are only known at runtime. ' +
+                  'Set output.publicPath to a concrete URL or path to enable Flight chunk loading and stylesheet hints.',
+              ),
+            );
+          }
           const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
           const manifest = {
             moduleLoading: {
-              prefix: compilation.outputOptions.publicPath || '',
+              prefix: publicPathIsAuto ? '' : compilation.outputOptions.publicPath || '',
               crossOrigin,
             },
             filePathToModuleMetadata,
@@ -633,9 +644,8 @@ export class RSCWebpackPlugin {
           });
 
           let cssPrefix =
-            typeof compilation.outputOptions.publicPath === 'string' &&
-            compilation.outputOptions.publicPath !== 'auto'
-              ? compilation.outputOptions.publicPath
+            typeof configuredPublicPath === 'string' && configuredPublicPath !== 'auto'
+              ? configuredPublicPath
               : null;
           if (cssPrefix && !cssPrefix.endsWith('/')) {
             cssPrefix += '/';
@@ -1101,8 +1111,11 @@ export class RSCWebpackPlugin {
       this.clientReferences,
       (clientReferencePath, cb) => {
         if (typeof clientReferencePath === 'string') {
-          watchDependencies.files.add(path.resolve(context, clientReferencePath));
-          cb(null, [new ClientReferenceDependency(clientReferencePath)]);
+          const request = path.resolve(context, clientReferencePath);
+          watchDependencies.files.add(request);
+          const clientRefDep = new ClientReferenceDependency(request);
+          clientRefDep.userRequest = clientReferencePath;
+          cb(null, [clientRefDep]);
           return;
         }
         contextResolver.resolve(

@@ -114,6 +114,53 @@ dependency through the emitted chunk files and byte totals. Remove or defer the
 import in the island itself; the diagnostics option only reports what the build
 emitted and does not rewrite the module graph.
 
+## Tiny Browser Sidecars
+
+Use a tiny browser sidecar when a page should ship static RSC HTML and CSS on the
+initial path but still needs browser-only effects, such as auth checks,
+query-param handling, analytics beacons, or intent-driven modals. The sidecar is
+a normal browser entry. It is not a Flight client reference unless the RSC page
+actually renders it as a `"use client"` component.
+
+Recommended shape:
+
+1. Render the mostly static page from an isolated RSC build target.
+2. Follow the static page patterns above: use `clientReferences: []` for pages
+   that cannot render Flight client components, or declare only the tiny islands
+   that the page may render.
+3. Add a dedicated browser entry, for example `public-page-client-effects`, for
+   page effects that do not need to be in the Flight manifest.
+4. Hand server data to the sidecar with inert JSON, such as an
+   `application/json` script tag, instead of auto-mounting a React component on
+   page load.
+5. Lazy-import React, React DOM, dashboard clients, and other heavy modules only
+   after user intent or after the browser condition that needs them.
+
+Do not write raw serialized JSON into the script tag. Even inert
+`application/json` blocks are parsed as HTML, so a string containing
+`</script>` can close the element. Escape the JSON for an HTML script context
+before embedding it; Rails apps can use `json_escape` or an equivalent safe
+serializer that prevents user-controlled values from breaking out of the tag.
+
+The browser entry should avoid importing the normal application pack. If the
+normal pack includes global dashboard code, analytics setup, or authenticated
+app vendors, importing it from the sidecar puts that cost back on the static
+page even when the RSC manifest is empty.
+
+For webpack or rspack split-chunk configuration, keep the sidecar separate from
+the app-wide vendor cache group when the vendor group would pull in the main app
+shell. A sidecar can still share small, intentional dependencies, but the static
+page budget should be verified from emitted assets rather than inferred from the
+entry name. Use the diagnostics JSON to confirm the Flight client-reference
+chunks stay empty or tiny, and inspect the bundler stats or emitted asset list to
+confirm the sidecar did not inherit the monolithic app vendor chunk.
+
+Avoid using the sidecar as a substitute for missing route-scoped manifests. It is
+a supported integration pattern for static pages whose browser effects can live
+outside Flight. If a route renders real Flight client components, keep those
+components in `clientReferences` and use the diagnostics output to prove the
+declared island set is still narrow.
+
 ## Boundaries
 
 This diagnostics slice is intentionally narrow:

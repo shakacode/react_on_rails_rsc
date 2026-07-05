@@ -677,12 +677,8 @@ export class RSCRspackPlugin {
     for (const chunkGroup of compilation.chunkGroups) {
       const groupChunkList = [...chunkGroup.chunks].map((chunk) => chunk as AnyChunk);
       const normalizedChunkGroup = { name: chunkGroup.name, chunks: groupChunkList };
-      const groupAssets = this.getGroupAssets(
-        normalizedChunkGroup,
-        runtimeChunkFiles,
-        cssPrefix,
-      );
-      const groupChunks = new Set<AnyChunk>(groupChunkList);
+      const groupChunks = this.getGroupAssets(normalizedChunkGroup, runtimeChunkFiles);
+      const groupChunkSet = new Set<AnyChunk>(groupChunkList);
       const getOutgoingConnections =
         compilation.moduleGraph?.getOutgoingConnections?.bind(compilation.moduleGraph);
 
@@ -692,7 +688,7 @@ export class RSCRspackPlugin {
         const addCssFromModuleChunks = (cssModule: AnyModule): void => {
           for (const cssChunkUnknown of compilation.chunkGraph.getModuleChunks(cssModule)) {
             const cssChunk = cssChunkUnknown as AnyChunk;
-            if (!groupChunks.has(cssChunk)) continue;
+            if (!groupChunkSet.has(cssChunk)) continue;
             for (const cssFile of this.getChunkCss(cssChunk, runtimeChunkFiles, cssPrefix)) {
               files.add(cssFile);
             }
@@ -745,7 +741,7 @@ export class RSCRspackPlugin {
             this.recordModule(
               mod,
               moduleId,
-              groupAssets.chunks,
+              groupChunks,
               moduleCss,
               resolvedClientFiles,
               filePathToModuleMetadata,
@@ -765,7 +761,7 @@ export class RSCRspackPlugin {
               this.recordModule(
                 inner,
                 moduleId,
-                groupAssets.chunks,
+                groupChunks,
                 moduleCss,
                 resolvedClientFiles,
                 filePathToModuleMetadata,
@@ -886,15 +882,12 @@ export class RSCRspackPlugin {
   private getGroupAssets(
     chunkGroup: AnyChunkGroup,
     runtimeChunkFiles: ReadonlySet<string>,
-    cssPrefix: string | null,
-  ): { chunks: (string | number | null)[]; css: string[] } {
+  ): (string | number | null)[] {
     const chunks: (string | number | null)[] = [];
-    const css: string[] = [];
     for (const chunkUnknown of chunkGroup.chunks) {
       const c = chunkUnknown as AnyChunk;
       const files = c.files instanceof Set ? c.files : new Set(c.files);
       let recordedJs = false;
-      css.push(...this.getChunkCss(c, runtimeChunkFiles, cssPrefix));
       for (const file of files) {
         const isRuntimeFile = runtimeChunkFiles.has(file);
         const isJavaScriptFile = file.endsWith('.js') || file.endsWith('.mjs');
@@ -911,7 +904,7 @@ export class RSCRspackPlugin {
         recordedJs = true;
       }
     }
-    return { chunks: this.sortChunkPairs(chunks), css };
+    return this.sortChunkPairs(chunks);
   }
 
   private getChunkCss(

@@ -183,47 +183,6 @@ describe('RSCRspackPlugin', () => {
 
   describe('static island diagnostics', () => {
     const diagnosticsFilename = 'rsc-client-reference-diagnostics.json';
-    const captureBuildManifestCssPrefixes = (
-      options: { clientReferenceDiagnosticsFilename?: string | false } = {},
-    ): Array<string | null> => {
-      const { RSCRspackPlugin } = require(DIST_PLUGIN);
-      const plugin = new RSCRspackPlugin({ isServer: false, ...options });
-      const cssPrefixes: Array<string | null> = [];
-      const internals = plugin as {
-        getGroupAssets: (
-          chunkGroup: unknown,
-          initialChunks: Set<unknown>,
-          cssPrefix: string | null,
-        ) => { chunks: (string | number | null)[]; css: string[] };
-        buildManifest: (
-          compilation: unknown,
-          bundler: unknown,
-          diagnosticsCssFiles: Map<string, string[]>,
-        ) => unknown;
-      };
-      internals.getGroupAssets = (
-        _chunkGroup: unknown,
-        _initialChunks: Set<unknown>,
-        cssPrefix: string | null,
-      ) => {
-        cssPrefixes.push(cssPrefix);
-        return { chunks: [], css: [] };
-      };
-
-      internals.buildManifest(
-        {
-          outputOptions: { publicPath: '/assets' },
-          entrypoints: new Map(),
-          chunkGroups: [{ chunks: [] }],
-          chunkGraph: { getChunkModulesIterable: () => [] },
-          warnings: [],
-        },
-        {},
-        new Map(),
-      );
-
-      return cssPrefixes;
-    };
 
     it('emits empty diagnostics for an explicitly server-only static page config', () => {
       const result = run('static-islands', {
@@ -429,45 +388,6 @@ describe('RSCRspackPlugin', () => {
       expect(childCss).toContain('.styled-island');
       expect(parentCss).toContain('.parent-styled-island');
       expect(result.clientReferenceDiagnostics?.isServer).toBe(true);
-    });
-
-    it('keeps CSS asset collection enabled for manifest output', () => {
-      expect(captureBuildManifestCssPrefixes()).toEqual(['/assets/']);
-    });
-
-    it('keeps CSS asset collection enabled for diagnostics output', () => {
-      expect(
-        captureBuildManifestCssPrefixes({
-          clientReferenceDiagnosticsFilename: diagnosticsFilename,
-        }),
-      ).toEqual(['/assets/']);
-    });
-
-    it('keeps server diagnostics CSS from merged initial chunks without initial JS', () => {
-      const { RSCRspackPlugin } = require(DIST_PLUGIN);
-      const plugin = new RSCRspackPlugin({
-        isServer: true,
-        clientReferenceDiagnosticsFilename: diagnosticsFilename,
-      });
-      const internals = plugin as {
-        getGroupAssets: (
-          chunkGroup: unknown,
-          initialChunks: Set<unknown>,
-          cssPrefix: string | null,
-        ) => { chunks: (string | number | null)[]; css: string[] };
-      };
-      const initialChunk = {
-        id: 'server',
-        files: new Set(['server-bundle.js', 'server-bundle.css']),
-        canBeInitial: () => true,
-      };
-
-      expect(
-        internals.getGroupAssets({ chunks: [initialChunk] }, new Set([initialChunk]), '/assets/'),
-      ).toEqual({
-        chunks: ['server', 'server-bundle.js'],
-        css: ['/assets/server-bundle.css'],
-      });
     });
   });
 

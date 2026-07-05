@@ -41,6 +41,25 @@ const readDiagnosticCss = (result: CompileResult, entryFileSuffix: string): stri
     .join('\n');
 };
 
+const manifestMetadataFor = (
+  result: CompileResult,
+  entryFileSuffix: string,
+): CompileResult['manifest']['filePathToModuleMetadata'][string] => {
+  const entry = Object.entries(result.manifest.filePathToModuleMetadata).find(([file]) =>
+    file.endsWith(entryFileSuffix),
+  );
+  expect(entry).toBeTruthy();
+  return entry![1];
+};
+
+const readManifestCss = (result: CompileResult, entryFileSuffix: string): string =>
+  (manifestMetadataFor(result, entryFileSuffix).css ?? [])
+    .map((file) => {
+      const assetName = file.replace(/^\/assets\//, '');
+      return fs.readFileSync(path.join(result.outputPath, assetName), 'utf8');
+    })
+    .join('\n');
+
 const staticIslandClientReferences = (include: RegExp) => [
   { directory: '.', recursive: false, include },
 ];
@@ -61,6 +80,45 @@ const splitStaticIslandVendors = {
         heavyVendor: {
           test: /heavy-vendor\.js$/,
           name: 'vendors-heavy',
+          enforce: true,
+        },
+      },
+    },
+  },
+};
+
+const splitStaticIslandCssOnlyChunks = {
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      minSize: 0,
+      cacheGroups: {
+        default: false,
+        defaultVendors: false,
+        styles: {
+          name: 'styles',
+          type: 'css/mini-extract',
+          chunks: 'all',
+          enforce: true,
+        },
+      },
+    },
+  },
+};
+
+const splitStaticIslandMixedCssOnlyChunk = {
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      minSize: 0,
+      cacheGroups: {
+        default: false,
+        defaultVendors: false,
+        splitIslandStyles: {
+          test: /MixedSplitIsland\.css$/,
+          name: 'styles',
+          type: 'css/mini-extract',
+          chunks: 'all',
           enforce: true,
         },
       },
@@ -273,6 +331,62 @@ describe('RSCRspackPlugin', () => {
       expect(childCss).toContain('.styled-island');
       expect(childCss).not.toContain('.parent-styled-island');
       expect(parentCss).toContain('.parent-styled-island');
+    });
+
+    it("scopes manifest CSS to the referenced island's chunk group when diagnostics are disabled", () => {
+      const result = run('static-islands', {
+        clientReferences: staticIslandClientReferences(
+          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/,
+        ),
+        publicPath: '/assets',
+        withCss: true,
+      });
+
+      const childCss = readManifestCss(result, '/StyledIsland.js');
+      const parentCss = readManifestCss(result, '/ParentStyledIsland.js');
+
+      expect(childCss).toContain('.styled-island');
+      expect(childCss).not.toContain('.parent-styled-island');
+      expect(parentCss).toContain('.parent-styled-island');
+    });
+
+    it('keeps CSS-only split chunk styles in the server manifest', () => {
+      const result = run('static-islands', {
+        isServer: true,
+        clientReferences: staticIslandClientReferences(/^\.\/StyledIsland\.js$/),
+        publicPath: '/assets',
+        withCss: true,
+        configExtra: splitStaticIslandCssOnlyChunks,
+      });
+
+      expect(result.assets).toContain('styles.chunk.css');
+      expect(manifestMetadataFor(result, '/StyledIsland.js').css).toEqual([
+        '/assets/styles.chunk.css',
+      ]);
+      expect(readManifestCss(result, '/StyledIsland.js')).toContain('.styled-island');
+    });
+
+    it('keeps mixed chunk-local and CSS-only split styles in the server manifest', () => {
+      const result = run('static-islands', {
+        isServer: true,
+        clientReferences: staticIslandClientReferences(/^\.\/MixedStyledIsland\.js$/),
+        publicPath: '/assets',
+        withCss: true,
+        configExtra: splitStaticIslandMixedCssOnlyChunk,
+      });
+
+      const cssFiles = manifestMetadataFor(result, '/MixedStyledIsland.js').css ?? [];
+      expect(result.assets).toEqual(
+        expect.arrayContaining(['client0.chunk.css', 'styles.chunk.css']),
+      );
+      expect(cssFiles).toEqual(
+        expect.arrayContaining(['/assets/client0.chunk.css', '/assets/styles.chunk.css']),
+      );
+      expect(cssFiles).toHaveLength(2);
+
+      const css = readManifestCss(result, '/MixedStyledIsland.js');
+      expect(css).toContain('.mixed-styled-island');
+      expect(css).toContain('.mixed-split-island');
     });
 
     it("scopes server diagnostics CSS to the referenced island's chunk group", () => {
@@ -1056,6 +1170,36 @@ describe('RSCRspackPlugin', () => {
       const result = run('basic-client', { publicPath: 'auto' });
       expect(result.manifest.moduleLoading.prefix).toBe('');
       expect(result.warnings.join('\n')).toContain("output.publicPath is 'auto'");
+    });
+
+    it('warns and avoids serializing function-valued publicPath', () => {
+      const { RSCRspackPlugin } = require(DIST_PLUGIN);
+      const plugin = new RSCRspackPlugin({ isServer: false });
+      const warnings: Error[] = [];
+      const internals = plugin as {
+        buildManifest: (
+          compilation: unknown,
+          bundler: unknown,
+          diagnosticsCssFiles: Map<string, string[]>,
+        ) => { moduleLoading: { prefix: string } };
+      };
+
+      const manifest = internals.buildManifest(
+        {
+          outputOptions: { publicPath: () => '/assets/' },
+          entrypoints: new Map(),
+          chunkGroups: [],
+          chunkGraph: { getChunkModulesIterable: () => [] },
+          warnings,
+        },
+        { WebpackError: Error },
+        new Map(),
+      );
+
+      expect(manifest.moduleLoading.prefix).toBe('');
+      expect(warnings.map((warning) => warning.message).join('\n')).toContain(
+        'output.publicPath is a function',
+      );
     });
 
     it('preserves an absolute URL publicPath', () => {

@@ -31,6 +31,8 @@ import {
 } from './injection-loader';
 import { getGeneratedChunkName, hasUseClientDirective } from './shared';
 
+const STYLE_SOURCE_RE = /\.(css|scss|sass|less|styl|pcss)$/i;
+
 // Accept any bundler that looks compatible — webpack 5 or rspack. Typed loose
 // because we cannot depend on `@rspack/core` types without making it a hard
 // peer dep of a package that should stay webpack-centric.
@@ -87,6 +89,12 @@ type AnyCompilation = {
     getModuleChunks(module: unknown): Iterable<unknown>;
     getModuleId(module: unknown): string | number | null;
     getChunkModulesIterable(chunk: unknown): Iterable<unknown>;
+  };
+  moduleGraph?: {
+    getOutgoingConnections?: (module: unknown) => Iterable<{
+      module?: AnyModule | null;
+      resolvedModule?: AnyModule | null;
+    }>;
   };
   chunkGroups: Iterable<AnyChunkGroup>;
   outputOptions: {
@@ -146,6 +154,7 @@ function addClientReferenceWatchDependencies(
 type AnyModule = {
   resource?: string;
   modules?: AnyModule[]; // for ConcatenatedModule
+  type?: string;
 };
 
 type AnyChunk = {
@@ -629,10 +638,7 @@ export class RSCRspackPlugin {
     let clientFileNameFound = false;
 
     const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
-    const diagnosticsEnabled = typeof this.options.clientReferenceDiagnosticsFilename === 'string';
-    const generatedChunkNamesByResource = diagnosticsEnabled
-      ? this.getGeneratedChunkNamesByResource()
-      : undefined;
+    const generatedChunkNamesByResource = this.getGeneratedChunkNamesByResource();
     const runtimeChunkFiles = this.getRuntimeChunkFiles(compilation);
 
     const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
@@ -640,15 +646,19 @@ export class RSCRspackPlugin {
       !!resource && resolvedClientFiles.has(resource);
     const configuredPublicPath = compilation.outputOptions.publicPath;
     const publicPathIsAuto = configuredPublicPath === 'auto';
-    if (publicPathIsAuto) {
+    const publicPathIsDynamic = publicPathIsAuto || typeof configuredPublicPath === 'function';
+    if (publicPathIsDynamic) {
+      const publicPathDescription = publicPathIsAuto
+        ? "output.publicPath is 'auto'"
+        : 'output.publicPath is a function';
       const warning = bundler.WebpackError
         ? new bundler.WebpackError(
-            "React Server Components: output.publicPath is 'auto', which cannot be serialized into the RSC manifest. " +
+            `React Server Components: ${publicPathDescription}, which cannot be serialized into the RSC manifest. ` +
               'moduleLoading.prefix will be emitted as an empty string, and CSS files are omitted from the RSC manifest because their final URLs are only known at runtime. ' +
               'Set output.publicPath to a concrete URL or path to enable Flight chunk loading and stylesheet hints.',
           )
         : new Error(
-            "React Server Components: output.publicPath is 'auto', which cannot be serialized into the RSC manifest.",
+            `React Server Components: ${publicPathDescription}, which cannot be serialized into the RSC manifest.`,
           );
       compilation.warnings.push(warning);
     }
@@ -665,10 +675,53 @@ export class RSCRspackPlugin {
     // chunks in its group — this ensures splitChunks dependencies are
     // included.
     for (const chunkGroup of compilation.chunkGroups) {
-      const groupAssets = this.getGroupAssets(chunkGroup, runtimeChunkFiles, cssPrefix);
+      const groupChunkList = [...chunkGroup.chunks].map((chunk) => chunk as AnyChunk);
+      const normalizedChunkGroup = { name: chunkGroup.name, chunks: groupChunkList };
+      const groupAssets = this.getGroupAssets(
+        normalizedChunkGroup,
+        runtimeChunkFiles,
+        cssPrefix,
+      );
+      const groupChunks = new Set<AnyChunk>(groupChunkList);
+      const getOutgoingConnections =
+        compilation.moduleGraph?.getOutgoingConnections?.bind(compilation.moduleGraph);
 
-      for (const chunkUnknown of chunkGroup.chunks) {
-        const chunk = chunkUnknown as AnyChunk;
+      const directCssDepFiles = (module: AnyModule): string[] => {
+        if (!getOutgoingConnections || cssPrefix === null) return [];
+        const files = new Set<string>();
+        const addCssFromModuleChunks = (cssModule: AnyModule): void => {
+          for (const cssChunkUnknown of compilation.chunkGraph.getModuleChunks(cssModule)) {
+            const cssChunk = cssChunkUnknown as AnyChunk;
+            if (!groupChunks.has(cssChunk)) continue;
+            for (const cssFile of this.getChunkCss(cssChunk, runtimeChunkFiles, cssPrefix)) {
+              files.add(cssFile);
+            }
+          }
+        };
+
+        for (const connection of getOutgoingConnections(module)) {
+          const depModule = connection.module ?? connection.resolvedModule;
+          if (!depModule?.resource) continue;
+          const depResource = depModule.resource.replace(/[?#].*$/, '');
+          if (!STYLE_SOURCE_RE.test(depResource)) continue;
+          addCssFromModuleChunks(depModule);
+          for (const cssConnection of getOutgoingConnections(depModule)) {
+            const extractedCssModule = cssConnection.module ?? cssConnection.resolvedModule;
+            if (!extractedCssModule || extractedCssModule.type !== 'css/mini-extract') continue;
+            addCssFromModuleChunks(extractedCssModule);
+          }
+        }
+
+        return [...files];
+      };
+
+      const mergeDirectCss = (chunkCss: string[], module: AnyModule): string[] => {
+        const siblingCss = directCssDepFiles(module);
+        return siblingCss.length > 0 ? [...new Set([...chunkCss, ...siblingCss])] : chunkCss;
+      };
+
+      for (const chunk of groupChunkList) {
+        const chunkCss = this.getChunkCss(chunk, runtimeChunkFiles, cssPrefix);
         for (const m of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
           const mod = m as AnyModule;
 
@@ -676,17 +729,17 @@ export class RSCRspackPlugin {
 
           const moduleId = compilation.chunkGraph.getModuleId(mod);
           if (isResolvedClientReference(mod.resource)) {
-            const diagnosticsCss = this.getDiagnosticsCssForModule(
+            const moduleCss = this.getCssForModule(
               mod.resource,
-              chunkGroup,
-              groupAssets.css,
+              normalizedChunkGroup,
+              mergeDirectCss(chunkCss, mod),
               generatedChunkNamesByResource,
             );
             this.recordModule(
               mod,
               moduleId,
               groupAssets.chunks,
-              diagnosticsCss,
+              moduleCss,
               resolvedClientFiles,
               filePathToModuleMetadata,
               diagnosticsCssFiles,
@@ -696,17 +749,17 @@ export class RSCRspackPlugin {
             for (const inner of mod.modules) {
               if (isRuntimeResource(inner.resource, this.options.isServer)) clientFileNameFound = true;
               if (!isResolvedClientReference(inner.resource)) continue;
-              const diagnosticsCss = this.getDiagnosticsCssForModule(
+              const moduleCss = this.getCssForModule(
                 inner.resource,
-                chunkGroup,
-                groupAssets.css,
+                normalizedChunkGroup,
+                mergeDirectCss(chunkCss, inner),
                 generatedChunkNamesByResource,
               );
               this.recordModule(
                 inner,
                 moduleId,
                 groupAssets.chunks,
-                diagnosticsCss,
+                moduleCss,
                 resolvedClientFiles,
                 filePathToModuleMetadata,
                 diagnosticsCssFiles,
@@ -834,17 +887,9 @@ export class RSCRspackPlugin {
       const c = chunkUnknown as AnyChunk;
       const files = c.files instanceof Set ? c.files : new Set(c.files);
       let recordedJs = false;
+      css.push(...this.getChunkCss(c, runtimeChunkFiles, cssPrefix));
       for (const file of files) {
         const isRuntimeFile = runtimeChunkFiles.has(file);
-        if (
-          file.endsWith('.css') &&
-          !file.endsWith('.hot-update.css') &&
-          cssPrefix !== null &&
-          (this.options.isServer || !isRuntimeFile)
-        ) {
-          css.push(cssPrefix + file);
-          continue;
-        }
         const isJavaScriptFile = file.endsWith('.js') || file.endsWith('.mjs');
         const isHotUpdateFile = file.endsWith('.hot-update.js') || file.endsWith('.hot-update.mjs');
         if (
@@ -862,6 +907,26 @@ export class RSCRspackPlugin {
     return { chunks: this.sortChunkPairs(chunks), css };
   }
 
+  private getChunkCss(
+    chunk: AnyChunk,
+    runtimeChunkFiles: ReadonlySet<string>,
+    cssPrefix: string | null,
+  ): string[] {
+    if (cssPrefix === null) return [];
+    const css: string[] = [];
+    const files = chunk.files instanceof Set ? chunk.files : new Set(chunk.files);
+    for (const file of files) {
+      if (
+        file.endsWith('.css') &&
+        !file.endsWith('.hot-update.css') &&
+        (this.options.isServer || !runtimeChunkFiles.has(file))
+      ) {
+        css.push(cssPrefix + file);
+      }
+    }
+    return css;
+  }
+
   private getGeneratedChunkNamesByResource(): ReadonlyMap<string, string> {
     return new Map(
       (this._resolvedClientFiles ?? []).map((file, index) => [
@@ -871,13 +936,13 @@ export class RSCRspackPlugin {
     );
   }
 
-  private getDiagnosticsCssForModule(
+  private getCssForModule(
     resource: string | undefined,
     chunkGroup: AnyChunkGroup,
     css: string[],
-    generatedChunkNamesByResource: ReadonlyMap<string, string> | undefined,
+    generatedChunkNamesByResource: ReadonlyMap<string, string>,
   ): string[] {
-    if (!resource || css.length === 0 || !generatedChunkNamesByResource) return css;
+    if (!resource || css.length === 0) return css;
     const generatedChunkName = generatedChunkNamesByResource.get(resource);
     if (!generatedChunkName) return css;
     return this.chunkGroupHasName(chunkGroup, generatedChunkName) ? css : [];

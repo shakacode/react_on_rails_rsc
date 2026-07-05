@@ -829,7 +829,7 @@ export class RSCRspackPlugin {
         recordedJs = true;
       }
     }
-    return { chunks, css };
+    return { chunks: this.sortChunkPairs(chunks), css };
   }
 
   private getGeneratedChunkNamesByResource(): ReadonlyMap<string, string> {
@@ -860,6 +860,30 @@ export class RSCRspackPlugin {
       if (chunk.name === generatedChunkName) return true;
     }
     return false;
+  }
+
+  private sortChunkPairs(chunks: (string | number | null)[]): (string | number | null)[] {
+    const pairs: Array<[string | number | null, string | number | null]> = [];
+    for (let i = 0; i < chunks.length; i += 2) {
+      pairs.push([chunks[i] ?? null, chunks[i + 1] ?? null]);
+    }
+
+    // Rspack 2 can report sibling chunks in a different order; keep the
+    // manifest deterministic while preserving the complete chunk set.
+    pairs.sort(([leftId, leftFile], [rightId, rightFile]) => {
+      const leftFileText = String(leftFile ?? '');
+      const rightFileText = String(rightFile ?? '');
+      if (leftFileText < rightFileText) return -1;
+      if (leftFileText > rightFileText) return 1;
+
+      const leftIdText = String(leftId ?? '');
+      const rightIdText = String(rightId ?? '');
+      if (leftIdText < rightIdText) return -1;
+      if (leftIdText > rightIdText) return 1;
+      return 0;
+    });
+
+    return pairs.flatMap(([id, file]) => [id, file]);
   }
 
   private getInitialChunks(compilation: AnyCompilation): Set<unknown> {
@@ -907,11 +931,12 @@ export class RSCRspackPlugin {
       for (let i = 0; i < chunks.length; i += 2) {
         if (!seen.has(chunks[i]!)) existing.chunks.push(chunks[i]!, chunks[i + 1]!);
       }
+      existing.chunks = this.sortChunkPairs(existing.chunks);
       this.recordDiagnosticsCssFiles(href, css, diagnosticsCssFiles);
     } else {
       filePathToModuleMetadata[href] = {
         id: moduleId,
-        chunks: chunks.slice(),
+        chunks: this.sortChunkPairs(chunks),
         name: '*',
       };
       this.recordDiagnosticsCssFiles(href, css, diagnosticsCssFiles);

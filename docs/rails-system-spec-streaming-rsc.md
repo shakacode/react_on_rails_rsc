@@ -70,7 +70,10 @@ for streamed RSC payload routes. For specs that must verify streaming:
 - do not run the spec with a `_billy` Capybara driver;
 - do not stub the RSC payload URL;
 - keep RSC payload paths out of `path_blacklist`, `cache_whitelist`,
-  `merge_cached_responses_whitelist`, and any persistent cache fixtures;
+  `merge_cached_responses_whitelist`, and any persistent cache fixtures. In
+  current Puffing Billy, `path_blacklist` is a cache opt-in for specific paths,
+  including otherwise whitelisted local paths; it is not route-level browser
+  proxy bypass;
 - do not treat Billy `whitelist` entries as streaming proof. Whitelisting keeps
   local app URLs from being cached by default, but the browser request can still
   be routed through the proxy layer;

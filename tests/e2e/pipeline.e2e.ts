@@ -33,9 +33,6 @@
  *
  * Known divergences of the rspack leg (current main behavior, asserted
  * below so any change is caught):
- *   - rspack manifest entries carry no `css` field, so the Flight payload
- *     has no stylesheet hints (CSS still reaches the DOM through rspack's
- *     own chunk-CSS runtime).
  *   - the rspack plugin excludes generated client-reference chunks from
  *     splitChunks, so the shared module is duplicated per chunk instead of
  *     being split into a shared chunk.
@@ -72,7 +69,7 @@ if (!BUNDLERS.every((b) => b === 'webpack' || b === 'rspack')) {
 interface ModuleMetadata {
   id: string;
   chunks: (string | number)[];
-  css?: string[];
+  css: string[];
   name: string;
 }
 interface Manifest {
@@ -171,14 +168,13 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
   // its own dependency chunk group ([id, file, ...] pairs), minus initial
   // and runtime chunks. NestedLabel is reachable through two groups (its
   // own injected block and ThemeSection's chunk), so its entry is the
-  // union. Only webpack splits the shared module into its own chunk and
-  // records CSS chunk files.
+  // union. Only webpack splits the shared module into its own chunk.
   const sharedPrefix = isWebpack ? chunkPair('shared-format') : [];
   const expectedClientMetadata: Record<string, ModuleMetadata> = {
     [componentUrl('Counter.js')]: {
       id: './src/components/Counter.js',
       chunks: [...sharedPrefix, ...chunkPair(base('Counter.js'))],
-      ...(isWebpack ? { css: [`/assets/${base('Counter.js')}.chunk.css`] } : {}),
+      css: [`/assets/${base('Counter.js')}.chunk.css`],
       name: '*',
     },
     [componentUrl('NestedLabel.js')]: {
@@ -188,13 +184,13 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
         ...chunkPair(base('NestedLabel.js')),
         ...(isWebpack ? [] : chunkPair(base('ThemeSection.js'))),
       ],
-      ...(isWebpack ? { css: [`/assets/${base('NestedLabel.js')}.chunk.css`] } : {}),
+      css: [`/assets/${base('NestedLabel.js')}.chunk.css`],
       name: '*',
     },
     [componentUrl('ThemeSection.js')]: {
       id: './src/components/ThemeSection.js',
       chunks: [...sharedPrefix, ...chunkPair(base('ThemeSection.js'))],
-      ...(isWebpack ? { css: [`/assets/${base('ThemeSection.js')}.chunk.css`] } : {}),
+      css: [`/assets/${base('ThemeSection.js')}.chunk.css`],
       name: '*',
     },
   };
@@ -203,19 +199,19 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
     [componentUrl('Counter.js')]: {
       id: './src/components/Counter.js',
       chunks: chunkPair(base('Counter.js')),
-      ...(isWebpack ? { css: [] } : {}),
+      css: [],
       name: '*',
     },
     [componentUrl('NestedLabel.js')]: {
       id: './src/components/NestedLabel.js',
       chunks: [...chunkPair(base('NestedLabel.js')), ...chunkPair(base('ThemeSection.js'))],
-      ...(isWebpack ? { css: [] } : {}),
+      css: [],
       name: '*',
     },
     [componentUrl('ThemeSection.js')]: {
       id: './src/components/ThemeSection.js',
       chunks: chunkPair(base('ThemeSection.js')),
-      ...(isWebpack ? { css: [] } : {}),
+      css: [],
       name: '*',
     },
   };
@@ -309,27 +305,12 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       expect(payload).toContain('rendered-on-server-only');
     });
 
-    it(
-      isWebpack
-        ? 'emits stylesheet hints for the referenced client components'
-        : 'emits no stylesheet hints (rspack manifest has no css metadata — current behavior)',
-      () => {
-        const hints = styleHintRows(payload);
-        if (isWebpack) {
-          expect(hints).toEqual([
-            [`/assets/${base('Counter.js')}.chunk.css`, 'rsc-css'],
-            [`/assets/${base('ThemeSection.js')}.chunk.css`, 'rsc-css'],
-          ]);
-        } else {
-          // Documents the rspack-leg gap: no `css` in the manifest means no
-          // Flight stylesheet hints. CSS still reaches the DOM through
-          // rspack's chunk-CSS runtime (asserted in the hydration test).
-          // If this starts failing, rspack gained CSS hints — tighten the
-          // expectations to match the webpack leg.
-          expect(hints).toEqual([]);
-        }
-      },
-    );
+    it('emits stylesheet hints for the referenced client components', () => {
+      expect(styleHintRows(payload)).toEqual([
+        [`/assets/${base('Counter.js')}.chunk.css`, 'rsc-css'],
+        [`/assets/${base('ThemeSection.js')}.chunk.css`, 'rsc-css'],
+      ]);
+    });
 
     it('serializes app-declared resource hints from the public server export', () => {
       expect(payload).toContain(':HD"https://rsc-assets.example.test"');

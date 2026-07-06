@@ -41,6 +41,25 @@ const readDiagnosticCss = (result: CompileResult, entryFileSuffix: string): stri
     .join('\n');
 };
 
+const manifestMetadataFor = (
+  result: CompileResult,
+  entryFileSuffix: string,
+): CompileResult['manifest']['filePathToModuleMetadata'][string] => {
+  const entry = Object.entries(result.manifest.filePathToModuleMetadata).find(([file]) =>
+    file.endsWith(entryFileSuffix),
+  );
+  expect(entry).toBeTruthy();
+  return entry![1];
+};
+
+const readManifestCss = (result: CompileResult, entryFileSuffix: string): string =>
+  (manifestMetadataFor(result, entryFileSuffix).css ?? [])
+    .map((file) => {
+      const assetName = file.replace(/^\/assets\//, '');
+      return fs.readFileSync(path.join(result.outputPath, assetName), 'utf8');
+    })
+    .join('\n');
+
 const staticIslandClientReferences = (include: RegExp) => [
   { directory: '.', recursive: false, include },
 ];
@@ -61,6 +80,45 @@ const splitStaticIslandVendors = {
         heavyVendor: {
           test: /heavy-vendor\.js$/,
           name: 'vendors-heavy',
+          enforce: true,
+        },
+      },
+    },
+  },
+};
+
+const splitStaticIslandCssOnlyChunks = {
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      minSize: 0,
+      cacheGroups: {
+        default: false,
+        defaultVendors: false,
+        styles: {
+          name: 'styles',
+          type: 'css/mini-extract',
+          chunks: 'all',
+          enforce: true,
+        },
+      },
+    },
+  },
+};
+
+const splitStaticIslandMixedCssOnlyChunk = {
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      minSize: 0,
+      cacheGroups: {
+        default: false,
+        defaultVendors: false,
+        splitIslandStyles: {
+          test: /MixedSplitIsland\.css$/,
+          name: 'styles',
+          type: 'css/mini-extract',
+          chunks: 'all',
           enforce: true,
         },
       },
@@ -125,47 +183,6 @@ describe('RSCRspackPlugin', () => {
 
   describe('static island diagnostics', () => {
     const diagnosticsFilename = 'rsc-client-reference-diagnostics.json';
-    const captureBuildManifestCssPrefixes = (
-      options: { clientReferenceDiagnosticsFilename?: string | false } = {},
-    ): Array<string | null> => {
-      const { RSCRspackPlugin } = require(DIST_PLUGIN);
-      const plugin = new RSCRspackPlugin({ isServer: false, ...options });
-      const cssPrefixes: Array<string | null> = [];
-      const internals = plugin as {
-        getGroupAssets: (
-          chunkGroup: unknown,
-          initialChunks: Set<unknown>,
-          cssPrefix: string | null,
-        ) => { chunks: (string | number | null)[]; css: string[] };
-        buildManifest: (
-          compilation: unknown,
-          bundler: unknown,
-          diagnosticsCssFiles: Map<string, string[]>,
-        ) => unknown;
-      };
-      internals.getGroupAssets = (
-        _chunkGroup: unknown,
-        _initialChunks: Set<unknown>,
-        cssPrefix: string | null,
-      ) => {
-        cssPrefixes.push(cssPrefix);
-        return { chunks: [], css: [] };
-      };
-
-      internals.buildManifest(
-        {
-          outputOptions: { publicPath: '/assets' },
-          entrypoints: new Map(),
-          chunkGroups: [{ chunks: [] }],
-          chunkGraph: { getChunkModulesIterable: () => [] },
-          warnings: [],
-        },
-        {},
-        new Map(),
-      );
-
-      return cssPrefixes;
-    };
 
     it('emits empty diagnostics for an explicitly server-only static page config', () => {
       const result = run('static-islands', {
@@ -241,7 +258,7 @@ describe('RSCRspackPlugin', () => {
       const manifestEntry = Object.entries(result.manifest.filePathToModuleMetadata).find(([file]) =>
         file.endsWith('/StyledIsland.js'),
       )?.[1];
-      expect(manifestEntry).not.toHaveProperty('css');
+      expect(manifestEntry?.css).toEqual(['/assets/client0.chunk.css']);
 
       const diagnosticEntry = result.clientReferenceDiagnostics?.clientReferences[0]!;
       expect(diagnosticEntry.file).toContain('/StyledIsland.js');
@@ -273,6 +290,62 @@ describe('RSCRspackPlugin', () => {
       expect(childCss).toContain('.styled-island');
       expect(childCss).not.toContain('.parent-styled-island');
       expect(parentCss).toContain('.parent-styled-island');
+    });
+
+    it("scopes manifest CSS to the referenced island's chunk group when diagnostics are disabled", () => {
+      const result = run('static-islands', {
+        clientReferences: staticIslandClientReferences(
+          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/,
+        ),
+        publicPath: '/assets',
+        withCss: true,
+      });
+
+      const childCss = readManifestCss(result, '/StyledIsland.js');
+      const parentCss = readManifestCss(result, '/ParentStyledIsland.js');
+
+      expect(childCss).toContain('.styled-island');
+      expect(childCss).not.toContain('.parent-styled-island');
+      expect(parentCss).toContain('.parent-styled-island');
+    });
+
+    it('keeps CSS-only split chunk styles in the server manifest', () => {
+      const result = run('static-islands', {
+        isServer: true,
+        clientReferences: staticIslandClientReferences(/^\.\/StyledIsland\.js$/),
+        publicPath: '/assets',
+        withCss: true,
+        configExtra: splitStaticIslandCssOnlyChunks,
+      });
+
+      expect(result.assets).toContain('styles.chunk.css');
+      expect(manifestMetadataFor(result, '/StyledIsland.js').css).toEqual([
+        '/assets/styles.chunk.css',
+      ]);
+      expect(readManifestCss(result, '/StyledIsland.js')).toContain('.styled-island');
+    });
+
+    it('keeps mixed chunk-local and CSS-only split styles in the server manifest', () => {
+      const result = run('static-islands', {
+        isServer: true,
+        clientReferences: staticIslandClientReferences(/^\.\/MixedStyledIsland\.js$/),
+        publicPath: '/assets',
+        withCss: true,
+        configExtra: splitStaticIslandMixedCssOnlyChunk,
+      });
+
+      const cssFiles = manifestMetadataFor(result, '/MixedStyledIsland.js').css ?? [];
+      expect(result.assets).toEqual(
+        expect.arrayContaining(['client0.chunk.css', 'styles.chunk.css']),
+      );
+      expect(cssFiles).toEqual(
+        expect.arrayContaining(['/assets/client0.chunk.css', '/assets/styles.chunk.css']),
+      );
+      expect(cssFiles).toHaveLength(2);
+
+      const css = readManifestCss(result, '/MixedStyledIsland.js');
+      expect(css).toContain('.mixed-styled-island');
+      expect(css).toContain('.mixed-split-island');
     });
 
     it("scopes server diagnostics CSS to the referenced island's chunk group", () => {
@@ -315,45 +388,6 @@ describe('RSCRspackPlugin', () => {
       expect(childCss).toContain('.styled-island');
       expect(parentCss).toContain('.parent-styled-island');
       expect(result.clientReferenceDiagnostics?.isServer).toBe(true);
-    });
-
-    it('skips CSS asset collection when diagnostics are disabled', () => {
-      expect(captureBuildManifestCssPrefixes()).toEqual([null]);
-    });
-
-    it('keeps CSS asset collection enabled for diagnostics output', () => {
-      expect(
-        captureBuildManifestCssPrefixes({
-          clientReferenceDiagnosticsFilename: diagnosticsFilename,
-        }),
-      ).toEqual(['/assets/']);
-    });
-
-    it('keeps server diagnostics CSS from merged initial chunks without initial JS', () => {
-      const { RSCRspackPlugin } = require(DIST_PLUGIN);
-      const plugin = new RSCRspackPlugin({
-        isServer: true,
-        clientReferenceDiagnosticsFilename: diagnosticsFilename,
-      });
-      const internals = plugin as {
-        getGroupAssets: (
-          chunkGroup: unknown,
-          initialChunks: Set<unknown>,
-          cssPrefix: string | null,
-        ) => { chunks: (string | number | null)[]; css: string[] };
-      };
-      const initialChunk = {
-        id: 'server',
-        files: new Set(['server-bundle.js', 'server-bundle.css']),
-        canBeInitial: () => true,
-      };
-
-      expect(
-        internals.getGroupAssets({ chunks: [initialChunk] }, new Set([initialChunk]), '/assets/'),
-      ).toEqual({
-        chunks: [],
-        css: ['/assets/server-bundle.css'],
-      });
     });
   });
 
@@ -453,7 +487,7 @@ describe('RSCRspackPlugin', () => {
       expect(paths[0]).toContain('/A.js');
     });
 
-    it('does not preload initial entry chunks for statically imported client references', () => {
+    it('excludes default initial entry chunks for statically imported client references', () => {
       const result = run('basic-client');
       const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
         p.endsWith('ClientButton.js'),
@@ -462,13 +496,112 @@ describe('RSCRspackPlugin', () => {
 
       const entry = result.manifest.filePathToModuleMetadata[key!]!;
       const chunkFiles = manifestChunkFiles(entry.chunks);
-      const initialAssets = new Set(
-        result.assets.filter((asset) => asset === 'main.js' || asset.startsWith('vendors-')),
+
+      expect(result.assets).toContain('main.js');
+      expect(entry.id).toBe('./ClientButton.js');
+      expect(entry.css).toEqual([]);
+      expect(chunkFiles).not.toContain('main.js');
+    });
+
+    it('records split-runtime entry chunks for statically imported client references', () => {
+      const result = run('basic-client', {
+        configExtra: {
+          optimization: {
+            runtimeChunk: 'single',
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+          },
+        },
+      });
+      const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientButton.js'),
+      );
+      expect(key).toBeTruthy();
+
+      const entry = result.manifest.filePathToModuleMetadata[key!]!;
+      const chunkFiles = manifestChunkFiles(entry.chunks);
+      const initialAssets = new Set<string>(
+        result.assets.filter((asset) => asset === 'main.js' || asset === 'runtime.js'),
       );
 
       expect(entry.id).toBe('./ClientButton.js');
       expect(initialAssets.size).toBeGreaterThan(0);
-      expect(chunkFiles.filter((file) => initialAssets.has(file))).toEqual([]);
+      expect(chunkFiles.filter((file) => initialAssets.has(file))).toEqual(['main.js']);
+      expect(chunkFiles).not.toContain('runtime.js');
+    });
+
+    it('records non-runtime vendor chunks for statically imported client references', () => {
+      const result = run('eager-vendor', {
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              chunks: 'all',
+              minSize: 0,
+              cacheGroups: {
+                default: false,
+                defaultVendors: false,
+                clientVendor: {
+                  test: /react-dom/,
+                  name: 'vendors-client',
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(key).toBeTruthy();
+
+      const entry = result.manifest.filePathToModuleMetadata[key!]!;
+      const chunkFiles = manifestChunkFiles(entry.chunks);
+
+      expect(result.assets).toContain('main.js');
+      expect(result.assets).toContain('vendors-client.js');
+      expect(entry.id).toBe('./ClientWidget.js');
+      expect(chunkFiles).toContain('vendors-client.js');
+      expect(chunkFiles).not.toContain('main.js');
+    });
+
+    it('omits eager entry CSS when the entry chunk is also the runtime chunk', () => {
+      const result = run('eager-css', {
+        publicPath: '/assets/',
+        withCss: true,
+      });
+      const entry = manifestMetadataFor(result, 'Button.js');
+
+      expect(result.assets).toContain('main.css');
+      expect(entry.id).toBe('./Button.js');
+      expect(entry.css).toEqual([]);
+    });
+
+    it('records eager entry CSS when runtimeChunk is split out', () => {
+      const result = run('eager-css', {
+        publicPath: '/assets/',
+        withCss: true,
+        configExtra: {
+          optimization: {
+            runtimeChunk: 'single',
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+          },
+        },
+      });
+      const entry = manifestMetadataFor(result, 'Button.js');
+      const chunkFiles = manifestChunkFiles(entry.chunks);
+
+      expect(result.assets).toContain('main.css');
+      expect(entry.id).toBe('./Button.js');
+      expect(entry.css).toEqual(['/assets/main.css']);
+      expect(chunkFiles).toContain('main.js');
+      expect(chunkFiles).not.toContain('runtime.js');
     });
 
     it('preserves client references discovered through symlinked directories', () => {
@@ -1042,12 +1175,40 @@ describe('RSCRspackPlugin', () => {
   });
 
   describe('publicPath handling', () => {
-    it('passes publicPath "auto" through verbatim (matches webpack)', () => {
+    it('warns and avoids emitting literal publicPath "auto"', () => {
       const result = run('basic-client', { publicPath: 'auto' });
-      // Matches webpack plugin behavior: publicPath || "" — since "auto"
-      // is truthy, it passes through. The runtime may produce broken URLs
-      // like "auto/main.js" but this matches the webpack contract.
-      expect(result.manifest.moduleLoading.prefix).toBe('auto');
+      expect(result.manifest.moduleLoading.prefix).toBe('');
+      expect(result.warnings.join('\n')).toContain("output.publicPath is 'auto'");
+    });
+
+    it('warns and avoids serializing function-valued publicPath', () => {
+      const { RSCRspackPlugin } = require(DIST_PLUGIN);
+      const plugin = new RSCRspackPlugin({ isServer: false });
+      const warnings: Error[] = [];
+      const internals = plugin as {
+        buildManifest: (
+          compilation: unknown,
+          bundler: unknown,
+          diagnosticsCssFiles: Map<string, string[]>,
+        ) => { moduleLoading: { prefix: string } };
+      };
+
+      const manifest = internals.buildManifest(
+        {
+          outputOptions: { publicPath: () => '/assets/' },
+          entrypoints: new Map(),
+          chunkGroups: [],
+          chunkGraph: { getChunkModulesIterable: () => [] },
+          warnings,
+        },
+        { WebpackError: Error },
+        new Map(),
+      );
+
+      expect(manifest.moduleLoading.prefix).toBe('');
+      expect(warnings.map((warning) => warning.message).join('\n')).toContain(
+        'output.publicPath is a function',
+      );
     });
 
     it('preserves an absolute URL publicPath', () => {
@@ -1154,8 +1315,33 @@ describe('RSCRspackPlugin', () => {
       // Every second entry should look like a filename
       for (let i = 1; i < entry.chunks.length; i += 2) {
         expect(typeof entry.chunks[i]).toBe('string');
-        expect(String(entry.chunks[i]).endsWith('.js')).toBe(true);
+        expect(String(entry.chunks[i])).toMatch(/\.m?js$/);
       }
+    });
+
+    it('records .mjs chunk files', () => {
+      const result = run('basic-client', {
+        outputFilename: '[name].mjs',
+        outputChunkFilename: '[name].chunk.mjs',
+        configExtra: {
+          optimization: {
+            runtimeChunk: 'single',
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+          },
+        },
+      });
+      const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientButton.js'),
+      );
+      expect(key).toBeTruthy();
+
+      const chunkFiles = manifestChunkFiles(
+        result.manifest.filePathToModuleMetadata[key!]!.chunks,
+      );
+      expect(chunkFiles).toEqual(['main.mjs']);
+      expect(chunkFiles).not.toContain('runtime.mjs');
     });
   });
 

@@ -15,6 +15,7 @@ All notable changes to this package will be documented in this file.
 ### Fixed
 - Fixed Webpack client-reference string paths to resolve relative to the compiler context and warned when `output.publicPath: "auto"` cannot be serialized into the RSC manifest. ([#171])
 - Fixed Rspack client-reference manifests to emit deterministic chunk pair ordering under Rspack 2 while preserving the full sibling chunk set. ([#140])
+- Fixed Rspack client manifests to emit stylesheet hints, normalize unserializable `output.publicPath: "auto"`, preserve `.mjs` chunk files, and match webpack split-runtime chunk metadata. ([#172])
 - Fixed `RSCRspackPlugin` runtime injection state to be scoped by compiler, avoiding MultiCompiler and sequential-build cross-talk between rspack client/server builds with different client references or chunk names. ([#168])
 - Fixed `RSCRspackPlugin` to install the generated client-reference `splitChunks` guard after Rspack applies option defaults, so default optimization configs keep generated client chunks self-contained. ([#165])
 - Fixed watch rebuilds so rspack and webpack refresh client-reference runtime injections when `"use client"` files are added or removed without restarting the dev server. ([#164])
@@ -74,6 +75,7 @@ All notable changes to this package will be documented in this file.
 [#144]: https://github.com/shakacode/react_on_rails_rsc/pull/144
 [#167]: https://github.com/shakacode/react_on_rails_rsc/pull/167
 [#168]: https://github.com/shakacode/react_on_rails_rsc/pull/168
+[#172]: https://github.com/shakacode/react_on_rails_rsc/pull/172
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
 [#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151

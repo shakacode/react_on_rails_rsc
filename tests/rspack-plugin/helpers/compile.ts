@@ -26,6 +26,8 @@ export interface CompileOptions {
   withCss?: boolean;
   /** Applies rspack.optimize.LimitChunkCountPlugin({ maxChunks }). */
   maxChunks?: number;
+  outputFilename?: string;
+  outputChunkFilename?: string;
   /** Additional rspack config to merge. Use sparingly. */
   configExtra?: Record<string, unknown>;
 }
@@ -35,7 +37,7 @@ export interface CompileResult {
     moduleLoading: { prefix: string; crossOrigin: string | null };
     filePathToModuleMetadata: Record<
       string,
-      { id: string; chunks: (string | number)[]; name: string }
+      { id: string; chunks: (string | number)[]; css: string[]; name: string }
     >;
   };
   manifestSource: string;
@@ -57,6 +59,7 @@ export interface CompileResult {
   };
   clientReferenceDiagnosticsSource?: string;
   assets: string[];
+  warnings: string[];
   outputPath: string;
 }
 
@@ -81,6 +84,8 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     crossOriginLoading: options.crossOriginLoading,
     withCss: options.withCss,
     maxChunks: options.maxChunks,
+    outputFilename: options.outputFilename,
+    outputChunkFilename: options.outputChunkFilename,
     configExtra: serializeForRunner(options.configExtra ?? {}),
   };
   const argsFile = path.join(outputPath, '__args__.json');
@@ -139,6 +144,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     clientReferenceDiagnostics,
     clientReferenceDiagnosticsSource,
     assets: result.assets ?? [],
+    warnings: result.warnings ?? [],
     outputPath,
   };
 };

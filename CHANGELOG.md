@@ -5,6 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Added an opt-in `entryClientReferencesFilename` option to `RSCWebpackPlugin` and `RSCRspackPlugin` that emits, for each entrypoint, the client references statically reachable from its module graph, keyed by the same `file://` hrefs as the client manifests. The client manifests themselves are unchanged; a downstream consumer can join the asset against the client manifest to scope per-route client-reference metadata, so static RSC pages stop needing a global `clientReferences: []` workaround. ([#176])
 - Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. The default `react-on-rails-rsc/server` fallback keeps failing fast at import time without the `react-server` condition while still publishing the expanded type surface. ([#143])
 - Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
 
@@ -76,6 +77,7 @@ All notable changes to this package will be documented in this file.
 [#167]: https://github.com/shakacode/react_on_rails_rsc/pull/167
 [#168]: https://github.com/shakacode/react_on_rails_rsc/pull/168
 [#172]: https://github.com/shakacode/react_on_rails_rsc/pull/172
+[#176]: https://github.com/shakacode/react_on_rails_rsc/pull/176
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
 [#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151

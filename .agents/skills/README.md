@@ -3,12 +3,13 @@
 This directory is for `react_on_rails_rsc`-specific skills and deliberate local overrides only.
 Shared batch, review, verification, audit, and changelog skills come from the installed/shared
 `agent-workflows` pack so Codex does not show duplicate repo-local and personal skill entries.
-`AGENTS.md` (repo root) is the canonical agent policy; `.claude/skills` is a symlink to this
-directory so Claude Code exposes the local RSC workflows as slash commands, and `.agents/workflows/`
-holds deeper operating models for agents without skill support.
+`AGENTS.md` (repo root) is the canonical agent policy; the tracked `.claude/skills` symlink points to
+this directory so Claude Code exposes the local RSC workflows as slash commands, and
+`.agents/workflows/` holds deeper operating models for agents without skill support.
 
 Invoke shared skills with their `$name` (for example `$pr-batch`, `$plan-pr-batch`, or
-`$adversarial-pr-review`). When a script needs a shared skill directory, resolve it with
+`$adversarial-pr-review`). Shared skills require the installed/shared `agent-workflows` pack or
+`AGENT_WORKFLOWS_ROOT`; when a script needs a shared skill directory, resolve it with
 `.agents/bin/shared-skill-dir <skill-name>`.
 
 For the maintainer-facing guide to choosing and running these skills, see

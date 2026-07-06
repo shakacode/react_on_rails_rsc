@@ -11,7 +11,7 @@ here. Source lives in `src/`, tests in `tests/`, build output in `dist/`.
 ## Reusable Workflows
 
 - `AGENTS.md`: canonical entry point for agent instructions and workflow discovery
-- Shared agent workflow skills come from the installed/shared `agent-workflows` pack. Invoke them by name, such as `$pr-batch`, `$verify`, or `$post-merge-audit`.
+- Shared agent workflow skills come from the installed/shared `agent-workflows` pack. Invoke them by name, such as `$pr-batch`, `$verify`, or `$post-merge-audit`; install that pack or set `AGENT_WORKFLOWS_ROOT` before using shared skills that have no local workflow prompt.
 - `.agents/skills/`: repo-local RSC-specific skills only; `.claude/skills` is a symlink here so Claude Code exposes those local workflows as slash commands
 - `.agents/bin/shared-skill-dir`: resolve a shared skill path when a script needs the installed/shared file location
 - `.agents/workflows/`: shared prompt templates and reusable workflows for Codex, GPT, and other non-Claude tools

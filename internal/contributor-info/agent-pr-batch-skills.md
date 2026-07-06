@@ -7,6 +7,10 @@ repository.
 `AGENTS.md` is the policy source of truth. The skill and workflow files below are operating guides
 that must stay aligned with it.
 
+Unlinked `$...` entries in the table are installed/shared `agent-workflows` skills, not repo-local
+files. Install the shared pack or set `AGENT_WORKFLOWS_ROOT` before using them; linked `.agents/*`
+entries are the local fallbacks or RSC-specific skills kept in this repository.
+
 When one coordinator runs multiple batches across machines, launch surfaces, or
 repositories, use [Multi-Batch Operations](multi-batch-operations.md) for the
 operator-level topology, launcher roles, cross-batch routing, and failure

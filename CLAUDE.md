@@ -9,9 +9,10 @@ with `AGENTS.md`, follow `AGENTS.md`.
 not a Rails app or Ruby gem. Source lives in `src/`, tests live in `tests/`, and
 generated build output lives in `dist/`.
 
-`.claude/skills` is a symlink to `../.agents/skills`; add shared skills under
-`.agents/skills`, not under `.claude/skills` directly. Keep
-`.claude/commands/update-changelog.md` intact because it backs the
+`.claude/skills` is a tracked symlink to `../.agents/skills`. Keep that
+directory for repo-local RSC-specific skills only; shared workflow skills come
+from the installed/shared `agent-workflows` pack and should not be copied here.
+Keep `.claude/commands/update-changelog.md` intact because it backs the
 `/update-changelog` Claude Code slash command.
 
 ## Commands
@@ -57,8 +58,8 @@ non-prerelease versions publish with `latest` only after the downstream release
 gate accepts the candidate.
 
 See `AGENTS.md`, `docs/releasing.md`, and
-`.agents/skills/update-changelog/SKILL.md` for release policy. If those files
-conflict, `AGENTS.md` wins. If `docs/releasing.md` is not present in your
+`.agents/skills/rsc-update-changelog/SKILL.md` for release policy. If those
+files conflict, `AGENTS.md` wins. If `docs/releasing.md` is not present in your
 checkout, treat its contents as `UNKNOWN`.
 
 The runtime-line versioning policy lives in `docs/versioning.md`; use it before

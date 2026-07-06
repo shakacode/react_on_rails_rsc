@@ -7,6 +7,10 @@ repository.
 `AGENTS.md` is the policy source of truth. The skill and workflow files below are operating guides
 that must stay aligned with it.
 
+Unlinked `$...` entries in the table are installed/shared `agent-workflows` skills, not repo-local
+files. Install the shared pack or set `AGENT_WORKFLOWS_ROOT` before using them; linked `.agents/*`
+entries are the local fallbacks or RSC-specific skills kept in this repository.
+
 When one coordinator runs multiple batches across machines, launch surfaces, or
 repositories, use [Multi-Batch Operations](multi-batch-operations.md) for the
 operator-level topology, launcher roles, cross-batch routing, and failure
@@ -16,17 +20,18 @@ drills. This file stays focused on skill selection and per-batch sizing.
 
 | Skill or workflow | Use when | Primary output |
 | --- | --- | --- |
-| [`$evaluate-issue`](../../.agents/skills/evaluate-issue/SKILL.md) | An issue, proposed fix, or review suggestion may be speculative, over-scoped, AI/code-analysis-only, or unclear in value. | A disposition: fix now, fix later, park, close, document/work around, or ask for product input. |
-| [`$plan-pr-batch`](../../.agents/skills/plan-pr-batch/SKILL.md) | The user wants to choose or shape a set of issues/PRs before launching workers. | A verified Batch Plan and a ready `$pr-batch` goal prompt. |
-| [`$pr-batch`](../../.agents/skills/pr-batch/SKILL.md) | The target list is exact, trusted, and ready to run, split across workers, or convert into a Conductor/Codex `/goal`. | A launch plan, worker split, or final goal prompt for the batch. |
-| [`$address-review`](../../.agents/skills/address-review/SKILL.md) | A PR has GitHub review comments, review summaries, or discussion feedback to triage and address. | A classified review queue with must-fix, discuss, optional, and skipped items. |
-| [`$adversarial-pr-review`](../../.agents/skills/adversarial-pr-review/SKILL.md) | A PR needs skeptical pre-merge or post-merge risk review, especially after concurrent agent work or before release readiness. | A report-only risk review with blocking, discuss, follow-up, decision, and noise classifications. |
-| [`$post-merge-audit`](../../.agents/skills/post-merge-audit/SKILL.md) | A set of merged PRs needs review for missed gates, late comments, missing changelog entries, cross-PR interactions, or release risk. | A deduped audit report and issue plan, without creating issues unless approved. |
-| [`$autoreview`](../../.agents/skills/autoreview/SKILL.md) | A non-trivial local diff needs an independent structured review before commit, push, PR readiness, or merge readiness. | Verified findings from a second-model review loop. |
-| [`$verify`](../../.agents/skills/verify/SKILL.md) | A branch needs local pre-PR or pre-push verification selected from `AGENTS.md` and changed files. | Exact commands run, pass/fail status, and next fix if a check fails. |
-| [`$run-ci`](../../.agents/skills/run-ci/SKILL.md) | The user wants to reproduce or choose local checks corresponding to CI. | A local CI check plan and execution summary. |
-| [`$verify-pr-fix`](../../.agents/skills/verify-pr-fix/SKILL.md) | A bug-fix PR needs manual reproduction before and after the fix. | Evidence that the bug reproduced before and is gone after, or a clear failure report. |
-| [`$update-changelog`](../../.agents/skills/update-changelog/SKILL.md) | User-visible changes need a changelog entry or a release/prerelease heading. | A Keep-a-Changelog update aligned with `scripts/release.sh`. |
+| `$evaluate-issue` | An issue, proposed fix, or review suggestion may be speculative, over-scoped, AI/code-analysis-only, or unclear in value. | A disposition: fix now, fix later, park, close, document/work around, or ask for product input. |
+| `$plan-pr-batch` | The user wants to choose or shape a set of issues/PRs before launching workers. | A verified Batch Plan and a ready `$pr-batch` goal prompt. |
+| `$pr-batch` | The target list is exact, trusted, and ready to run, split across workers, or convert into a Conductor/Codex `/goal`. | A launch plan, worker split, or final goal prompt for the batch. |
+| `$address-review` | A PR has GitHub review comments, review summaries, or discussion feedback to triage and address. | A classified review queue with must-fix, discuss, optional, and skipped items. |
+| `$adversarial-pr-review` | A PR needs skeptical pre-merge or post-merge risk review, especially after concurrent agent work or before release readiness. | A report-only risk review with blocking, discuss, follow-up, decision, and noise classifications. |
+| `$post-merge-audit` | A set of merged PRs needs review for missed gates, late comments, missing changelog entries, cross-PR interactions, or release risk. | A deduped audit report and issue plan, without creating issues unless approved. |
+| `$autoreview` | A non-trivial local diff needs an independent structured review before commit, push, PR readiness, or merge readiness. | Verified findings from a second-model review loop. |
+| `$verify` | A branch needs local pre-PR or pre-push verification selected from `AGENTS.md` and changed files. | Exact commands run, pass/fail status, and next fix if a check fails. |
+| `$run-ci` | The user wants to reproduce or choose local checks corresponding to CI. | A local CI check plan and execution summary. |
+| [`$rsc-triage`](../../.agents/skills/rsc-triage/SKILL.md) | The open RSC work status or backlog map needs a live refresh. | A verified live-state summary or an updated `docs/open-rsc-work-status.md`. |
+| [`$rsc-verify-pr-fix`](../../.agents/skills/rsc-verify-pr-fix/SKILL.md) | A bug-fix PR needs RSC/package-specific manual reproduction before and after the fix. | Evidence that the bug reproduced before and is gone after, or a clear failure report. |
+| [`$rsc-update-changelog`](../../.agents/skills/rsc-update-changelog/SKILL.md) | User-visible package changes need a changelog entry or a release/prerelease heading. | A Keep-a-Changelog update aligned with `scripts/release.sh`. |
 | [`pr-processing.md`](../../.agents/workflows/pr-processing.md) | Any assigned issue, existing PR, review-fix pass, merge-readiness check, or multi-PR landing plan needs the full operating model. | The canonical step-by-step PR processing workflow for agents without skill support. |
 
 [`$stress-test`](../../.agents/skills/stress-test/SKILL.md) is currently a reference only. It was

@@ -12,6 +12,7 @@ means that capability is n/a here.
 | `test` | Run tests | `yarn test` (`test:rsc` + `test:non-rsc`) |
 | `build` | Build / type-check | `yarn build` (tsc; also the typecheck) |
 | `lint` | Lint / format | n/a — eslint/prettier are not wired into a blocking gate |
+| `shared-skill-dir` | Resolve an installed/shared skill directory | `<path-to-skill>` or a clear error |
 
 For one RSC test file: `NODE_CONDITIONS=react-server yarn jest <path>` (for
 `*.rsc.test.*`). Non-command policy lives in [`../agent-workflow.yml`](../agent-workflow.yml).

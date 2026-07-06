@@ -166,7 +166,7 @@ type AnyChunk = {
 type ModuleMetadata = {
   id: string | number | null;
   chunks: (string | number | null)[];
-  css?: string[];
+  css: string[];
   name: string;
 };
 
@@ -640,6 +640,7 @@ export class RSCRspackPlugin {
     const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
     const generatedChunkNamesByResource = this.getGeneratedChunkNamesByResource();
     const runtimeChunkFiles = this.getRuntimeChunkFiles(compilation);
+    const availableChunkGroupNames = this.getAvailableChunkGroupNames(compilation);
 
     const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
     const isResolvedClientReference = (resource: string | undefined): resource is string =>
@@ -679,6 +680,15 @@ export class RSCRspackPlugin {
       const normalizedChunkGroup = { name: chunkGroup.name, chunks: groupChunkList };
       const groupChunks = this.getGroupAssets(normalizedChunkGroup, runtimeChunkFiles);
       const groupChunkSet = new Set<AnyChunk>(groupChunkList);
+      const chunkCssCache = new Map<AnyChunk, string[]>();
+      const getCachedChunkCss = (chunk: AnyChunk): string[] => {
+        let cached = chunkCssCache.get(chunk);
+        if (!cached) {
+          cached = this.getChunkCss(chunk, runtimeChunkFiles, cssPrefix);
+          chunkCssCache.set(chunk, cached);
+        }
+        return cached;
+      };
       const getOutgoingConnections =
         compilation.moduleGraph?.getOutgoingConnections?.bind(compilation.moduleGraph);
 
@@ -689,7 +699,7 @@ export class RSCRspackPlugin {
           for (const cssChunkUnknown of compilation.chunkGraph.getModuleChunks(cssModule)) {
             const cssChunk = cssChunkUnknown as AnyChunk;
             if (!groupChunkSet.has(cssChunk)) continue;
-            for (const cssFile of this.getChunkCss(cssChunk, runtimeChunkFiles, cssPrefix)) {
+            for (const cssFile of getCachedChunkCss(cssChunk)) {
               files.add(cssFile);
             }
           }
@@ -711,13 +721,11 @@ export class RSCRspackPlugin {
         return [...files];
       };
 
-      const mergeDirectCss = (chunkCss: string[], module: AnyModule): string[] => {
-        const siblingCss = directCssDepFiles(module);
-        return siblingCss.length > 0 ? [...new Set([...chunkCss, ...siblingCss])] : chunkCss;
-      };
+      const mergeCssFiles = (chunkCss: string[], siblingCss: string[]): string[] =>
+        siblingCss.length > 0 ? [...new Set([...chunkCss, ...siblingCss])] : chunkCss;
 
       for (const chunk of groupChunkList) {
-        const chunkCss = this.getChunkCss(chunk, runtimeChunkFiles, cssPrefix);
+        const chunkCss = getCachedChunkCss(chunk);
         for (const m of compilation.chunkGraph.getChunkModulesIterable(chunk)) {
           const mod = m as AnyModule;
 
@@ -730,13 +738,16 @@ export class RSCRspackPlugin {
           // Match the webpack plugin: client references are injected as async
           // boundaries, so any concatenated wrapper owns the CSS dependency
           // edges needed for sibling CSS-only chunk recovery.
-          const manifestCss = mayBeClientReference ? mergeDirectCss(chunkCss, mod) : chunkCss;
+          const directCss = mayBeClientReference ? directCssDepFiles(mod) : [];
+          const manifestCss = mergeCssFiles(chunkCss, directCss);
           if (isResolvedClientReference(mod.resource)) {
             const moduleCss = this.getCssForModule(
               mod.resource,
               normalizedChunkGroup,
               manifestCss,
+              directCss,
               generatedChunkNamesByResource,
+              availableChunkGroupNames,
             );
             this.recordModule(
               mod,
@@ -752,11 +763,17 @@ export class RSCRspackPlugin {
             for (const inner of mod.modules) {
               if (isRuntimeResource(inner.resource, this.options.isServer)) clientFileNameFound = true;
               if (!isResolvedClientReference(inner.resource)) continue;
+              // Rspack can fold an eager "use client" module in as an inner
+              // module; recover its direct CSS without inheriting wrapper CSS.
+              const innerDirectCss = directCssDepFiles(inner);
+              const innerManifestCss = mergeCssFiles(chunkCss, innerDirectCss);
               const moduleCss = this.getCssForModule(
                 inner.resource,
                 normalizedChunkGroup,
-                manifestCss,
+                innerManifestCss,
+                innerDirectCss,
                 generatedChunkNamesByResource,
+                availableChunkGroupNames,
               );
               this.recordModule(
                 inner,
@@ -940,12 +957,15 @@ export class RSCRspackPlugin {
     resource: string | undefined,
     chunkGroup: AnyChunkGroup,
     css: string[],
+    fallbackCss: string[],
     generatedChunkNamesByResource: ReadonlyMap<string, string>,
+    availableChunkGroupNames: ReadonlySet<string>,
   ): string[] {
     if (!resource || css.length === 0) return css;
     const generatedChunkName = generatedChunkNamesByResource.get(resource);
     if (!generatedChunkName) return css;
-    return this.chunkGroupHasName(chunkGroup, generatedChunkName) ? css : [];
+    if (this.chunkGroupHasName(chunkGroup, generatedChunkName)) return css;
+    return availableChunkGroupNames.has(generatedChunkName) ? [] : fallbackCss;
   }
 
   private chunkGroupHasName(chunkGroup: AnyChunkGroup, generatedChunkName: string): boolean {
@@ -955,6 +975,23 @@ export class RSCRspackPlugin {
       if (chunk.name === generatedChunkName) return true;
     }
     return false;
+  }
+
+  private getAvailableChunkGroupNames(compilation: AnyCompilation): Set<string> {
+    const names = new Set<string>();
+    for (const chunkGroup of compilation.chunkGroups) {
+      const chunks = [...chunkGroup.chunks];
+      // Rspack can keep an empty plugin-created group when an eager import
+      // makes the generated client chunk unnecessary; that still needs the
+      // fallback entry group to provide CSS.
+      if (chunks.length === 0) continue;
+      if (chunkGroup.name) names.add(chunkGroup.name);
+      for (const chunkUnknown of chunks) {
+        const chunk = chunkUnknown as { name?: string };
+        if (chunk.name) names.add(chunk.name);
+      }
+    }
+    return names;
   }
 
   private sortChunkPairs(chunks: (string | number | null)[]): (string | number | null)[] {
@@ -1028,6 +1065,7 @@ export class RSCRspackPlugin {
       const metadata: ModuleMetadata = {
         id: moduleId,
         chunks: this.sortChunkPairs(chunks),
+        css: [],
         name: '*',
       };
       this.recordManifestCssFiles(metadata, css);
@@ -1038,7 +1076,6 @@ export class RSCRspackPlugin {
 
   private recordManifestCssFiles(metadata: ModuleMetadata, css: string[]): void {
     if (css.length === 0) return;
-    if (!metadata.css) metadata.css = [];
     for (const cssFile of css) {
       if (!metadata.css.includes(cssFile)) metadata.css.push(cssFile);
     }

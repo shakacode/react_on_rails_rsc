@@ -69,7 +69,7 @@ if (!BUNDLERS.every((b) => b === 'webpack' || b === 'rspack')) {
 interface ModuleMetadata {
   id: string;
   chunks: (string | number)[];
-  css?: string[];
+  css: string[];
   name: string;
 }
 interface Manifest {
@@ -199,19 +199,19 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
     [componentUrl('Counter.js')]: {
       id: './src/components/Counter.js',
       chunks: chunkPair(base('Counter.js')),
-      ...(isWebpack ? { css: [] } : {}),
+      css: [],
       name: '*',
     },
     [componentUrl('NestedLabel.js')]: {
       id: './src/components/NestedLabel.js',
       chunks: [...chunkPair(base('NestedLabel.js')), ...chunkPair(base('ThemeSection.js'))],
-      ...(isWebpack ? { css: [] } : {}),
+      css: [],
       name: '*',
     },
     [componentUrl('ThemeSection.js')]: {
       id: './src/components/ThemeSection.js',
       chunks: chunkPair(base('ThemeSection.js')),
-      ...(isWebpack ? { css: [] } : {}),
+      css: [],
       name: '*',
     },
   };

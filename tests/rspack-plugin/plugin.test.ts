@@ -499,6 +499,7 @@ describe('RSCRspackPlugin', () => {
 
       expect(result.assets).toContain('main.js');
       expect(entry.id).toBe('./ClientButton.js');
+      expect(entry.css).toEqual([]);
       expect(chunkFiles).not.toContain('main.js');
     });
 
@@ -527,6 +528,79 @@ describe('RSCRspackPlugin', () => {
       expect(entry.id).toBe('./ClientButton.js');
       expect(initialAssets.size).toBeGreaterThan(0);
       expect(chunkFiles.filter((file) => initialAssets.has(file))).toEqual(['main.js']);
+      expect(chunkFiles).not.toContain('runtime.js');
+    });
+
+    it('records non-runtime vendor chunks for statically imported client references', () => {
+      const result = run('eager-vendor', {
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              chunks: 'all',
+              minSize: 0,
+              cacheGroups: {
+                default: false,
+                defaultVendors: false,
+                clientVendor: {
+                  test: /react-dom/,
+                  name: 'vendors-client',
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
+        p.endsWith('ClientWidget.js'),
+      );
+      expect(key).toBeTruthy();
+
+      const entry = result.manifest.filePathToModuleMetadata[key!]!;
+      const chunkFiles = manifestChunkFiles(entry.chunks);
+
+      expect(result.assets).toContain('main.js');
+      expect(result.assets).toContain('vendors-client.js');
+      expect(entry.id).toBe('./ClientWidget.js');
+      expect(chunkFiles).toContain('vendors-client.js');
+      expect(chunkFiles).not.toContain('main.js');
+    });
+
+    it('omits eager entry CSS when the entry chunk is also the runtime chunk', () => {
+      const result = run('eager-css', {
+        publicPath: '/assets/',
+        withCss: true,
+      });
+      const entry = manifestMetadataFor(result, 'Button.js');
+
+      expect(result.assets).toContain('main.css');
+      expect(entry.id).toBe('./Button.js');
+      expect(entry.css).toEqual([]);
+    });
+
+    it('records eager entry CSS when runtimeChunk is split out', () => {
+      const result = run('eager-css', {
+        publicPath: '/assets/',
+        withCss: true,
+        configExtra: {
+          optimization: {
+            runtimeChunk: 'single',
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+          },
+        },
+      });
+      const entry = manifestMetadataFor(result, 'Button.js');
+      const chunkFiles = manifestChunkFiles(entry.chunks);
+
+      expect(result.assets).toContain('main.css');
+      expect(entry.id).toBe('./Button.js');
+      expect(entry.css).toEqual(['/assets/main.css']);
+      expect(chunkFiles).toContain('main.js');
       expect(chunkFiles).not.toContain('runtime.js');
     });
 

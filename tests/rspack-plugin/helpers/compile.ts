@@ -37,7 +37,7 @@ export interface CompileResult {
     moduleLoading: { prefix: string; crossOrigin: string | null };
     filePathToModuleMetadata: Record<
       string,
-      { id: string; chunks: (string | number)[]; css?: string[]; name: string }
+      { id: string; chunks: (string | number)[]; css: string[]; name: string }
     >;
   };
   manifestSource: string;

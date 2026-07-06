@@ -7,7 +7,7 @@ This directory preserves the patch history from
 
 These files are historical artifacts only. They are not the active
 runtime-upgrade path. The current strategy is Option 5 in
-[`docs/internal/eliminate-react-fork.md`](../../../docs/internal/eliminate-react-fork.md):
+[`internal/docs/eliminate-react-fork.md`](../../../internal/docs/eliminate-react-fork.md):
 use stock `react-server-dom-webpack` from npm, with Option 4 patch files as
 the fallback if a stock-runtime migration gate fails.
 
@@ -66,7 +66,7 @@ git format-patch e46103dc9..origin/fix/3211-rsc-css-deferred-suspense -o topic-f
   tag `v19.2.7` when checked on 2026-06-13. The archived topic branch is the
   older loader-wrapper/global-manifest implementation; the current project plan
   is the wrapper-layer stock-runtime design documented in
-  `docs/internal/eliminate-react-fork.md`.
+  `internal/docs/eliminate-react-fork.md`.
   Do not reapply the archived FOUC patch verbatim: it writes manifest state to
   `globalThis.__reactFlightClientManifest`, which is unsafe for concurrent
   renders because one request can overwrite another request's manifest. Any

@@ -76,8 +76,8 @@ tracks them for its own testing workflow.
 
 Use a canary publish only when a maintainer needs to share the same temporary
 build with another developer or CI. This is not the official release process;
-official releases still follow `docs/internal/releasing.md` and the dist-tag policy in
-`docs/internal/versioning.md`.
+official releases still follow `internal/docs/releasing.md` and the dist-tag policy in
+`internal/docs/versioning.md`.
 
 Choose an unpublished prerelease version in the same package runtime line as the
 branch being tested. For example, a temporary build from the `19.2.x` line might

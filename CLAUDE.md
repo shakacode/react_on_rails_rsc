@@ -57,12 +57,12 @@ tag and npm version are unused, and confirms the checkout is clean synced
 non-prerelease versions publish with `latest` only after the downstream release
 gate accepts the candidate.
 
-See `AGENTS.md`, `docs/internal/releasing.md`, and
+See `AGENTS.md`, `internal/docs/releasing.md`, and
 `.agents/skills/rsc-update-changelog/SKILL.md` for release policy. If those
-files conflict, `AGENTS.md` wins. If `docs/internal/releasing.md` is not
+files conflict, `AGENTS.md` wins. If `internal/docs/releasing.md` is not
 present in your checkout, treat its contents as `UNKNOWN`.
 
-The runtime-line versioning policy lives in `docs/internal/versioning.md`; use
+The runtime-line versioning policy lives in `internal/docs/versioning.md`; use
 it before choosing package versions, peer ranges, prerelease tags, or
 runtime-sourcing release notes.
 
@@ -70,7 +70,7 @@ runtime-sourcing release notes.
 
 Never hand-edit files under `src/react-server-dom-webpack/`. Those files are
 runtime artifacts produced by legacy React upgrade flow and replacement
-tooling. Review `docs/internal/eliminate-react-fork.md` before changing runtime
+tooling. Review `internal/docs/eliminate-react-fork.md` before changing runtime
 strategy.
 
 The stock-runtime strategy is selected, but `main` still carries the vendored

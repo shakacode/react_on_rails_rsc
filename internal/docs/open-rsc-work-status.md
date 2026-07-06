@@ -6,7 +6,7 @@ workers toward already-closed work. Use the live GitHub backlog and the agent
 triage workflow below instead.
 
 _Last modified: see
-[git history](https://github.com/shakacode/react_on_rails_rsc/commits/main/docs/internal/open-rsc-work-status.md)._
+[git history](https://github.com/shakacode/react_on_rails_rsc/commits/main/internal/docs/open-rsc-work-status.md)._
 
 ## Live Backlog
 

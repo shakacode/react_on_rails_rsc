@@ -35,12 +35,12 @@ This package provides internal tooling for React Server Components integration:
 ## Versioning
 
 The package `major.minor` tracks the React runtime line it ships or requires.
-Maintainer policy lives in [`docs/internal/versioning.md`](docs/internal/versioning.md).
+Maintainer policy lives in [`internal/docs/versioning.md`](internal/docs/versioning.md).
 
 ## Releasing
 
 Release this package from `main` using the changelog-driven workflow in
-[`docs/internal/releasing.md`](docs/internal/releasing.md). Run
+[`internal/docs/releasing.md`](internal/docs/releasing.md). Run
 `yarn release:dry-run` before `yarn release`.
 
 ## Compatibility Policy

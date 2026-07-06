@@ -2,7 +2,7 @@
 
 Use this workflow when an agent is assigned an issue, an existing PR, a PR review-fix pass, or a multi-PR landing plan. The goal is to reduce review turns, CI churn, and follow-up issue noise by doing more local work before asking GitHub to spend reviewer or runner time.
 
-For high-concurrency issue or PR batches, use `.agents/skills/pr-batch/SKILL.md` when skills are available. A memorable invocation is:
+For high-concurrency issue or PR batches, use the installed/shared `$pr-batch` skill when skills are available. A memorable invocation is:
 
 ```text
 $pr-batch
@@ -15,9 +15,9 @@ For one coordinator running multiple batches across machines, launch surfaces,
 or the React on Rails / RSC repositories, use
 `internal/contributor-info/multi-batch-operations.md`.
 
-For post-merge audits after a concurrent batch or before a release candidate, use `.agents/skills/post-merge-audit/SKILL.md` when skills are available. Reusable audit, comparison, issue-creation, and Claude handoff prompts live in `.agents/workflows/post-merge-audit.md`.
+For post-merge audits after a concurrent batch or before a release candidate, use `$post-merge-audit` when skills are available. Reusable audit, comparison, issue-creation, and Claude handoff prompts live in `.agents/workflows/post-merge-audit.md`.
 
-For adversarial pre-merge or post-merge PR review, use `.agents/skills/adversarial-pr-review/SKILL.md` when skills are available. Reusable Codex, Claude, and comparison prompts live in `.agents/workflows/adversarial-pr-review.md`.
+For adversarial pre-merge or post-merge PR review, use `$adversarial-pr-review` when skills are available. Reusable Codex, Claude, and comparison prompts live in `.agents/workflows/adversarial-pr-review.md`.
 
 ## Default Operating Model
 
@@ -29,7 +29,7 @@ For adversarial pre-merge or post-merge PR review, use `.agents/skills/adversari
    - Confirm the issue or PR describes a real project benefit, not just speculative polish or churn.
    - Push back on poorly defined, low-value, or harmful requests before creating a PR.
    - For assigned issues, an acceptable outcome may be an issue comment explaining why no PR should be created.
-   - When the value, priority, or proposed fix scope is unclear, use `.agents/skills/evaluate-issue/SKILL.md` before implementation (or `.agents/workflows/evaluate-issue.md` for agents without skill support).
+   - When the value, priority, or proposed fix scope is unclear, use `$evaluate-issue` before implementation (or `.agents/workflows/evaluate-issue.md` for agents without skill support).
 3. Isolate the work:
    - Fetch/prune `main`, confirm the expected repository root, and verify nested repo paths before assigning work.
    - When the private `shakacode/agent-coordination` backend is available
@@ -273,7 +273,7 @@ Workers should not turn product-decision blockers into speculative PRs. They sho
 
 If the user is using `/plan`, or asks to prepare a `/goal`, stop after producing the approved plan and exact `/goal` text. Do not begin implementation just because the plan was approved unless the user explicitly says to launch now.
 
-Keep this goal prompt aligned with `.agents/skills/pr-batch/SKILL.md`,
+Keep this goal prompt aligned with the installed/shared `$pr-batch` skill,
 including the review/audit gate paragraphs.
 
 Use this goal prompt shape:
@@ -315,7 +315,7 @@ verification.
 
 For high-risk cases above, run Claude's `/simplify` after all required review passes for that case are clean, including Claude Code review when required, and before the final push or readiness report.
 
-<!-- Keep this /simplify block in sync with .agents/skills/pr-batch/SKILL.md and its Goal Prompt Template. -->
+<!-- Keep this /simplify block in sync with the installed/shared $pr-batch skill and its Goal Prompt Template. -->
 
 - Preferred invocation: `claude -p '/simplify origin/<base>'`, adjusting `<base>` to the PR's real base branch, and using it only when that command targets the current branch diff.
 - Fallback target form: if the preferred command cannot target the diff correctly, use the local Claude-supported range form, such as `/simplify origin/<base>...HEAD`. The target must be the PR/branch diff, for example `origin/main...HEAD`, not an empty uncommitted diff.
@@ -387,7 +387,7 @@ Before merge or final readiness, scan the PR description for the decision log an
 
 ### Batch Handoff Format
 
-<!-- Canonical batch handoff copy. `.agents/skills/pr-batch/SKILL.md` should point here instead of duplicating this section. -->
+<!-- Canonical batch handoff copy. The installed/shared $pr-batch skill should point here instead of duplicating this section. -->
 
 Split batch handoffs into two sections:
 
@@ -516,7 +516,7 @@ asking GitHub reviewers or CI to spend another cycle.
 1. Commit the intended implementation batch locally first so every later suggestion has a
    clean before/after diff. Do not push only to trigger review.
 2. Apply the local/adversarial self-review gate on the committed branch diff, normally via
-   `.agents/skills/autoreview/SKILL.md`. The default engine is `codex review --base origin/main` or
+   `$autoreview`. The default engine is `codex review --base origin/main` or
    the PR's real base.
 3. When the maintainer asks for Claude review, or when the change is high-risk,
    CI/workflow/build-config, dependency/runtime-version, or broad-refactor scoped, run
@@ -667,7 +667,7 @@ still running.
 
 ## Review Comment Handling
 
-Use `.agents/skills/address-review/SKILL.md` when skills are available; Claude Code exposes the same workflow as `/address-review`. For assistants without skill support, use `.agents/workflows/address-review.md`. The default stance is:
+Use `$address-review` when skills are available. For assistants without skill support, use `.agents/workflows/address-review.md`. The default stance is:
 
 - `MUST-FIX`: fix in the PR.
 - `DISCUSS`: ask the user or make a narrow, evidence-backed decision.
@@ -712,7 +712,7 @@ Use `address-review` for actionable GitHub review comments instead of skimming t
 
 ### Adversarial Review Gate
 
-Use `.agents/skills/adversarial-pr-review/SKILL.md` for high-risk PRs, concurrent batch PRs, suspected bad merges, release-candidate risk, or when the user asks for a Claude/Codex red-team pass.
+Use `$adversarial-pr-review` for high-risk PRs, concurrent batch PRs, suspected bad merges, release-candidate risk, or when the user asks for a Claude/Codex red-team pass.
 
 The adversarial review is report-only by default. It must check inline review comments, review timing, missing changelog entries, changed agent instructions, validation gaps, untrusted PR content, and cross-PR interactions. All `BLOCKING` and `DISCUSS` findings must be fixed, explicitly decided, or waived before final readiness.
 
@@ -729,7 +729,7 @@ When the user wants Claude as an independent PR reviewer:
 5. Fetch Claude review comments and classify them with `address-review`.
 6. Do not mark the PR ready or merge until Claude's `BLOCKING`, `MUST-FIX`, `DISCUSS`, compatibility, security, regression, and missing-changelog findings are fixed, explicitly decided, or waived by a maintainer.
 
-For local pre-push review, use the configured local review tool such as `.agents/skills/autoreview/SKILL.md` or `codex review`. Use Claude PR review after a draft PR exists unless the Claude tooling explicitly supports local diff review.
+For local pre-push review, use the configured local review tool such as `$autoreview` or `codex review`. Use Claude PR review after a draft PR exists unless the Claude tooling explicitly supports local diff review.
 
 ## Follow-Up Tracking Policy
 
@@ -823,7 +823,7 @@ Low-risk batch auto-merge requires all of the following:
   release-process changes.
 
 Comment tiers (`MUST-FIX`, `DISCUSS`, `OPTIONAL`, `SKIPPED`) are assigned by
-`.agents/skills/address-review/SKILL.md` when skills are available; otherwise use
+`$address-review` when skills are available; otherwise use
 `.agents/workflows/address-review.md` as the fallback.
 
 If approved and green but not merging immediately, use the repository's standard `ready-to-merge` label when available.

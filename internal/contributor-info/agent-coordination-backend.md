@@ -6,8 +6,8 @@ repository for shared claim, heartbeat, and batch dependency state.
 Keep schema definitions and examples in the private backend repository. This
 `react_on_rails_rsc` repository should only carry this pointer and the public
 workflow rules in [AGENTS.md](../../AGENTS.md),
-[.agents/skills/pr-batch/SKILL.md](../../.agents/skills/pr-batch/SKILL.md),
-and [.agents/workflows/pr-processing.md](../../.agents/workflows/pr-processing.md).
+the installed/shared `$pr-batch` skill, and
+[.agents/workflows/pr-processing.md](../../.agents/workflows/pr-processing.md).
 
 Until the private repo has tagged releases, pull the private repo and rerun the
 smoke checks below after backend CLI or schema changes. The command examples in

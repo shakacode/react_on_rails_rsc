@@ -1,6 +1,6 @@
 # Post-Merge Audit Prompts
 
-Use these prompts with `.agents/skills/post-merge-audit/SKILL.md` when auditing merged agent batch work, comparing Codex and Claude findings, or turning audit findings into GitHub issues.
+Use these prompts with the installed/shared `$post-merge-audit` skill when auditing merged agent batch work, comparing Codex and Claude findings, or turning audit findings into GitHub issues.
 
 ## Coordination Rules
 

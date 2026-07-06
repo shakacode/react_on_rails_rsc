@@ -10,18 +10,22 @@ release-mode label, or CI-expansion command workflow.
 
 ## What This Repository Adopted
 
-PR 74 ported the shared agent skill suite from `shakacode/react_on_rails` into this package. The
-ported files live in these layers:
+PR 74 originally ported the shared agent skill suite from `shakacode/react_on_rails` into this
+package. The current model keeps portable shared skills in the installed/shared `agent-workflows`
+pack and keeps only RSC-specific skill front doors in this repository, so Codex does not show
+duplicate repo-local and personal skill entries. The workflow layers are:
 
 - [`AGENTS.md`](../../AGENTS.md) - canonical repo policy for commands, testing, code style, git
   safety, merge qualification, release model, changelog rules, and documentation boundaries.
-- [`.agents/skills/`](../../.agents/skills/README.md) - skill entry points for batch planning,
-  issue evaluation, review handling, adversarial review, audit, verification, CI reproduction,
-  changelog updates, and release support.
+- [`.agents/skills/`](../../.agents/skills/README.md) - repo-local RSC-specific skill entry points
+  and deliberate local overrides only.
+- [`.agents/bin/shared-skill-dir`](../../.agents/bin/shared-skill-dir) - helper for resolving an
+  installed/shared skill directory when a script needs a filesystem path.
 - [`.agents/workflows/`](../../.agents/workflows/pr-processing.md) - deeper reusable workflows for
   agents without skill support or for long prompts that should not live in a skill front door.
 - [`.claude/skills`](../../.claude/skills) - symlink to `.agents/skills` so Claude Code can expose
-  the same workflows as slash commands.
+  local RSC-specific workflows as slash commands. Install the shared pack in the agent home for
+  shared slash commands.
 
 The missing docs from the original React on Rails port are now represented by:
 
@@ -35,23 +39,21 @@ The missing docs from the original React on Rails port are now represented by:
 
 ## Required Baseline Files
 
-Copy or maintain these together:
+Install the shared `agent-workflows` pack for portable skills, then copy or maintain these
+repo-local files together:
 
 | File | Purpose |
 | --- | --- |
 | [`AGENTS.md`](../../AGENTS.md) | Canonical repository policy and command source. |
 | [`.agents/skills/README.md`](../../.agents/skills/README.md) | Human-facing index of skill status and adaptation notes. |
-| [`.agents/skills/evaluate-issue/SKILL.md`](../../.agents/skills/evaluate-issue/SKILL.md) | Value and scope gate before implementation. |
-| [`.agents/skills/plan-pr-batch/SKILL.md`](../../.agents/skills/plan-pr-batch/SKILL.md) | Batch discovery, verification, and goal-prompt planning. |
-| [`.agents/skills/pr-batch/SKILL.md`](../../.agents/skills/pr-batch/SKILL.md) | Safe multi-issue or multi-PR launch workflow. |
-| [`.agents/skills/address-review/SKILL.md`](../../.agents/skills/address-review/SKILL.md) | Review-comment triage and fix workflow. |
-| [`.agents/skills/adversarial-pr-review/SKILL.md`](../../.agents/skills/adversarial-pr-review/SKILL.md) | Skeptical pre-merge or post-merge risk review. |
-| [`.agents/skills/post-merge-audit/SKILL.md`](../../.agents/skills/post-merge-audit/SKILL.md) | Batch and release-candidate audit workflow. |
-| [`.agents/skills/autoreview/SKILL.md`](../../.agents/skills/autoreview/SKILL.md) | Independent local review gate. |
-| [`.agents/skills/verify/SKILL.md`](../../.agents/skills/verify/SKILL.md) | Local verification loop. |
-| [`.agents/skills/run-ci/SKILL.md`](../../.agents/skills/run-ci/SKILL.md) | Local CI reproduction guidance. |
-| [`.agents/skills/verify-pr-fix/SKILL.md`](../../.agents/skills/verify-pr-fix/SKILL.md) | Manual bug-fix reproduction and confirmation. |
-| [`.agents/skills/update-changelog/SKILL.md`](../../.agents/skills/update-changelog/SKILL.md) | Changelog and release-heading workflow. |
+| [`.agents/bin/shared-skill-dir`](../../.agents/bin/shared-skill-dir) | Resolve installed/shared skill directories for helper invocations. |
+| [`.agents/skills/rsc-triage/SKILL.md`](../../.agents/skills/rsc-triage/SKILL.md) | RSC backlog/status refresh workflow. |
+| [`.agents/skills/rsc-verify-pr-fix/SKILL.md`](../../.agents/skills/rsc-verify-pr-fix/SKILL.md) | RSC/package-specific manual bug-fix reproduction and confirmation. |
+| [`.agents/skills/rsc-update-changelog/SKILL.md`](../../.agents/skills/rsc-update-changelog/SKILL.md) | Changelog and npm release-heading workflow. |
+| [`.agents/skills/verify-release/SKILL.md`](../../.agents/skills/verify-release/SKILL.md) | Release artifact verification. |
+| [`.agents/skills/run-e2e/SKILL.md`](../../.agents/skills/run-e2e/SKILL.md) | Package-level end-to-end verification. |
+| [`.agents/skills/downstream-e2e/SKILL.md`](../../.agents/skills/downstream-e2e/SKILL.md) | Downstream React on Rails verification stub. |
+| [`.agents/skills/react-upgrade/SKILL.md`](../../.agents/skills/react-upgrade/SKILL.md) | Emergency vendored-runtime maintenance workflow. |
 | [`.agents/workflows/pr-processing.md`](../../.agents/workflows/pr-processing.md) | Full issue/PR processing operating model. |
 | [`.agents/workflows/address-review.md`](../../.agents/workflows/address-review.md) | Reusable review-feedback prompt for non-skill agents. |
 | [`.agents/workflows/adversarial-pr-review.md`](../../.agents/workflows/adversarial-pr-review.md) | Reusable adversarial review prompts and comparisons. |
@@ -60,8 +62,8 @@ Copy or maintain these together:
 | [`internal/contributor-info/agent-coordination-backend.md`](./agent-coordination-backend.md) | Private coordination backend pointer, setup, heartbeat, status, and fallback rules. |
 | [`internal/contributor-info/multi-batch-operations.md`](./multi-batch-operations.md) | Operator model for concurrent batches across machines, launch surfaces, and repos. |
 
-Keep [`$stress-test`](../../.agents/skills/stress-test/SKILL.md) out of the required baseline until
-it is rewritten for this package. It still assumes React on Rails Pro, Rails apps, and node-renderer
+Keep [`$stress-test`](../../.agents/skills/stress-test/SKILL.md) out of the required baseline until it
+is rewritten for this package. It still assumes React on Rails Pro, Rails apps, and node-renderer
 surfaces.
 
 ## Retargeting Checklist

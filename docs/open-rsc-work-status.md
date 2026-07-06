@@ -44,13 +44,9 @@ gh pr list --repo shakacode/react_on_rails_rsc --state open --limit 100 --json n
 1. Refresh local state with `git fetch --prune origin` and verify the expected
    worktree, branch, and base before editing.
 2. Read `AGENTS.md` and the relevant workflow under `.agents/`.
-3. For unclear issue value or scope, use
-   [`.agents/skills/evaluate-issue/SKILL.md`](../.agents/skills/evaluate-issue/SKILL.md)
-   before implementing.
-4. For choosing future batch targets, use
-   [`.agents/skills/plan-pr-batch/SKILL.md`](../.agents/skills/plan-pr-batch/SKILL.md).
-5. For multi-issue or multi-PR execution, use
-   [`.agents/skills/pr-batch/SKILL.md`](../.agents/skills/pr-batch/SKILL.md).
+3. For unclear issue value or scope, use `$evaluate-issue` before implementing.
+4. For choosing future batch targets, use `$plan-pr-batch`.
+5. For multi-issue or multi-PR execution, use `$pr-batch`.
 6. For a single assigned issue, PR, review-fix pass, or merge queue item,
    follow
    [`.agents/workflows/pr-processing.md`](../.agents/workflows/pr-processing.md).

@@ -11,24 +11,26 @@ here. Source lives in `src/`, tests in `tests/`, build output in `dist/`.
 ## Reusable Workflows
 
 - `AGENTS.md`: canonical entry point for agent instructions and workflow discovery
-- `.agents/skills/`: agent skills; `.claude/skills` is a symlink here so Claude Code exposes the same workflows as slash commands
+- Shared agent workflow skills come from the installed/shared `agent-workflows` pack. Invoke them by name, such as `$pr-batch`, `$verify`, or `$post-merge-audit`.
+- `.agents/skills/`: repo-local RSC-specific skills only; `.claude/skills` is a symlink here so Claude Code exposes those local workflows as slash commands
+- `.agents/bin/shared-skill-dir`: resolve a shared skill path when a script needs the installed/shared file location
 - `.agents/workflows/`: shared prompt templates and reusable workflows for Codex, GPT, and other non-Claude tools
 - `internal/contributor-info/multi-batch-operations.md`: operator guide for multiple concurrent batches across machines, launch surfaces, or the React on Rails / RSC repos
-- When deciding whether an issue or proposed fix is worth doing, use `.agents/skills/evaluate-issue/SKILL.md`; a short invocation is `$evaluate-issue` or "Is this issue worth fixing?"
-- When the user wants to choose issues or PRs for a future Codex batch, use `.agents/skills/plan-pr-batch/SKILL.md` to produce a ready `$pr-batch` goal; a short invocation is `$plan-pr-batch` or "Plan a Codex batch"
-- When the user wants a multi-issue or multi-PR Codex batch, use `.agents/skills/pr-batch/SKILL.md`; a short invocation is `$pr-batch` or "Run a Codex batch"
-- When the user wants to audit merged batch work, missed reviews, release-candidate risk, or possible bad merges, use `.agents/skills/post-merge-audit/SKILL.md`; reusable prompts live in `.agents/workflows/post-merge-audit.md`
-- When the user wants an adversarial PR review, red-team review, Claude/Codex comparison review, or a stricter pre-merge gate, use `.agents/skills/adversarial-pr-review/SKILL.md`; reusable prompts live in `.agents/workflows/adversarial-pr-review.md`
+- When deciding whether an issue or proposed fix is worth doing, use `$evaluate-issue` or "Is this issue worth fixing?"
+- When the user wants to choose issues or PRs for a future Codex batch, use `$plan-pr-batch` to produce a ready `$pr-batch` goal.
+- When the user wants a multi-issue or multi-PR Codex batch, use `$pr-batch` or "Run a Codex batch".
+- When the user wants to audit merged batch work, missed reviews, release-candidate risk, or possible bad merges, use `$post-merge-audit`; reusable prompts live in `.agents/workflows/post-merge-audit.md`
+- When the user wants an adversarial PR review, red-team review, Claude/Codex comparison review, or a stricter pre-merge gate, use `$adversarial-pr-review`; reusable prompts live in `.agents/workflows/adversarial-pr-review.md`
 - When the user assigns an issue, PR, review-fix pass, or merge queue to an agent, follow `.agents/workflows/pr-processing.md`
-- When the user asks to address PR review comments, use `.agents/skills/address-review/SKILL.md`; `.agents/workflows/address-review.md` remains a copy/paste prompt for assistants without skill support
-- When the user wants a local pre-PR verification loop, use `.agents/skills/verify/SKILL.md` (`$verify`); when they want to reproduce CI job selection locally, use `.agents/skills/run-ci/SKILL.md` (`$run-ci`)
-- When the user wants to manually verify a bug-fix PR by reproducing the failure before the fix and confirming it is gone after (with captured evidence, optionally posted to the PR and issue), use `.agents/skills/verify-pr-fix/SKILL.md`; a short invocation is `$verify-pr-fix` or "manually verify this fix"
-- When the user wants to update the changelog or cut a release, use `.agents/skills/update-changelog/SKILL.md`
+- When the user asks to address PR review comments, use `$address-review`; `.agents/workflows/address-review.md` remains a copy/paste prompt for assistants without skill support
+- When the user wants a local pre-PR verification loop, use `$verify`; when they want to reproduce CI job selection locally, use `$run-ci`
+- When the user wants to manually verify a bug-fix PR by reproducing the failure before the fix and confirming it is gone after (with captured evidence, optionally posted to the PR and issue), use `$rsc-verify-pr-fix` or "manually verify this fix"
+- When the user wants to update the changelog or cut a release, use `$rsc-update-changelog`
 - When the user wants release artifact verification, use `.agents/skills/verify-release/SKILL.md` (`$verify-release`); it runs `yarn verify:artifacts` / `scripts/verify-release.sh`.
 - When the user wants package-level end-to-end verification, use `.agents/skills/run-e2e/SKILL.md` (`$run-e2e`); it runs `scripts/e2e/run.sh`.
 - When the user wants downstream React on Rails verification, use `.agents/skills/downstream-e2e/SKILL.md` (`$downstream-e2e`); this is a documented stub until `scripts/e2e/downstream.sh` lands.
 - When a maintainer explicitly asks to maintain the legacy vendored React Server DOM runtime, use `.agents/skills/react-upgrade/SKILL.md` (`$react-upgrade`) and never hand-edit `src/react-server-dom-webpack/`.
-- When the user wants to refresh the open RSC work status or live backlog map, use `.agents/skills/triage/SKILL.md` (`$triage`) and report unverifiable facts as `UNKNOWN`.
+- When the user wants to refresh the open RSC work status or live backlog map, use `$rsc-triage` and report unverifiable facts as `UNKNOWN`.
 - Default simplify model: `claude-opus-4-8`
 
 > Note: `.agents/skills/stress-test/SKILL.md` was copied from the React on Rails repo and is still
@@ -176,7 +178,7 @@ using the command printed by the check. The Actions workflow runs `yarn build`,
 `yarn test`, and `yarn verify:artifacts` before publishing. `yarn release` /
 `yarn release:dry-run` are maintainer-only local fallback paths when GitHub Actions is blocked;
 run `yarn verify:artifacts` before `yarn release` on that fallback path. See
-`.agents/skills/update-changelog/SKILL.md` and `docs/releasing.md`.
+`$rsc-update-changelog` and `docs/releasing.md`.
 
 ## Review Workflow
 
@@ -278,13 +280,10 @@ Update `/CHANGELOG.md` for **user-visible changes only** (features, bug fixes, b
 
 - **Format**: Keep-a-Changelog. Version headings are `## [x.y.z] - YYYY-MM-DD`; group entries under `### Added` / `### Changed` / `### Fixed` / `### Removed`.
 - **PR links**: reference style, e.g. `- Past-tense description of the change. ([#52])`, with the link definition collected at the bottom of the file: `[#52]: https://github.com/shakacode/react_on_rails_rsc/pull/52`.
-- The release version is read from the top changelog heading by `scripts/release.sh`. See `.agents/skills/update-changelog/SKILL.md` for the full flow.
+- The release version is read from the top changelog heading by `scripts/release.sh`. See `$rsc-update-changelog` for the full flow.
 
 ## Agent Workflow Configuration
 
 Portable shared skills resolve this repo's commands and policy through:
-
-- **Commands** — run `.agents/bin/<name>` (`setup`, `validate`, `test`, `build`);
-  see [`.agents/bin/README.md`](.agents/bin/README.md). A missing script means that
-  capability is n/a here.
-- **Policy / config** — [`.agents/agent-workflow.yml`](.agents/agent-workflow.yml).
+- **Commands** — run `.agents/bin/<name>` (`setup`, `validate`, `test`, ...); see `.agents/bin/README.md`. A missing script means that capability is n/a here.
+- **Policy / config** — `.agents/agent-workflow.yml`.

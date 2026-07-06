@@ -22,6 +22,7 @@ export type Options = {
   clientManifestFilename?: string,
   serverConsumerManifestFilename?: string,
   clientReferenceDiagnosticsFilename?: string | false,
+  entryClientReferencesFilename?: string | false,
 };
 
 export class RSCWebpackPlugin {

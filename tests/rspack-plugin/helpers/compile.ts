@@ -20,6 +20,7 @@ export interface CompileOptions {
   isServer?: boolean;
   clientManifestFilename?: string;
   clientReferenceDiagnosticsFilename?: string | false;
+  entryClientReferencesFilename?: string | false;
   publicPath?: string;
   crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   clientReferences?: unknown;
@@ -28,6 +29,8 @@ export interface CompileOptions {
   maxChunks?: number;
   outputFilename?: string;
   outputChunkFilename?: string;
+  /** Additional entrypoints (name -> request) besides the default `main`. */
+  extraEntries?: Record<string, string>;
   /** Additional rspack config to merge. Use sparingly. */
   configExtra?: Record<string, unknown>;
 }
@@ -58,9 +61,20 @@ export interface CompileResult {
     }>;
   };
   clientReferenceDiagnosticsSource?: string;
+  entryClientReferences?: EntryClientReferences;
   assets: string[];
   warnings: string[];
   outputPath: string;
+}
+
+export interface EntryClientReferences {
+  version: 1;
+  isServer: boolean;
+  compilerContext: string;
+  entries: Record<
+    string,
+    { clientReferences: string[]; relativeClientReferences: string[] }
+  >;
 }
 
 export const compile = (fixture: string, options: CompileOptions = {}): CompileResult => {
@@ -79,6 +93,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     isServer: options.isServer ?? false,
     clientManifestFilename: options.clientManifestFilename,
     clientReferenceDiagnosticsFilename: options.clientReferenceDiagnosticsFilename,
+    entryClientReferencesFilename: options.entryClientReferencesFilename,
     clientReferences: serializeForRunner(options.clientReferences),
     publicPath: options.publicPath,
     crossOriginLoading: options.crossOriginLoading,
@@ -86,6 +101,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     maxChunks: options.maxChunks,
     outputFilename: options.outputFilename,
     outputChunkFilename: options.outputChunkFilename,
+    extraEntries: options.extraEntries,
     configExtra: serializeForRunner(options.configExtra ?? {}),
   };
   const argsFile = path.join(outputPath, '__args__.json');
@@ -136,6 +152,15 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
   const clientReferenceDiagnostics = clientReferenceDiagnosticsSource
     ? (JSON.parse(clientReferenceDiagnosticsSource) as CompileResult['clientReferenceDiagnostics'])
     : undefined;
+  const entryReferencesFilename = options.entryClientReferencesFilename;
+  const entryReferencesPath =
+    typeof entryReferencesFilename === 'string'
+      ? path.join(outputPath, entryReferencesFilename)
+      : undefined;
+  const entryClientReferences =
+    entryReferencesPath && fs.existsSync(entryReferencesPath)
+      ? (JSON.parse(fs.readFileSync(entryReferencesPath, 'utf8')) as EntryClientReferences)
+      : undefined;
 
   return {
     manifest,
@@ -143,6 +168,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     manifestPath,
     clientReferenceDiagnostics,
     clientReferenceDiagnosticsSource,
+    entryClientReferences,
     assets: result.assets ?? [],
     warnings: result.warnings ?? [],
     outputPath,

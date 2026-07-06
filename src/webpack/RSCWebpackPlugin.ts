@@ -38,6 +38,11 @@ import * as path from 'path';
 import * as url from 'url';
 import webpack = require('webpack');
 import { hasUseClientDirective } from '../clientReferences';
+import {
+  buildEntryClientReferencesPayload,
+  collectEntryClientReferences,
+  type EntryClientReferencesCompilation,
+} from '../entryClientReferences';
 
 // neo-async ships no type definitions; declare the two helpers we use.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -164,6 +169,7 @@ export type Options = {
   clientManifestFilename?: string;
   serverConsumerManifestFilename?: string;
   clientReferenceDiagnosticsFilename?: string | false;
+  entryClientReferencesFilename?: string | false;
 };
 
 const DEFAULT_CHUNK_GROUP_WARNING_THRESHOLD = 4;
@@ -449,6 +455,15 @@ export class RSCWebpackPlugin {
 
   readonly clientReferenceDiagnosticsFilename: string | false | undefined;
 
+  /**
+   * Opt-in asset listing, for each entrypoint, the client references
+   * statically reachable from its module graph (issue #134). Meaningful on
+   * the server/RSC build, whose entry trees are the rendered pages; a
+   * downstream consumer can join it against the client manifest to scope
+   * per-route client-reference metadata.
+   */
+  readonly entryClientReferencesFilename: string | false | undefined;
+
   static __internal_isReactOnRailsRSCRuntimeResource = isReactOnRailsRSCRuntimeResource;
 
   constructor(options: Options) {
@@ -494,6 +509,7 @@ export class RSCWebpackPlugin {
     this.serverConsumerManifestFilename =
       options.serverConsumerManifestFilename || 'react-ssr-manifest.json';
     this.clientReferenceDiagnosticsFilename = options.clientReferenceDiagnosticsFilename;
+    this.entryClientReferencesFilename = options.entryClientReferencesFilename;
   }
 
   apply(compiler: webpack.Compiler): void {
@@ -1028,6 +1044,35 @@ export class RSCWebpackPlugin {
               this.clientReferenceDiagnosticsFilename,
               new webpack.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false),
             );
+          }
+
+          if (typeof this.entryClientReferencesFilename === 'string') {
+            const entryReferences = collectEntryClientReferences({
+              compilation: compilation as unknown as EntryClientReferencesCompilation,
+              isClientReference: (resource) => resolvedClientFiles.has(resource),
+              isTraversalBoundary: (resource) =>
+                isReactOnRailsRSCRuntimeResource(resource, this.isServer),
+            });
+            if (entryReferences === null) {
+              compilation.warnings.push(
+                new webpack.WebpackError(
+                  'React Server Components: entryClientReferencesFilename was set, but this compilation does not expose the module-graph APIs needed for entry-scoped client-reference discovery ' +
+                    '(entrypoints, chunkGraph.getChunkEntryModulesIterable, moduleGraph.getOutgoingConnections). ' +
+                    this.entryClientReferencesFilename +
+                    ' was not created.',
+                ),
+              );
+            } else {
+              const payload = buildEntryClientReferencesPayload({
+                entries: entryReferences,
+                compilerContext: flightCompiler.context,
+                isServer: this.isServer,
+              });
+              compilation.emitAsset(
+                this.entryClientReferencesFilename,
+                new webpack.sources.RawSource(`${JSON.stringify(payload, null, 2)}\n`, false),
+              );
+            }
           }
 
           compilation.emitAsset(

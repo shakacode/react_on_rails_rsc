@@ -12,11 +12,13 @@
  *     isServer: boolean,
  *     clientManifestFilename?: string,
  *     clientReferenceDiagnosticsFilename?: string|false,
+ *     entryClientReferencesFilename?: string|false,
  *     clientReferences?: unknown,
  *     publicPath?: string,
  *     crossOriginLoading?: false|'anonymous'|'use-credentials',
  *     withCss?: boolean,
  *     maxChunks?: number,
+ *     extraEntries?: object,        // additional entrypoints: name -> request
  *     configExtra?: object,
  *   }
  *
@@ -45,6 +47,7 @@ const {
   isServer,
   clientManifestFilename,
   clientReferenceDiagnosticsFilename,
+  entryClientReferencesFilename,
   clientReferences: rawClientReferences,
   publicPath,
   crossOriginLoading,
@@ -52,6 +55,7 @@ const {
   maxChunks,
   outputFilename,
   outputChunkFilename,
+  extraEntries,
   configExtra,
 } = args;
 
@@ -83,6 +87,7 @@ const plugins = [
     isServer: isServer,
     clientManifestFilename: clientManifestFilename,
     clientReferenceDiagnosticsFilename: clientReferenceDiagnosticsFilename,
+    entryClientReferencesFilename: entryClientReferencesFilename,
     clientReferences: clientReferences,
   }),
 ];
@@ -102,7 +107,7 @@ const config = {
   mode: typeof maxChunks === 'number' ? 'none' : 'development',
   target: isServer ? 'node' : 'web',
   context,
-  entry: [runtimeEntry, './index.js'],
+  entry: { main: [runtimeEntry, './index.js'], ...(extraEntries || {}) },
   output: {
     path: outputPath,
     filename: outputFilename ?? '[name].js',

@@ -26,6 +26,11 @@ import {
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from '../clientReferences';
 import {
+  buildEntryClientReferencesPayload,
+  collectEntryClientReferences,
+  type EntryClientReferencesCompilation,
+} from '../entryClientReferences';
+import {
   getGeneratedChunkNamesForCompiler,
   setInjectionStateForCompiler,
 } from './injection-loader';
@@ -231,6 +236,14 @@ export interface Options {
    * chunk files, and known emitted asset byte sizes. Disabled by default.
    */
   clientReferenceDiagnosticsFilename?: string | false;
+  /**
+   * Opt-in asset listing, for each entrypoint, the client references
+   * statically reachable from its module graph (issue #134). Meaningful on
+   * the server/RSC build, whose entry trees are the rendered pages; a
+   * downstream consumer can join it against the client manifest to scope
+   * per-route client-reference metadata. Disabled by default.
+   */
+  entryClientReferencesFilename?: string | false;
 }
 
 // Legacy rule export kept for consumers that imported the historical symbol.
@@ -457,6 +470,14 @@ export class RSCRspackPlugin {
             compilation.emitAsset(
               this.options.clientReferenceDiagnosticsFilename,
               new bundler.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false),
+            );
+          }
+          if (typeof this.options.entryClientReferencesFilename === 'string') {
+            this.emitEntryClientReferences(
+              compilation,
+              bundler,
+              compiler.context,
+              this.options.entryClientReferencesFilename,
             );
           }
           compilation.emitAsset(
@@ -823,6 +844,48 @@ export class RSCRspackPlugin {
       },
       filePathToModuleMetadata,
     };
+  }
+
+  /**
+   * Emit the entry-scoped client-reference asset (issue #134): for each
+   * entrypoint, the client references statically reachable from its module
+   * graph. Walks the shared traversal in ../entryClientReferences, using the
+   * filesystem-discovered reference set and the Flight runtime matcher (the
+   * injected references hang off the runtime module, so it is a traversal
+   * boundary).
+   */
+  private emitEntryClientReferences(
+    compilation: AnyCompilation,
+    bundler: Bundler,
+    compilerContext: string,
+    filename: string,
+  ): void {
+    const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
+    const entryReferences = collectEntryClientReferences({
+      compilation: compilation as unknown as EntryClientReferencesCompilation,
+      isClientReference: (resource) => resolvedClientFiles.has(resource),
+      isTraversalBoundary: (resource) => isRuntimeResource(resource, this.options.isServer),
+    });
+    if (entryReferences === null) {
+      const message =
+        'React Server Components: entryClientReferencesFilename was set, but this compilation does not expose the module-graph APIs needed for entry-scoped client-reference discovery ' +
+        '(entrypoints, chunkGraph.getChunkEntryModulesIterable, moduleGraph.getOutgoingConnections). ' +
+        filename +
+        ' was not created.';
+      compilation.warnings.push(
+        bundler.WebpackError ? new bundler.WebpackError(message) : new Error(message),
+      );
+      return;
+    }
+    const payload = buildEntryClientReferencesPayload({
+      entries: entryReferences,
+      compilerContext,
+      isServer: this.options.isServer,
+    });
+    compilation.emitAsset(
+      filename,
+      new bundler.sources.RawSource(`${JSON.stringify(payload, null, 2)}\n`, false),
+    );
   }
 
   private buildDiagnostics(

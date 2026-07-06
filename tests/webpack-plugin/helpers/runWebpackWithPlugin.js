@@ -22,6 +22,7 @@
  *     isServer: boolean,
  *     clientManifestFilename?: string,
  *     clientReferenceDiagnosticsFilename?: string|false,
+ *     entryClientReferencesFilename?: string|false,
  *     clientReferences?: unknown,   // RegExps encoded as {__type:'RegExp',...}
  *     chunkName?: string,
  *     publicPath?: string,
@@ -73,6 +74,7 @@ const {
   isServer,
   clientManifestFilename,
   clientReferenceDiagnosticsFilename,
+  entryClientReferencesFilename,
   clientReferences: rawClientReferences,
   chunkName,
   publicPath,
@@ -98,6 +100,7 @@ const plugins = [
     isServer,
     clientManifestFilename,
     clientReferenceDiagnosticsFilename,
+    entryClientReferencesFilename,
     clientReferences,
     chunkName,
   }),

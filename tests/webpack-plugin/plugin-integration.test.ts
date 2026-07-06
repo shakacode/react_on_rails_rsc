@@ -82,6 +82,19 @@ const splitStaticIslandVendors = {
 };
 
 describe('ReactFlightWebpackPlugin (real webpack)', () => {
+  describe('clientReferences string entries', () => {
+    it('resolves relative string entries from the compiler context', () => {
+      const result = run('split-shared', {
+        chunkName: 'client-[request]',
+        clientReferences: ['./Button.js'],
+      });
+
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(chunkFiles(button)).toEqual(['client-Button-js.chunk.js']);
+      expectNoWarnings(result);
+    });
+  });
+
   describe('static island diagnostics', () => {
     const diagnosticsFilename = 'rsc-client-reference-diagnostics.json';
 
@@ -523,6 +536,21 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       );
       expect(result.clientReferenceDiagnostics?.totalChunkBytes).toBe(diagnosticEntry.totalBytes);
       expectNoWarnings(result);
+    });
+
+    it('warns and avoids emitting literal auto as moduleLoading.prefix', () => {
+      const result = run('css-import', {
+        chunkName: 'client-[request]',
+        publicPath: 'auto',
+        withCss: true,
+      });
+
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(button.css).toEqual([]);
+      expect(result.manifest.moduleLoading.prefix).toBe('');
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toContain("output.publicPath is 'auto'");
+      expect(result.warnings[0]).toContain('CSS files are omitted from the RSC manifest');
     });
   });
 

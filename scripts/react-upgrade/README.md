@@ -6,7 +6,7 @@ React fork into `react-on-rails-rsc`.
 > [!WARNING]
 > This is legacy fork-cherry-pick tooling. The active strategy is the stock npm
 > runtime path documented in
-> [`docs/eliminate-react-fork.md`](../../docs/eliminate-react-fork.md). Use this
+> [`docs/internal/eliminate-react-fork.md`](../../docs/internal/eliminate-react-fork.md). Use this
 > script only for emergency maintenance of the current vendored runtime. Do not
 > use it for the Option 4 patch-file fallback; seed that path from the in-repo
 > archive and rewrite the tooling first. Patch history from the fork is preserved in

@@ -9,14 +9,14 @@ argument-hint: 'See Commands section; set TARGET_VERSION and REACT_FORK_DIR, the
 Use this skill only when a maintainer explicitly asks for emergency maintenance
 of the vendored `react-server-dom-webpack` runtime artifacts in
 `src/react-server-dom-webpack/`. It is not the Option 4 patch-file fallback
-documented in `docs/eliminate-react-fork.md`.
+documented in `docs/internal/eliminate-react-fork.md`.
 
 ## Current Rule
 
 Never hand-edit `src/react-server-dom-webpack/`. The legacy supported flow is
 the cherry-pick based script in `scripts/react-upgrade/upgrade.js`.
 
-Read `docs/eliminate-react-fork.md` before changing the upgrade strategy. That
+Read `docs/internal/eliminate-react-fork.md` before changing the upgrade strategy. That
 document records Option 5 (stock npm runtime) as the active strategy and Option
 4 patch files as the fallback. This legacy script still uses a local React fork
 and should not be used for new stock-runtime work.

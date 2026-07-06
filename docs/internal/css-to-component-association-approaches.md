@@ -90,7 +90,7 @@ function directCssForModule(module, compilation, groupChunks) {
 
 **What `react_on_rails_rsc` does**
 
-Our current webpack implementation lives in [`src/webpack/RSCWebpackPlugin.ts`](../src/webpack/RSCWebpackPlugin.ts).
+Our current webpack implementation lives in [`src/webpack/RSCWebpackPlugin.ts`](../../src/webpack/RSCWebpackPlugin.ts).
 It combines two graph-based rules:
 
 1. **PR #108: per-chunk CSS scoping**
@@ -428,7 +428,7 @@ That means React now supports **boundary-local CSS blocking**, not just whole-pa
 **Real-world usage**
 
 - Raw React 19 provides the primitive.
-- `react_on_rails_rsc` uses this via [`src/flight-stylesheet-hints.ts`](../src/flight-stylesheet-hints.ts),
+- `react_on_rails_rsc` uses this via [`src/flight-stylesheet-hints.ts`](../../src/flight-stylesheet-hints.ts),
   which calls `preinit(href, { as: 'style', precedence: 'rsc-css' })` for manifest `css` entries.
 - Next.js generally chooses the broader route-level strategy: it tends to arrange for route CSS to
   already be in `<head>`, so async boundaries do not need fine-grained `$RR`-style stylesheet gating
@@ -552,8 +552,8 @@ for subsequent code-split chunks, webpack's runtime handles CSS delivery automat
 
 ## Selected references
 
-- [`react_on_rails_rsc` `RSCWebpackPlugin.ts`](../src/webpack/RSCWebpackPlugin.ts)
-- [`react_on_rails_rsc` `flight-stylesheet-hints.ts`](../src/flight-stylesheet-hints.ts)
+- [`react_on_rails_rsc` `RSCWebpackPlugin.ts`](../../src/webpack/RSCWebpackPlugin.ts)
+- [`react_on_rails_rsc` `flight-stylesheet-hints.ts`](../../src/flight-stylesheet-hints.ts)
 - [Next.js `FlightClientEntryPlugin`](https://github.com/vercel/next.js/blob/canary/packages/next/src/build/webpack/plugins/flight-client-entry-plugin.ts)
 - [Next.js `CssChunkingPlugin`](https://github.com/vercel/next.js/blob/canary/packages/next/src/build/webpack/plugins/css-chunking-plugin.ts)
 - [Webpack stats data docs](https://webpack.js.org/api/stats/)

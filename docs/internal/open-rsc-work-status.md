@@ -6,7 +6,7 @@ workers toward already-closed work. Use the live GitHub backlog and the agent
 triage workflow below instead.
 
 _Last modified: see
-[git history](https://github.com/shakacode/react_on_rails_rsc/commits/main/docs/open-rsc-work-status.md)._
+[git history](https://github.com/shakacode/react_on_rails_rsc/commits/main/docs/internal/open-rsc-work-status.md)._
 
 ## Live Backlog
 
@@ -49,7 +49,7 @@ gh pr list --repo shakacode/react_on_rails_rsc --state open --limit 100 --json n
 5. For multi-issue or multi-PR execution, use `$pr-batch`.
 6. For a single assigned issue, PR, review-fix pass, or merge queue item,
    follow
-   [`.agents/workflows/pr-processing.md`](../.agents/workflows/pr-processing.md).
+   [`.agents/workflows/pr-processing.md`](../../.agents/workflows/pr-processing.md).
 7. Report live-state gaps as `UNKNOWN` rather than preserving guesses in this
    document.
 

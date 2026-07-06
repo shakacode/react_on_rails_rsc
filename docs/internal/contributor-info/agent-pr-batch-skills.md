@@ -29,12 +29,12 @@ drills. This file stays focused on skill selection and per-batch sizing.
 | `$autoreview` | A non-trivial local diff needs an independent structured review before commit, push, PR readiness, or merge readiness. | Verified findings from a second-model review loop. |
 | `$verify` | A branch needs local pre-PR or pre-push verification selected from `AGENTS.md` and changed files. | Exact commands run, pass/fail status, and next fix if a check fails. |
 | `$run-ci` | The user wants to reproduce or choose local checks corresponding to CI. | A local CI check plan and execution summary. |
-| [`$rsc-triage`](../../.agents/skills/rsc-triage/SKILL.md) | The open RSC work status or backlog map needs a live refresh. | A verified live-state summary or an updated `docs/open-rsc-work-status.md`. |
-| [`$rsc-verify-pr-fix`](../../.agents/skills/rsc-verify-pr-fix/SKILL.md) | A bug-fix PR needs RSC/package-specific manual reproduction before and after the fix. | Evidence that the bug reproduced before and is gone after, or a clear failure report. |
-| [`$rsc-update-changelog`](../../.agents/skills/rsc-update-changelog/SKILL.md) | User-visible package changes need a changelog entry or a release/prerelease heading. | A Keep-a-Changelog update aligned with `scripts/release.sh`. |
-| [`pr-processing.md`](../../.agents/workflows/pr-processing.md) | Any assigned issue, existing PR, review-fix pass, merge-readiness check, or multi-PR landing plan needs the full operating model. | The canonical step-by-step PR processing workflow for agents without skill support. |
+| [`$rsc-triage`](../../../.agents/skills/rsc-triage/SKILL.md) | The open RSC work status or backlog map needs a live refresh. | A verified live-state summary or an updated `docs/internal/open-rsc-work-status.md`. |
+| [`$rsc-verify-pr-fix`](../../../.agents/skills/rsc-verify-pr-fix/SKILL.md) | A bug-fix PR needs RSC/package-specific manual reproduction before and after the fix. | Evidence that the bug reproduced before and is gone after, or a clear failure report. |
+| [`$rsc-update-changelog`](../../../.agents/skills/rsc-update-changelog/SKILL.md) | User-visible package changes need a changelog entry or a release/prerelease heading. | A Keep-a-Changelog update aligned with `scripts/release.sh`. |
+| [`pr-processing.md`](../../../.agents/workflows/pr-processing.md) | Any assigned issue, existing PR, review-fix pass, merge-readiness check, or multi-PR landing plan needs the full operating model. | The canonical step-by-step PR processing workflow for agents without skill support. |
 
-[`$stress-test`](../../.agents/skills/stress-test/SKILL.md) is currently a reference only. It was
+[`$stress-test`](../../../.agents/skills/stress-test/SKILL.md) is currently a reference only. It was
 ported from the Rails/Pro/node-renderer codebase and has not been adapted for this TypeScript package.
 
 ## Default Decision Flow
@@ -146,20 +146,20 @@ one bundled deferred-work summary and ask whether to track it.
 When changing one part of the PR skill suite, check the matching docs and workflows:
 
 - `AGENTS.md` remains the canonical policy source.
-- Keep [`pr-processing.md`](../../.agents/workflows/pr-processing.md) aligned with `$pr-batch`,
+- Keep [`pr-processing.md`](../../../.agents/workflows/pr-processing.md) aligned with `$pr-batch`,
   `$verify`, `$run-ci`, and merge-readiness language.
-- Keep [`address-review.md`](../../.agents/workflows/address-review.md) aligned with
+- Keep [`address-review.md`](../../../.agents/workflows/address-review.md) aligned with
   `$address-review`.
-- Keep [`adversarial-pr-review.md`](../../.agents/workflows/adversarial-pr-review.md) aligned with
+- Keep [`adversarial-pr-review.md`](../../../.agents/workflows/adversarial-pr-review.md) aligned with
   `$adversarial-pr-review`.
-- Keep [`post-merge-audit.md`](../../.agents/workflows/post-merge-audit.md) aligned with
+- Keep [`post-merge-audit.md`](../../../.agents/workflows/post-merge-audit.md) aligned with
   `$post-merge-audit`.
-- Keep this guide and [`.agents/skills/README.md`](../../.agents/skills/README.md) updated when a
+- Keep this guide and [`.agents/skills/README.md`](../../../.agents/skills/README.md) updated when a
   skill is added, removed, renamed, or retargeted.
 - Keep [Multi-Batch Operations](multi-batch-operations.md) and
   [Agent Coordination Backend](agent-coordination-backend.md) aligned with
   `$plan-pr-batch`, `$pr-batch`, and the canonical coordination state section in
-  [`pr-processing.md`](../../.agents/workflows/pr-processing.md).
+  [`pr-processing.md`](../../../.agents/workflows/pr-processing.md).
 
 ## Troubleshooting
 

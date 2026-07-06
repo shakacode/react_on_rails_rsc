@@ -366,7 +366,7 @@ Status verified 2026-06-13 for
 [#71](https://github.com/shakacode/react_on_rails_rsc/issues/71):
 
 - Patch history is preserved in
-  [`patches/archive/abanoubghadban-react/`](../patches/archive/abanoubghadban-react/).
+  [`patches/archive/abanoubghadban-react/`](../../patches/archive/abanoubghadban-react/).
   This archive includes the three `rsc-patches/v*` branches plus the two
   upstream-shaped runtime topic branches. It is historical evidence, not the
   active fallback patch directory.

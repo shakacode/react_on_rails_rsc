@@ -15,6 +15,7 @@ All notable changes to this package will be documented in this file.
 
 ### Fixed
 - Fixed Webpack client-reference string paths to resolve relative to the compiler context and warned when `output.publicPath: "auto"` cannot be serialized into the RSC manifest. ([#171])
+- Fixed `RSCRspackPlugin` to skip manifest and diagnostics emission when the Flight client runtime is missing, matching the Webpack plugin's misconfiguration behavior instead of writing unusable assets. ([#176])
 - Fixed Rspack client-reference manifests to emit deterministic chunk pair ordering under Rspack 2 while preserving the full sibling chunk set. ([#140])
 - Fixed Rspack client manifests to emit stylesheet hints, normalize unserializable `output.publicPath: "auto"`, preserve `.mjs` chunk files, and match webpack split-runtime chunk metadata. ([#172])
 - Fixed `RSCRspackPlugin` runtime injection state to be scoped by compiler, avoiding MultiCompiler and sequential-build cross-talk between rspack client/server builds with different client references or chunk names. ([#168])

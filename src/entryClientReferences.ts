@@ -124,10 +124,14 @@ export function collectEntryClientReferences(options: {
       return;
     }
 
+    // Entry-scoped output is opt-in and normally has a small entry count, so
+    // each entry walks independently. If large multi-entry builds make this
+    // hot, memoize subtree client-reference sets across entrypoints.
     const found = new Set<string>();
     // Keyed by identifier() or resource when available so bundlers that hand
     // out fresh wrapper objects for the same module (rspack bindings) still
-    // terminate on graph cycles.
+    // terminate on graph cycles. Resource-less synthetic modules fall back to
+    // object identity; real webpack/rspack modules expose stable identifiers.
     const visited = new Set<unknown>();
     const stack: EntryClientReferencesModule[] = [
       ...getChunkEntryModulesIterable(entrypoint.getEntrypointChunk()),

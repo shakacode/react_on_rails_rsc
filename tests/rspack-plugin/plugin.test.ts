@@ -169,6 +169,18 @@ describe('RSCRspackPlugin', () => {
       expect(result.assets).not.toContain('react-client-manifest.json');
     });
 
+    it('skips manifest emission when the client runtime is missing without entry-scope opt-in', () => {
+      let error: Error | undefined;
+      try {
+        run('basic-client', { isServer: false, omitRuntimeEntry: true });
+      } catch (e) {
+        error = e as Error;
+      }
+
+      expect(error?.message).toContain('Manifest not emitted');
+      expect(error?.message).toContain('react-client-manifest.json');
+    });
+
     it('produces valid JSON', () => {
       const result = run('basic-client');
       expect(() => JSON.parse(result.manifestSource)).not.toThrow();

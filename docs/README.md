@@ -13,3 +13,6 @@ Keep package-maintainer notes, release runbooks, agent workflows, audits, and
 implementation research under [`internal/docs/`](../internal/docs/). When a
 topic becomes public user guidance, move or duplicate the public version
 downstream instead of expanding this package's docs tree.
+
+Former topic paths in this directory are lightweight pointers kept so older
+GitHub links reach the corresponding internal note instead of a 404.

@@ -13,9 +13,9 @@ Invoke shared skills with their `$name` (for example `$pr-batch`, `$plan-pr-batc
 `.agents/bin/shared-skill-dir <skill-name>`.
 
 For the maintainer-facing guide to choosing and running these skills, see
-[`internal/docs/contributor-info/agent-pr-batch-skills.md`](../../internal/docs/contributor-info/agent-pr-batch-skills.md).
+[`internal/docs/agent-workflows/agent-pr-batch-skills.md`](../../internal/docs/agent-workflows/agent-pr-batch-skills.md).
 For the workflow adoption and retargeting checklist, see
-[`internal/docs/contributor-info/agent-workflow-adoption.md`](../../internal/docs/contributor-info/agent-workflow-adoption.md).
+[`internal/docs/agent-workflows/agent-workflow-adoption.md`](../../internal/docs/agent-workflows/agent-workflow-adoption.md).
 
 ## Local Skill Status
 

@@ -59,8 +59,8 @@ repo-local files together:
 | [`.agents/workflows/adversarial-pr-review.md`](../../../.agents/workflows/adversarial-pr-review.md) | Reusable adversarial review prompts and comparisons. |
 | [`.agents/workflows/post-merge-audit.md`](../../../.agents/workflows/post-merge-audit.md) | Reusable post-merge audit prompts and issue-plan templates. |
 | [`.agents/workflows/evaluate-issue.md`](../../../.agents/workflows/evaluate-issue.md) | Lightweight evaluation prompt for agents without skill support. |
-| [`internal/docs/contributor-info/agent-coordination-backend.md`](./agent-coordination-backend.md) | Private coordination backend pointer, setup, heartbeat, status, and fallback rules. |
-| [`internal/docs/contributor-info/multi-batch-operations.md`](./multi-batch-operations.md) | Operator model for concurrent batches across machines, launch surfaces, and repos. |
+| [`internal/docs/agent-workflows/agent-coordination-backend.md`](./agent-coordination-backend.md) | Private coordination backend pointer, setup, heartbeat, status, and fallback rules. |
+| [`internal/docs/agent-workflows/multi-batch-operations.md`](./multi-batch-operations.md) | Operator model for concurrent batches across machines, launch surfaces, and repos. |
 
 Keep [`$stress-test`](../../../.agents/skills/stress-test/SKILL.md) out of the required baseline until it
 is rewritten for this package. It still assumes React on Rails Pro, Rails apps, and node-renderer

@@ -22,4 +22,4 @@ documentation.
 - [RSC Static Island Diagnostics](rsc-static-islands-diagnostics.md)
 - [RSCWebpackPlugin Known Problems and Limitations](rsc-webpack-plugin-known-problems.md)
 - [Versioning Policy](versioning.md)
-- [Contributor Info](contributor-info/)
+- [Agent Workflows](agent-workflows/)

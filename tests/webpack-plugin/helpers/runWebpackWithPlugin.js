@@ -26,7 +26,9 @@
  *     clientReferences?: unknown,   // RegExps encoded as {__type:'RegExp',...}
  *     chunkName?: string,
  *     publicPath?: string,
+ *     publicPathAsFunction?: boolean,
  *     crossOriginLoading?: false|'anonymous'|'use-credentials',
+ *     resolveExtra?: object,        // merged into config.resolve
  *     outputExtra?: object,         // merged into config.output
  *     optimizationExtra?: object,   // merged into config.optimization
  *     maxChunks?: number,           // applies webpack LimitChunkCountPlugin
@@ -78,7 +80,9 @@ const {
   clientReferences: rawClientReferences,
   chunkName,
   publicPath,
+  publicPathAsFunction,
   crossOriginLoading,
+  resolveExtra,
   outputExtra,
   optimizationExtra,
   maxChunks,
@@ -92,6 +96,7 @@ const runtimeEntry = require.resolve(
 );
 
 const clientReferences = reviveFromRunner(rawClientReferences);
+const revivedResolveExtra = reviveFromRunner(resolveExtra);
 const revivedOutputExtra = reviveFromRunner(outputExtra);
 const revivedOptimizationExtra = reviveFromRunner(optimizationExtra);
 
@@ -137,9 +142,16 @@ const config = {
     path: outputPath,
     filename: '[name].js',
     chunkFilename: '[name].chunk.js',
-    publicPath: publicPath !== undefined ? publicPath : '',
+    publicPath: publicPathAsFunction
+      ? () => '/assets/'
+      : publicPath !== undefined
+        ? publicPath
+        : '',
     crossOriginLoading: crossOriginLoading !== undefined ? crossOriginLoading : false,
     ...(revivedOutputExtra || {}),
+  },
+  resolve: {
+    ...(revivedResolveExtra || {}),
   },
   optimization: {
     chunkIds: 'named',

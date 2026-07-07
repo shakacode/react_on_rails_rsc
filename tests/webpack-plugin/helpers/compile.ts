@@ -24,7 +24,10 @@ export interface CompileOptions {
   /** Chunk name template, e.g. 'client-[request]' for readable chunk ids. */
   chunkName?: string;
   publicPath?: string;
+  publicPathAsFunction?: boolean;
   crossOriginLoading?: false | 'anonymous' | 'use-credentials';
+  /** Merged into webpack config.resolve (e.g. { symlinks: false }). */
+  resolveExtra?: Record<string, unknown>;
   /** Merged into webpack config.output (e.g. { chunkFilename: '[name].chunk.mjs' }). */
   outputExtra?: Record<string, unknown>;
   /** Merged into webpack config.optimization (e.g. { splitChunks: {...} }). */
@@ -133,7 +136,9 @@ const compileInto = (
     clientReferences: serializeForRunner(options.clientReferences),
     chunkName: options.chunkName,
     publicPath: options.publicPath,
+    publicPathAsFunction: options.publicPathAsFunction,
     crossOriginLoading: options.crossOriginLoading,
+    resolveExtra: serializeForRunner(options.resolveExtra),
     outputExtra: serializeForRunner(options.outputExtra),
     optimizationExtra: serializeForRunner(options.optimizationExtra),
     maxChunks: options.maxChunks,

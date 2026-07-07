@@ -81,6 +81,28 @@ const splitStaticIslandVendors = {
   },
 };
 
+const withSymlinkFixture = (testBody: () => void): void => {
+  const fixtureRoot = path.join(__dirname, 'fixtures/symlink-client');
+  const targetPath = path.join(__dirname, 'fixtures/symlink-target');
+  const linkPath = path.join(fixtureRoot, 'linked');
+  fs.rmSync(linkPath, { force: true, recursive: true });
+
+  let created = false;
+  try {
+    fs.symlinkSync(targetPath, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+    created = true;
+    testBody();
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (!created && (code === 'EPERM' || code === 'EACCES' || code === 'ENOTSUP')) {
+      return;
+    }
+    throw error;
+  } finally {
+    if (created) fs.rmSync(linkPath, { force: true, recursive: true });
+  }
+};
+
 describe('ReactFlightWebpackPlugin (real webpack)', () => {
   describe('clientReferences string entries', () => {
     it('resolves relative string entries from the compiler context', () => {
@@ -92,6 +114,45 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       const button = entryEndingWith(result.manifest, '/Button.js');
       expect(chunkFiles(button)).toEqual(['client-Button-js.chunk.js']);
       expectNoWarnings(result);
+    });
+
+    it('realpath-normalizes string entries that point through symlinked directories', () => {
+      withSymlinkFixture(() => {
+        const result = run('symlink-client', {
+          chunkName: 'client-[request]',
+          clientReferences: ['./linked/SymlinkButton.js'],
+        });
+        const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+        expect(paths.some((p) => p.endsWith('/symlink-target/SymlinkButton.js'))).toBe(true);
+        entryEndingWith(result.manifest, '/SymlinkButton.js');
+        expectNoWarnings(result);
+      });
+    });
+
+    it('honors resolve.symlinks: false for string entries through symlinked directories', () => {
+      withSymlinkFixture(() => {
+        const result = run('symlink-client', {
+          chunkName: 'client-[request]',
+          clientReferences: ['./linked/SymlinkButton.js'],
+          resolveExtra: { symlinks: false },
+        });
+        const paths = Object.keys(result.manifest.filePathToModuleMetadata);
+        expect(paths.some((p) => p.endsWith('/symlink-client/linked/SymlinkButton.js'))).toBe(
+          true,
+        );
+        expect(paths.some((p) => p.endsWith('/symlink-target/SymlinkButton.js'))).toBe(false);
+        entryEndingWith(result.manifest, '/SymlinkButton.js');
+        expectNoWarnings(result);
+      });
+    });
+
+    it('fails visibly when a string entry cannot be resolved', () => {
+      expect(() =>
+        run('split-shared', {
+          chunkName: 'client-[request]',
+          clientReferences: ['./MissingButton.js'],
+        }),
+      ).toThrow(/MissingButton\.js|Can't resolve/);
     });
   });
 
@@ -629,6 +690,21 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(result.manifest.moduleLoading.prefix).toBe('');
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]).toContain("output.publicPath is 'auto'");
+      expect(result.warnings[0]).toContain('CSS files are omitted from the RSC manifest');
+    });
+
+    it('warns and avoids serializing function-valued publicPath', () => {
+      const result = run('css-import', {
+        chunkName: 'client-[request]',
+        publicPathAsFunction: true,
+        withCss: true,
+      });
+
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(button.css).toEqual([]);
+      expect(result.manifest.moduleLoading.prefix).toBe('');
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toContain('output.publicPath is a function');
       expect(result.warnings[0]).toContain('CSS files are omitted from the RSC manifest');
     });
   });

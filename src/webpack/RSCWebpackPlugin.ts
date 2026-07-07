@@ -627,19 +627,28 @@ export class RSCWebpackPlugin {
           );
           const configuredPublicPath = compilation.outputOptions.publicPath;
           const publicPathIsAuto = configuredPublicPath === 'auto';
-          if (publicPathIsAuto) {
+          const publicPathIsDynamic =
+            publicPathIsAuto || typeof configuredPublicPath === 'function';
+          if (publicPathIsDynamic) {
+            const publicPathDescription = publicPathIsAuto
+              ? "output.publicPath is 'auto'"
+              : 'output.publicPath is a function';
             compilation.warnings.push(
               new webpack.WebpackError(
-                "React Server Components: output.publicPath is 'auto', which cannot be serialized into the RSC manifest. " +
+                `React Server Components: ${publicPathDescription}, which cannot be serialized into the RSC manifest. ` +
                   'moduleLoading.prefix will be emitted as an empty string, and CSS files are omitted from the RSC manifest because their final URLs are only known at runtime. ' +
                   'Set output.publicPath to a concrete URL or path to enable Flight chunk loading and stylesheet hints.',
               ),
             );
           }
+          const moduleLoadingPrefix =
+            publicPathIsDynamic || typeof configuredPublicPath !== 'string'
+              ? ''
+              : configuredPublicPath;
           const filePathToModuleMetadata: Record<string, ModuleMetadata> = {};
           const manifest = {
             moduleLoading: {
-              prefix: publicPathIsAuto ? '' : configuredPublicPath || '',
+              prefix: moduleLoadingPrefix,
               crossOrigin,
             },
             filePathToModuleMetadata,
@@ -682,7 +691,11 @@ export class RSCWebpackPlugin {
           // `chunkResolvedClientFiles`, listing the chunk group's own
           // chunks (and CSS files) in the manifest entry. Merges into an
           // existing manifest entry (chunks deduped by chunk id, CSS by
-          // URL) instead of overwriting it.
+          // URL) instead of overwriting it. Webpack preserves graph-order
+          // chunk pairs here; rspack sorts generated chunk pairs by filename
+          // because its chunk iteration order is less stable. Flight ignores
+          // pair order, so byte-level cross-bundler parity intentionally does
+          // not require sorting the webpack manifest.
           const recordChunkGroup = (
             chunkGroup: FlightChunkGroup,
             chunkResolvedClientFiles: Set<string>,
@@ -1164,7 +1177,8 @@ export class RSCWebpackPlugin {
   /**
    * Resolves every configured `clientReferences` entry to a
    * `ClientReferenceDependency`:
-   *   - string entries are direct file references, included unconditionally;
+   *   - string entries are direct file references, resolved through webpack's
+   *     normal resolver so they match the module graph's symlink policy;
    *   - search-path entries are expanded through the context module factory
    *     and filtered to files containing a `"use client"` directive.
    */
@@ -1181,11 +1195,30 @@ export class RSCWebpackPlugin {
       this.clientReferences,
       (clientReferencePath, cb) => {
         if (typeof clientReferencePath === 'string') {
-          const request = path.resolve(context, clientReferencePath);
-          watchDependencies.files.add(request);
-          const clientRefDep = new ClientReferenceDependency(request);
-          clientRefDep.userRequest = clientReferencePath;
-          cb(null, [clientRefDep]);
+          const configuredRequest = path.resolve(context, clientReferencePath);
+          watchDependencies.files.add(configuredRequest);
+          normalResolver.resolve({}, context, configuredRequest, {}, (err, resolvedPath) => {
+            if (err) {
+              watchDependencies.missing.add(configuredRequest);
+              const clientRefDep = new ClientReferenceDependency(configuredRequest);
+              clientRefDep.userRequest = clientReferencePath;
+              cb(null, [clientRefDep]);
+              return;
+            }
+            if (typeof resolvedPath !== 'string') {
+              watchDependencies.missing.add(configuredRequest);
+              cb(
+                new Error(
+                  `React Server Components: clientReferences entry "${clientReferencePath}" resolved to a non-file request.`,
+                ),
+              );
+              return;
+            }
+            watchDependencies.files.add(resolvedPath);
+            const clientRefDep = new ClientReferenceDependency(resolvedPath);
+            clientRefDep.userRequest = clientReferencePath;
+            cb(null, [clientRefDep]);
+          });
           return;
         }
         contextResolver.resolve(

@@ -1202,6 +1202,7 @@ describe('RSCRspackPlugin', () => {
           compilation: unknown,
           bundler: unknown,
           diagnosticsCssFiles: Map<string, string[]>,
+          resolvedClientFiles: ReadonlySet<string>,
         ) => {
           manifest: { moduleLoading: { prefix: string } };
           clientRuntimeFound: boolean;
@@ -1218,6 +1219,7 @@ describe('RSCRspackPlugin', () => {
         },
         { WebpackError: Error },
         new Map(),
+        new Set(),
       );
 
       expect(clientRuntimeFound).toBe(false);

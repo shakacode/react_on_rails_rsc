@@ -21,11 +21,14 @@
  *    the runtime, silently defeating the per-entry scoping).
  *
  * The traversal is shared by the webpack and rspack plugins, which pass their
- * own client-reference sets and runtime matchers. It is written against
- * structural types because the plugins run under hand-built mock compilations
- * in unit tests; when a compilation does not expose the required graph APIs,
- * `collectEntryClientReferences` returns `null` and the caller emits a
- * warning instead of a wrong (empty) artifact.
+ * own client-reference sets and runtime matchers. Keep those predicates aligned
+ * with each plugin's manifest walker: this module owns graph reachability, but
+ * resource and concatenated-module semantics must classify client references
+ * and runtime boundaries consistently. It is written against structural types
+ * because the plugins run under hand-built mock compilations in unit tests; when
+ * a compilation does not expose the required graph APIs,
+ * `collectEntryClientReferences` returns `null` and the caller emits a warning
+ * instead of a wrong (empty) artifact.
  *
  * Failure direction: the walk prefers OVER-inclusion. An extra reference in
  * an entry's list only costs preload bytes downstream; a missing reference

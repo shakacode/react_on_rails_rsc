@@ -444,7 +444,8 @@ export class RSCRspackPlugin {
           stage: bundler.Compilation.PROCESS_ASSETS_STAGE_REPORT,
         },
         () => {
-          const resolvedClientCount = this._resolvedClientFiles.length;
+          const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
+          const resolvedClientCount = resolvedClientFiles.size;
           const logger = compilation.getLogger?.('RSCRspackPlugin');
           if (resolvedClientCount === 0) {
             logger?.info(
@@ -458,7 +459,8 @@ export class RSCRspackPlugin {
           const { manifest, clientRuntimeFound } = this.buildManifest(
             compilation,
             bundler,
-            diagnosticsCssFiles
+            diagnosticsCssFiles,
+            resolvedClientFiles,
           );
           if (!clientRuntimeFound) return;
           logger?.debug(
@@ -483,6 +485,7 @@ export class RSCRspackPlugin {
               bundler,
               compiler.context,
               this.options.entryClientReferencesFilename,
+              resolvedClientFiles,
             );
           }
           compilation.emitAsset(
@@ -647,7 +650,8 @@ export class RSCRspackPlugin {
   private buildManifest(
     compilation: AnyCompilation,
     bundler: Bundler,
-    diagnosticsCssFiles: Map<string, string[]>
+    diagnosticsCssFiles: Map<string, string[]>,
+    resolvedClientFiles: ReadonlySet<string>,
   ): {
     manifest: {
       moduleLoading: { prefix: string; crossOrigin: string | null };
@@ -666,7 +670,6 @@ export class RSCRspackPlugin {
     // mirrors the webpack plugin's `isReactOnRailsRSCRuntimeResource` (#43).
     let clientFileNameFound = false;
 
-    const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
     const generatedChunkNamesByResource = this.getGeneratedChunkNamesByResource();
     const runtimeChunkFiles = this.getRuntimeChunkFiles(compilation);
     const availableChunkGroupNames = this.getAvailableChunkGroupNames(compilation);
@@ -869,8 +872,8 @@ export class RSCRspackPlugin {
     bundler: Bundler,
     compilerContext: string,
     filename: string,
+    resolvedClientFiles: ReadonlySet<string>,
   ): void {
-    const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
     emitEntryClientReferencesAsset({
       compilation: compilation as unknown as EntryClientReferencesCompilation,
       filename,
@@ -1105,7 +1108,7 @@ export class RSCRspackPlugin {
     moduleId: string | number | null,
     chunks: (string | number | null)[],
     css: string[],
-    resolvedClientFiles: Set<string>,
+    resolvedClientFiles: ReadonlySet<string>,
     filePathToModuleMetadata: Record<string, ModuleMetadata>,
     diagnosticsCssFiles: Map<string, string[]>,
   ): void {

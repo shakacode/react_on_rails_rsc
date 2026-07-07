@@ -12,6 +12,7 @@ import { pathToFileURL } from 'node:url';
 import {
   buildEntryClientReferencesPayload,
   collectEntryClientReferences,
+  emitEntryClientReferencesAsset,
   type EntryClientReferencesCompilation,
   type EntryClientReferencesModule,
 } from '../src/entryClientReferences';
@@ -55,7 +56,8 @@ describe('collectEntryClientReferences', () => {
     const entry: MockModule = { resource: '/app/page.js', deps: [section] };
 
     const result = collect({ main: [entry] })!;
-    expect(result.get('main')).toEqual(['/app/Island.js']);
+    expect(result.entries.get('main')).toEqual(['/app/Island.js']);
+    expect(result.boundaryEncountered).toBe(false);
   });
 
   test('does not walk through the runtime module (injected references)', () => {
@@ -64,8 +66,9 @@ describe('collectEntryClientReferences', () => {
     const entry: MockModule = { resource: '/app/page.js', deps: [runtime] };
 
     const result = collect({ main: [entry], runtimeOnly: [runtime] })!;
-    expect(result.get('main')).toEqual([]);
-    expect(result.get('runtimeOnly')).toEqual([]);
+    expect(result.entries.get('main')).toEqual([]);
+    expect(result.entries.get('runtimeOnly')).toEqual([]);
+    expect(result.boundaryEncountered).toBe(true);
   });
 
   test('terminates on cycles, with and without identifier()', () => {
@@ -78,8 +81,8 @@ describe('collectEntryClientReferences', () => {
     c.deps = [c];
 
     const result = collect({ withIds: [a], selfLoop: [c] })!;
-    expect(result.get('withIds')).toEqual(['/app/CycleIsland.js']);
-    expect(result.get('selfLoop')).toEqual([]);
+    expect(result.entries.get('withIds')).toEqual(['/app/CycleIsland.js']);
+    expect(result.entries.get('selfLoop')).toEqual([]);
   });
 
   test('records inner client references of concatenated modules', () => {
@@ -89,7 +92,8 @@ describe('collectEntryClientReferences', () => {
       deps: [{ resource: '/app/SiblingIsland.js' }],
     };
     const result = collect({ main: [concatenated] })!;
-    expect(result.get('main')).toEqual(['/app/InnerIsland.js', '/app/SiblingIsland.js']);
+    expect(result.entries.get('main')).toEqual(['/app/InnerIsland.js', '/app/SiblingIsland.js']);
+    expect(result.boundaryEncountered).toBe(false);
   });
 
   test('does not walk a concatenated module that swallowed the runtime', () => {
@@ -102,7 +106,8 @@ describe('collectEntryClientReferences', () => {
     const result = collect({ main: [concatenated] })!;
     // Inner references are still recorded (over-inclusion is the safe
     // direction) but the wrapper's connections are not walked.
-    expect(result.get('main')).toEqual(['/app/InnerIsland.js']);
+    expect(result.entries.get('main')).toEqual(['/app/InnerIsland.js']);
+    expect(result.boundaryEncountered).toBe(true);
   });
 
   test('returns null when graph APIs are missing', () => {
@@ -167,5 +172,31 @@ describe('buildEntryClientReferencesPayload', () => {
       },
     });
     expect(Object.keys(payload.entries)).toEqual(['alpha', 'zeta']);
+  });
+});
+
+describe('emitEntryClientReferencesAsset', () => {
+  test('warns when the traversal never sees the runtime boundary', () => {
+    const island: MockModule = { resource: '/app/Island.js' };
+    const warnings: string[] = [];
+    const emitted: Record<string, string> = {};
+
+    emitEntryClientReferencesAsset({
+      compilation: mockCompilation({ main: [island] }),
+      filename: 'entry-client-references.json',
+      compilerContext: '/app',
+      isServer: true,
+      isClientReference,
+      isTraversalBoundary,
+      emitWarning: (message) => warnings.push(message),
+      emitAsset: (filename, source) => {
+        emitted[filename] = source;
+      },
+    });
+
+    expect(warnings).toEqual([
+      expect.stringContaining('Flight client runtime boundary was not encountered'),
+    ]);
+    expect(emitted['entry-client-references.json']).toContain('/app/Island.js');
   });
 });

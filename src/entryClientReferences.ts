@@ -90,6 +90,11 @@ export type EntryClientReferencesPayload = {
   >;
 };
 
+export type CollectedEntryClientReferences = {
+  entries: Map<string, string[]>;
+  boundaryEncountered: boolean;
+};
+
 type EmitEntryClientReferencesAssetOptions = {
   compilation: EntryClientReferencesCompilation;
   filename: string;
@@ -100,6 +105,10 @@ type EmitEntryClientReferencesAssetOptions = {
   emitWarning(message: string): void;
   emitAsset(filename: string, source: string): void;
 };
+
+export function toRelativePosixPath(context: string, file: string): string {
+  return path.relative(context, file).replace(/\\/g, '/');
+}
 
 /**
  * Walk each entrypoint's module graph and return the client references
@@ -112,7 +121,7 @@ export function collectEntryClientReferences(options: {
   isClientReference(resource: string): boolean;
   /** Matches the Flight client runtime module the injected references hang off. */
   isTraversalBoundary(resource: string): boolean;
-}): Map<string, string[]> | null {
+}): CollectedEntryClientReferences | null {
   const { compilation, isClientReference, isTraversalBoundary } = options;
 
   const entrypoints = compilation.entrypoints;
@@ -131,6 +140,7 @@ export function collectEntryClientReferences(options: {
 
   const entries = new Map<string, string[]>();
   let missingEntrypointApi = false;
+  let boundaryEncountered = false;
 
   entrypoints.forEach((entrypoint, name) => {
     if (typeof entrypoint?.getEntrypointChunk !== 'function') {
@@ -169,12 +179,17 @@ export function collectEntryClientReferences(options: {
       // Concatenated wrappers: record inner client references so an eagerly
       // folded-in reference is not missed (over-inclusion is the safe
       // direction), and refuse to walk a wrapper that swallowed the runtime.
-      let containsBoundary = !!module.resource && isTraversalBoundary(module.resource);
+      const moduleIsBoundary = !!module.resource && isTraversalBoundary(module.resource);
+      if (moduleIsBoundary) boundaryEncountered = true;
+      let containsBoundary = moduleIsBoundary;
       if (module.modules) {
         for (const inner of module.modules) {
           if (!inner.resource) continue;
           if (isClientReference(inner.resource)) found.add(inner.resource);
-          if (isTraversalBoundary(inner.resource)) containsBoundary = true;
+          if (isTraversalBoundary(inner.resource)) {
+            boundaryEncountered = true;
+            containsBoundary = true;
+          }
         }
       }
       if (containsBoundary) continue;
@@ -188,7 +203,7 @@ export function collectEntryClientReferences(options: {
     entries.set(name, [...found].sort());
   });
 
-  return missingEntrypointApi ? null : entries;
+  return missingEntrypointApi ? null : { entries, boundaryEncountered };
 }
 
 /** Serialize the per-entry reference map into the emitted JSON payload. */
@@ -203,7 +218,7 @@ export function buildEntryClientReferencesPayload(options: {
     entries[name] = {
       clientReferences: files.map((file) => url.pathToFileURL(file).href),
       relativeClientReferences: files.map((file) =>
-        path.relative(options.compilerContext, file).replace(/\\/g, '/'),
+        toRelativePosixPath(options.compilerContext, file),
       ),
     };
   }
@@ -222,23 +237,30 @@ export function buildEntryClientReferencesPayload(options: {
 export function emitEntryClientReferencesAsset(
   options: EmitEntryClientReferencesAssetOptions
 ): void {
-  const entryReferences = collectEntryClientReferences({
+  const result = collectEntryClientReferences({
     compilation: options.compilation,
     isClientReference: options.isClientReference,
     isTraversalBoundary: options.isTraversalBoundary,
   });
-  if (entryReferences === null) {
+  if (result === null) {
     options.emitWarning(
       'React Server Components: entryClientReferencesFilename was set, but this compilation does not expose the module-graph APIs needed for entry-scoped client-reference discovery ' +
-        '(entrypoints, chunkGraph.getChunkEntryModulesIterable, moduleGraph.getOutgoingConnections). ' +
+        '(entrypoints, entrypoint.getEntrypointChunk, chunkGraph.getChunkEntryModulesIterable, moduleGraph.getOutgoingConnections). ' +
         options.filename +
         ' was not created.'
     );
     return;
   }
+  if (!result.boundaryEncountered) {
+    options.emitWarning(
+      'React Server Components: entryClientReferencesFilename was set, but the Flight client runtime boundary was not encountered while building entry-scoped client-reference discovery. ' +
+        options.filename +
+        ' was created, but it may over-report reachable client references if runtime-injected references were traversed.'
+    );
+  }
 
   const payload = buildEntryClientReferencesPayload({
-    entries: entryReferences,
+    entries: result.entries,
     compilerContext: options.compilerContext,
     isServer: options.isServer,
   });

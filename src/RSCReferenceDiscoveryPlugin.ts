@@ -1,5 +1,5 @@
-import * as path from 'path';
 import { hasUseClientDirective } from './clientReferences';
+import { toRelativePosixPath } from './entryClientReferences';
 
 type AnyCompilation = {
   [key: symbol]: unknown;
@@ -117,9 +117,7 @@ export class RSCReferenceDiscoveryPlugin {
             compilerContext: compiler.context,
             count: refs.length,
             refs,
-            relativeRefs: refs.map((file) =>
-              path.relative(compiler.context, file).replace(/\\/g, '/'),
-            ),
+            relativeRefs: refs.map((file) => toRelativePosixPath(compiler.context, file)),
           };
 
           compilation.emitAsset(

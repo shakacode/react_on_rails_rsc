@@ -27,6 +27,7 @@ import {
 } from '../clientReferences';
 import {
   emitEntryClientReferencesAsset,
+  toRelativePosixPath,
   type EntryClientReferencesCompilation,
 } from '../entryClientReferences';
 import {
@@ -559,7 +560,7 @@ export class RSCRspackPlugin {
       try { stat = fs.statSync(full); } catch { continue; }
 
       if (stat.isDirectory()) {
-        const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
+        const relPath = './' + toRelativePosixPath(walkRoot, full);
         if (ref.exclude && ref.exclude.test(relPath)) continue;
         if (ref.recursive !== false) this.walkDir(full, walkRoot, ref, out, watchDependencies);
       } else if (stat.isFile()) {
@@ -567,7 +568,7 @@ export class RSCRspackPlugin {
         // root (e.g. "./components/Button.tsx"), matching the webpack
         // plugin's contextModuleFactory behavior which tests against the
         // relative request path.
-        const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
+        const relPath = './' + toRelativePosixPath(walkRoot, full);
         if (!ref.include.test(relPath)) continue;
         if (ref.exclude && ref.exclude.test(relPath)) continue;
         watchDependencies.files.add(full);

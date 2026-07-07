@@ -60,6 +60,14 @@ jobs:
             types-react-dom-version: '~19.2.0'
             webpack-version: '^5.0.0'
             rspack-version: '1.x'
+          - label: React 19.2.x / webpack latest 5.x + rspack 2.x / Node 22
+            node-version: '22.x'
+            react-version: '~19.2.0'
+            react-dom-version: '~19.2.0'
+            types-react-version: '~19.2.0'
+            types-react-dom-version: '~19.2.0'
+            webpack-version: '^5.0.0'
+            rspack-version: '2.x'
 
     steps:
       # Pinned immutable actions/checkout@v7 release SHA verified via git ls-remote.

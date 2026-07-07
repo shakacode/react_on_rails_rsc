@@ -10,6 +10,7 @@ All notable changes to this package will be documented in this file.
 - Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
 
 ### Changed
+- Declared the optional `@rspack/core` peer range as Rspack 1.x or 2.x and added explicit Rspack 2.x compatibility coverage. ([#183])
 - Stopped `RSCRspackPlugin` from injecting a no-op `"use client"` tagging loader into every first-party module, preserving rspack incremental caching while keeping filesystem-based client-reference discovery. ([#167])
 - Skipped rspack diagnostics CSS collection when client-reference diagnostics are disabled, avoiding dead per-chunk-group CSS scans on the default build path. ([#152])
 
@@ -79,6 +80,7 @@ All notable changes to this package will be documented in this file.
 [#168]: https://github.com/shakacode/react_on_rails_rsc/pull/168
 [#172]: https://github.com/shakacode/react_on_rails_rsc/pull/172
 [#176]: https://github.com/shakacode/react_on_rails_rsc/pull/176
+[#183]: https://github.com/shakacode/react_on_rails_rsc/pull/183
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
 [#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151

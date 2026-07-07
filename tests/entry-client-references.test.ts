@@ -58,6 +58,7 @@ describe('collectEntryClientReferences', () => {
     const result = collect({ main: [entry] })!;
     expect(result.entries.get('main')).toEqual(['/app/Island.js']);
     expect(result.boundaryEncountered).toBe(false);
+    expect(result.clientReferenceEncountered).toBe(true);
   });
 
   test('does not walk through the runtime module (injected references)', () => {
@@ -69,6 +70,7 @@ describe('collectEntryClientReferences', () => {
     expect(result.entries.get('main')).toEqual([]);
     expect(result.entries.get('runtimeOnly')).toEqual([]);
     expect(result.boundaryEncountered).toBe(true);
+    expect(result.clientReferenceEncountered).toBe(false);
   });
 
   test('terminates on cycles, with and without identifier()', () => {
@@ -94,6 +96,7 @@ describe('collectEntryClientReferences', () => {
     const result = collect({ main: [concatenated] })!;
     expect(result.entries.get('main')).toEqual(['/app/InnerIsland.js', '/app/SiblingIsland.js']);
     expect(result.boundaryEncountered).toBe(false);
+    expect(result.clientReferenceEncountered).toBe(true);
   });
 
   test('does not walk a concatenated module that swallowed the runtime', () => {
@@ -108,6 +111,7 @@ describe('collectEntryClientReferences', () => {
     // direction) but the wrapper's connections are not walked.
     expect(result.entries.get('main')).toEqual(['/app/InnerIsland.js']);
     expect(result.boundaryEncountered).toBe(true);
+    expect(result.clientReferenceEncountered).toBe(true);
   });
 
   test('returns null when graph APIs are missing', () => {
@@ -198,5 +202,23 @@ describe('emitEntryClientReferencesAsset', () => {
       expect.stringContaining('Flight client runtime boundary was not encountered'),
     ]);
     expect(emitted['entry-client-references.json']).toContain('/app/Island.js');
+  });
+
+  test('does not warn when no runtime boundary is needed for an empty entry set', () => {
+    const page: MockModule = { resource: '/app/page.js' };
+    const warnings: string[] = [];
+
+    emitEntryClientReferencesAsset({
+      compilation: mockCompilation({ main: [page] }),
+      filename: 'entry-client-references.json',
+      compilerContext: '/app',
+      isServer: true,
+      isClientReference,
+      isTraversalBoundary,
+      emitWarning: (message) => warnings.push(message),
+      emitAsset: () => undefined,
+    });
+
+    expect(warnings).toEqual([]);
   });
 });

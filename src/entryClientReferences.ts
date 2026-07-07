@@ -93,6 +93,7 @@ export type EntryClientReferencesPayload = {
 export type CollectedEntryClientReferences = {
   entries: Map<string, string[]>;
   boundaryEncountered: boolean;
+  clientReferenceEncountered: boolean;
 };
 
 type EmitEntryClientReferencesAssetOptions = {
@@ -141,6 +142,7 @@ export function collectEntryClientReferences(options: {
   const entries = new Map<string, string[]>();
   let missingEntrypointApi = false;
   let boundaryEncountered = false;
+  let clientReferenceEncountered = false;
 
   entrypoints.forEach((entrypoint, name) => {
     if (typeof entrypoint?.getEntrypointChunk !== 'function') {
@@ -173,6 +175,7 @@ export function collectEntryClientReferences(options: {
       // A client reference is a boundary: record it, do not walk its imports.
       if (module.resource && isClientReference(module.resource)) {
         found.add(module.resource);
+        clientReferenceEncountered = true;
         continue;
       }
 
@@ -185,7 +188,10 @@ export function collectEntryClientReferences(options: {
       if (module.modules) {
         for (const inner of module.modules) {
           if (!inner.resource) continue;
-          if (isClientReference(inner.resource)) found.add(inner.resource);
+          if (isClientReference(inner.resource)) {
+            found.add(inner.resource);
+            clientReferenceEncountered = true;
+          }
           if (isTraversalBoundary(inner.resource)) {
             boundaryEncountered = true;
             containsBoundary = true;
@@ -203,7 +209,9 @@ export function collectEntryClientReferences(options: {
     entries.set(name, [...found].sort());
   });
 
-  return missingEntrypointApi ? null : { entries, boundaryEncountered };
+  return missingEntrypointApi
+    ? null
+    : { entries, boundaryEncountered, clientReferenceEncountered };
 }
 
 /** Serialize the per-entry reference map into the emitted JSON payload. */
@@ -251,7 +259,7 @@ export function emitEntryClientReferencesAsset(
     );
     return;
   }
-  if (!result.boundaryEncountered) {
+  if (!result.boundaryEncountered && result.clientReferenceEncountered) {
     options.emitWarning(
       'React Server Components: entryClientReferencesFilename was set, but the Flight client runtime boundary was not encountered while building entry-scoped client-reference discovery. ' +
         options.filename +

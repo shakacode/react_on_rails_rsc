@@ -6,7 +6,7 @@
 
 [**npm: react-on-rails-rsc**](https://www.npmjs.com/package/react-on-rails-rsc)
 
-This package provides React Server Components (RSC) support for the [`react-on-rails-pro`](https://github.com/shakacode/react_on_rails_pro) Ruby gem. 
+This package provides React Server Components (RSC) support for the [`react-on-rails-pro`](https://github.com/shakacode/react_on_rails_pro) Ruby gem.
 
 ⚠️ **IMPORTANT: This package is for internal use only** ⚠️
 
@@ -16,27 +16,14 @@ This package is not intended to be used directly by end users. It is designed to
 
 Do not use this package's APIs directly in your application code. Instead use [`react_on_rails`](https://github.com/shakacode/react_on_rails) and [`react-on-rails-pro`](https://github.com/shakacode/react_on_rails_pro) gems and npm packages APIs to render or stream React Server Components.
 
-## Testing Unreleased Builds
+## Documentation
 
-If a downstream app needs to test a `react-on-rails-rsc` fix before an npm
-release, see [`docs/consuming-unreleased-builds.md`](docs/consuming-unreleased-builds.md)
-for the yalc, canary publish, throwaway dist branch, and version-pairing
-workflows.
+This repository's checked-in docs are internal maintainer notes. Public React
+Server Components guidance for application developers belongs in the downstream
+[`react_on_rails`](https://github.com/shakacode/react_on_rails) documentation.
 
-## Critical Resource Hints
-
-RSC server components can emit preload, preconnect, DNS-prefetch, and critical
-stylesheet hints for already-resolved production asset URLs. See
-[`docs/critical-resource-hints.md`](docs/critical-resource-hints.md).
-
-## Static RSC Page Guides
-
-For static or mostly static page integrations, see
-[`docs/rsc-static-islands-diagnostics.md`](docs/rsc-static-islands-diagnostics.md)
-for client-reference diagnostics, static islands, and tiny browser sidecar
-patterns. Downstream Rails apps that need system specs for streamed payloads
-should use
-[`docs/rails-system-spec-streaming-rsc.md`](docs/rails-system-spec-streaming-rsc.md).
+Maintainers can start from [`docs/README.md`](docs/README.md) for the internal
+documentation boundary and links to package-maintainer runbooks.
 
 ## Package Contents
 
@@ -48,14 +35,13 @@ This package provides internal tooling for React Server Components integration:
 ## Versioning
 
 The package `major.minor` tracks the React runtime line it ships or requires.
-See [`docs/versioning.md`](docs/versioning.md) for peer dependency,
-prerelease, dist-tag, and runtime-strategy policy.
+Maintainer policy lives in [`internal/docs/versioning.md`](internal/docs/versioning.md).
 
 ## Releasing
 
 Release this package from `main` using the changelog-driven workflow in
-[`docs/releasing.md`](docs/releasing.md). Run `yarn release:dry-run` before
-`yarn release`.
+[`internal/docs/releasing.md`](internal/docs/releasing.md). Run
+`yarn release:dry-run` before `yarn release`.
 
 ## Compatibility Policy
 

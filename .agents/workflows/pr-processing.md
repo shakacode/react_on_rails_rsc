@@ -13,7 +13,7 @@ For assistants without skill support, follow the high-concurrency batch launch r
 
 For one coordinator running multiple batches across machines, launch surfaces,
 or the React on Rails / RSC repositories, use
-`internal/contributor-info/multi-batch-operations.md`.
+`internal/docs/agent-workflows/multi-batch-operations.md`.
 
 For post-merge audits after a concurrent batch or before a release candidate, use `$post-merge-audit` when skills are available. Reusable audit, comparison, issue-creation, and Claude handoff prompts live in `.agents/workflows/post-merge-audit.md`.
 
@@ -407,7 +407,7 @@ Use exact lane assignments as the primary coordination mechanism. Labels are use
 - When the private `shakacode/agent-coordination` backend is available
   (`agent-coord status` exits 0), treat private state as the source of truth for
   claims, heartbeats, liveness, active batches, and dependency rendering. See
-  [Agent Coordination Backend](../../internal/contributor-info/agent-coordination-backend.md).
+  [Agent Coordination Backend](../../internal/docs/agent-workflows/agent-coordination-backend.md).
 - Public claim comments are advisory fallback state for humans and recovery
   only. They do not override a live/stale private holder, bypass a refused
   private claim, or unblock a dependency lane by themselves.

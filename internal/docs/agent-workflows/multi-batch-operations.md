@@ -2,7 +2,7 @@
 
 Use this playbook when one coordinator is running multiple agent batches across
 machines, launch surfaces, or repositories. It sits above the per-lane workflow
-rules in [AGENTS.md](../../AGENTS.md),
+rules in [AGENTS.md](../../../AGENTS.md),
 [PR Skill Guide](agent-pr-batch-skills.md), and
 [Agent Coordination Backend](agent-coordination-backend.md).
 
@@ -173,7 +173,7 @@ Use this lifecycle for every lane:
 
 If the private backend is unavailable, use the structured public claim comment
 fallback from
-[pr-processing.md](../../.agents/workflows/pr-processing.md#coordination-state),
+[pr-processing.md](../../../.agents/workflows/pr-processing.md#coordination-state),
 but do not use a public comment to override a refused private claim.
 
 ## Batch Sizing And Routing

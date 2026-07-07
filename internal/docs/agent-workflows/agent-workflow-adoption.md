@@ -15,15 +15,15 @@ package. The current model keeps portable shared skills in the installed/shared 
 pack and keeps only RSC-specific skill front doors in this repository, so Codex does not show
 duplicate repo-local and personal skill entries. The workflow layers are:
 
-- [`AGENTS.md`](../../AGENTS.md) - canonical repo policy for commands, testing, code style, git
+- [`AGENTS.md`](../../../AGENTS.md) - canonical repo policy for commands, testing, code style, git
   safety, merge qualification, release model, changelog rules, and documentation boundaries.
-- [`.agents/skills/`](../../.agents/skills/README.md) - repo-local RSC-specific skill entry points
+- [`.agents/skills/`](../../../.agents/skills/README.md) - repo-local RSC-specific skill entry points
   and deliberate local overrides only.
-- [`.agents/bin/shared-skill-dir`](../../.agents/bin/shared-skill-dir) - helper for resolving an
+- [`.agents/bin/shared-skill-dir`](../../../.agents/bin/shared-skill-dir) - helper for resolving an
   installed/shared skill directory when a script needs a filesystem path.
-- [`.agents/workflows/`](../../.agents/workflows/pr-processing.md) - deeper reusable workflows for
+- [`.agents/workflows/`](../../../.agents/workflows/pr-processing.md) - deeper reusable workflows for
   agents without skill support or for long prompts that should not live in a skill front door.
-- [`.claude/skills`](../../.claude/skills) - symlink to `.agents/skills` so Claude Code can expose
+- [`.claude/skills`](../../../.claude/skills) - symlink to `.agents/skills` so Claude Code can expose
   local RSC-specific workflows as slash commands. Install the shared pack in the agent home for
   shared slash commands.
 
@@ -44,25 +44,25 @@ repo-local files together:
 
 | File | Purpose |
 | --- | --- |
-| [`AGENTS.md`](../../AGENTS.md) | Canonical repository policy and command source. |
-| [`.agents/skills/README.md`](../../.agents/skills/README.md) | Human-facing index of skill status and adaptation notes. |
-| [`.agents/bin/shared-skill-dir`](../../.agents/bin/shared-skill-dir) | Resolve installed/shared skill directories for helper invocations. |
-| [`.agents/skills/rsc-triage/SKILL.md`](../../.agents/skills/rsc-triage/SKILL.md) | RSC backlog/status refresh workflow. |
-| [`.agents/skills/rsc-verify-pr-fix/SKILL.md`](../../.agents/skills/rsc-verify-pr-fix/SKILL.md) | RSC/package-specific manual bug-fix reproduction and confirmation. |
-| [`.agents/skills/rsc-update-changelog/SKILL.md`](../../.agents/skills/rsc-update-changelog/SKILL.md) | Changelog and npm release-heading workflow. |
-| [`.agents/skills/verify-release/SKILL.md`](../../.agents/skills/verify-release/SKILL.md) | Release artifact verification. |
-| [`.agents/skills/run-e2e/SKILL.md`](../../.agents/skills/run-e2e/SKILL.md) | Package-level end-to-end verification. |
-| [`.agents/skills/downstream-e2e/SKILL.md`](../../.agents/skills/downstream-e2e/SKILL.md) | Downstream React on Rails verification stub. |
-| [`.agents/skills/react-upgrade/SKILL.md`](../../.agents/skills/react-upgrade/SKILL.md) | Emergency vendored-runtime maintenance workflow. |
-| [`.agents/workflows/pr-processing.md`](../../.agents/workflows/pr-processing.md) | Full issue/PR processing operating model. |
-| [`.agents/workflows/address-review.md`](../../.agents/workflows/address-review.md) | Reusable review-feedback prompt for non-skill agents. |
-| [`.agents/workflows/adversarial-pr-review.md`](../../.agents/workflows/adversarial-pr-review.md) | Reusable adversarial review prompts and comparisons. |
-| [`.agents/workflows/post-merge-audit.md`](../../.agents/workflows/post-merge-audit.md) | Reusable post-merge audit prompts and issue-plan templates. |
-| [`.agents/workflows/evaluate-issue.md`](../../.agents/workflows/evaluate-issue.md) | Lightweight evaluation prompt for agents without skill support. |
-| [`internal/contributor-info/agent-coordination-backend.md`](./agent-coordination-backend.md) | Private coordination backend pointer, setup, heartbeat, status, and fallback rules. |
-| [`internal/contributor-info/multi-batch-operations.md`](./multi-batch-operations.md) | Operator model for concurrent batches across machines, launch surfaces, and repos. |
+| [`AGENTS.md`](../../../AGENTS.md) | Canonical repository policy and command source. |
+| [`.agents/skills/README.md`](../../../.agents/skills/README.md) | Human-facing index of skill status and adaptation notes. |
+| [`.agents/bin/shared-skill-dir`](../../../.agents/bin/shared-skill-dir) | Resolve installed/shared skill directories for helper invocations. |
+| [`.agents/skills/rsc-triage/SKILL.md`](../../../.agents/skills/rsc-triage/SKILL.md) | RSC backlog/status refresh workflow. |
+| [`.agents/skills/rsc-verify-pr-fix/SKILL.md`](../../../.agents/skills/rsc-verify-pr-fix/SKILL.md) | RSC/package-specific manual bug-fix reproduction and confirmation. |
+| [`.agents/skills/rsc-update-changelog/SKILL.md`](../../../.agents/skills/rsc-update-changelog/SKILL.md) | Changelog and npm release-heading workflow. |
+| [`.agents/skills/verify-release/SKILL.md`](../../../.agents/skills/verify-release/SKILL.md) | Release artifact verification. |
+| [`.agents/skills/run-e2e/SKILL.md`](../../../.agents/skills/run-e2e/SKILL.md) | Package-level end-to-end verification. |
+| [`.agents/skills/downstream-e2e/SKILL.md`](../../../.agents/skills/downstream-e2e/SKILL.md) | Downstream React on Rails verification stub. |
+| [`.agents/skills/react-upgrade/SKILL.md`](../../../.agents/skills/react-upgrade/SKILL.md) | Emergency vendored-runtime maintenance workflow. |
+| [`.agents/workflows/pr-processing.md`](../../../.agents/workflows/pr-processing.md) | Full issue/PR processing operating model. |
+| [`.agents/workflows/address-review.md`](../../../.agents/workflows/address-review.md) | Reusable review-feedback prompt for non-skill agents. |
+| [`.agents/workflows/adversarial-pr-review.md`](../../../.agents/workflows/adversarial-pr-review.md) | Reusable adversarial review prompts and comparisons. |
+| [`.agents/workflows/post-merge-audit.md`](../../../.agents/workflows/post-merge-audit.md) | Reusable post-merge audit prompts and issue-plan templates. |
+| [`.agents/workflows/evaluate-issue.md`](../../../.agents/workflows/evaluate-issue.md) | Lightweight evaluation prompt for agents without skill support. |
+| [`internal/docs/agent-workflows/agent-coordination-backend.md`](./agent-coordination-backend.md) | Private coordination backend pointer, setup, heartbeat, status, and fallback rules. |
+| [`internal/docs/agent-workflows/multi-batch-operations.md`](./multi-batch-operations.md) | Operator model for concurrent batches across machines, launch surfaces, and repos. |
 
-Keep [`$stress-test`](../../.agents/skills/stress-test/SKILL.md) out of the required baseline until it
+Keep [`$stress-test`](../../../.agents/skills/stress-test/SKILL.md) out of the required baseline until it
 is rewritten for this package. It still assumes React on Rails Pro, Rails apps, and node-renderer
 surfaces.
 
@@ -130,9 +130,9 @@ For this repository, the adapted replacement rules are:
 
 Policy changes should flow in this order:
 
-1. Update [`AGENTS.md`](../../AGENTS.md).
-2. Update affected skill front doors under [`.agents/skills/`](../../.agents/skills/README.md).
-3. Update deeper workflows under [`.agents/workflows/`](../../.agents/workflows/pr-processing.md).
+1. Update [`AGENTS.md`](../../../AGENTS.md).
+2. Update affected skill front doors under [`.agents/skills/`](../../../.agents/skills/README.md).
+3. Update deeper workflows under [`.agents/workflows/`](../../../.agents/workflows/pr-processing.md).
 4. Update [PR Skill Guide](./agent-pr-batch-skills.md) and this guide if user-facing skill selection,
    launch rules, adoption rules, or validation guidance changed.
 5. Update [Agent Coordination Backend](./agent-coordination-backend.md) and

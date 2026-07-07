@@ -337,6 +337,60 @@ describe('RSCRspackPlugin', () => {
       expect(readManifestCss(result, '/StyledIsland.js')).toContain('.styled-island');
     });
 
+    it('keeps child-module CSS-only split chunk styles in the server manifest', () => {
+      const result = run('transitive-css-only-chunk', {
+        isServer: true,
+        clientReferences: staticIslandClientReferences(/^\.\/Button\.js$/),
+        publicPath: '/assets',
+        withCss: true,
+        configExtra: splitStaticIslandCssOnlyChunks,
+      });
+
+      expect(result.assets).toContain('styles.chunk.css');
+      expect(manifestMetadataFor(result, '/Button.js').css).toEqual([
+        '/assets/styles.chunk.css',
+      ]);
+      expect(readManifestCss(result, '/Button.js')).toContain('.panel');
+    });
+
+    it('keeps child-module CSS when the child is split into its own JS chunk', () => {
+      const result = run('transitive-css-only-chunk', {
+        isServer: true,
+        clientReferences: staticIslandClientReferences(/^\.\/Button\.js$/),
+        publicPath: '/assets',
+        withCss: true,
+        configExtra: {
+          optimization: {
+            splitChunks: {
+              chunks: 'all',
+              minSize: 0,
+              cacheGroups: {
+                default: false,
+                defaultVendors: false,
+                panel: {
+                  test: /Panel\.js$/,
+                  name: 'panel',
+                  chunks: 'all',
+                  enforce: true,
+                },
+                styles: {
+                  name: 'styles',
+                  type: 'css/mini-extract',
+                  chunks: 'all',
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      expect(result.assets).toEqual(expect.arrayContaining(['panel.chunk.js', 'styles.chunk.css']));
+      const button = manifestMetadataFor(result, '/Button.js');
+      expect(manifestChunkFiles(button.chunks)).toContain('panel.chunk.js');
+      expect(button.css).toContain('/assets/styles.chunk.css');
+    });
+
     it('keeps mixed chunk-local and CSS-only split styles in the server manifest', () => {
       const result = run('static-islands', {
         isServer: true,

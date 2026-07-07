@@ -668,6 +668,15 @@ export class RSCWebpackPlugin {
 
           let missingClientReferenceBlocksWarningEmitted = false;
           const clientReferenceChunkGroupsByResource = new Map<string, Set<FlightChunkGroup>>();
+          const chunkGroupUseCount = new Map<FlightChunk, number>();
+          for (const candidateGroup of compilation.chunkGroups) {
+            for (const candidateChunk of candidateGroup.chunks) {
+              chunkGroupUseCount.set(
+                candidateChunk,
+                (chunkGroupUseCount.get(candidateChunk) ?? 0) + 1,
+              );
+            }
+          }
 
           // Records every module of `chunkGroup` whose resource is in
           // `chunkResolvedClientFiles`, listing the chunk group's own
@@ -789,10 +798,12 @@ export class RSCWebpackPlugin {
             // css/mini-extract cache group that moves the extracted CssModule
             // into a CSS-only chunk). Follow the module's DIRECT `.css`
             // imports to the chunk(s) that carry them, intersected with this
-            // chunk group, and merge that CSS. Only direct imports are
-            // followed, so CSS reached through a shared dependency (imported by
-            // another module, not the reference) is NOT picked up — the #108
-            // broadcast stays fixed.
+            // chunk group, and merge that CSS. Also follow one non-style child
+            // hop when that child belongs to the reference's async chunk group:
+            // either it shares one of the reference module's chunks, or webpack
+            // split it to a chunk used by this group only. That second check
+            // keeps a split local child component's stylesheet while still
+            // excluding chunks shared by multiple reference groups (#108).
             // Guarded on `moduleGraph`/`getModuleChunksIterable`, which the
             // unit-test mocks omit (they exercise the per-chunk pass only).
             const moduleGraph = compilation.moduleGraph;
@@ -801,6 +812,9 @@ export class RSCWebpackPlugin {
             const directCssDepFiles = (module: FlightModule): string[] => {
               if (!moduleGraph || !getModuleChunksIterable || cssPrefix === null) return [];
               const files = new Set<string>();
+              const moduleChunks = new Set(
+                [...getModuleChunksIterable(module)].filter((chunk) => groupChunks.has(chunk)),
+              );
               const addCssFromModuleChunks = (cssModule: FlightModule): void => {
                 for (const cssChunk of getModuleChunksIterable(cssModule)) {
                   if (!groupChunks.has(cssChunk)) continue;
@@ -811,6 +825,32 @@ export class RSCWebpackPlugin {
                   }
                 }
               };
+              const addDirectStyleImports = (sourceModule: FlightModule): void => {
+                for (const connection of moduleGraph.getOutgoingConnections(sourceModule)) {
+                  const depModule = connection.module ?? connection.resolvedModule;
+                  if (!depModule || !depModule.resource) continue;
+                  const depResource = depModule.resource.replace(/[?#].*$/, '');
+                  if (!STYLE_SOURCE_RE.test(depResource)) continue;
+                  addCssFromModuleChunks(depModule);
+                  for (const cssConnection of moduleGraph.getOutgoingConnections(depModule)) {
+                    const extractedCssModule = cssConnection.module ?? cssConnection.resolvedModule;
+                    if (!extractedCssModule || extractedCssModule.type !== 'css/mini-extract') {
+                      continue;
+                    }
+                    addCssFromModuleChunks(extractedCssModule);
+                  }
+                }
+              };
+              const belongsToReferenceChunkGroup = (depModule: FlightModule): boolean => {
+                for (const depChunk of getModuleChunksIterable(depModule)) {
+                  if (moduleChunks.has(depChunk)) return true;
+                  if (groupChunks.has(depChunk) && (chunkGroupUseCount.get(depChunk) ?? 0) === 1) {
+                    return true;
+                  }
+                }
+                return false;
+              };
+              addDirectStyleImports(module);
               for (const connection of moduleGraph.getOutgoingConnections(module)) {
                 // `module` is the resolved destination for most connections;
                 // some dependency types leave it null with the target on
@@ -823,15 +863,9 @@ export class RSCWebpackPlugin {
                 // emitted chunk file is always `.css`. Strip any webpack
                 // resource query/fragment (`./Button.css?inline`) first.
                 const depResource = depModule.resource.replace(/[?#].*$/, '');
-                if (!STYLE_SOURCE_RE.test(depResource)) continue;
-                addCssFromModuleChunks(depModule);
-                for (const cssConnection of moduleGraph.getOutgoingConnections(depModule)) {
-                  const extractedCssModule = cssConnection.module ?? cssConnection.resolvedModule;
-                  if (!extractedCssModule || extractedCssModule.type !== 'css/mini-extract') {
-                    continue;
-                  }
-                  addCssFromModuleChunks(extractedCssModule);
-                }
+                if (STYLE_SOURCE_RE.test(depResource)) continue;
+                if (!belongsToReferenceChunkGroup(depModule)) continue;
+                addDirectStyleImports(depModule);
               }
               return [...files];
             };

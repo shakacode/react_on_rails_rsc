@@ -39,8 +39,7 @@ import * as url from 'url';
 import webpack = require('webpack');
 import { hasUseClientDirective } from '../clientReferences';
 import {
-  buildEntryClientReferencesPayload,
-  collectEntryClientReferences,
+  emitEntryClientReferencesAsset,
   type EntryClientReferencesCompilation,
 } from '../entryClientReferences';
 
@@ -1047,32 +1046,24 @@ export class RSCWebpackPlugin {
           }
 
           if (typeof this.entryClientReferencesFilename === 'string') {
-            const entryReferences = collectEntryClientReferences({
+            emitEntryClientReferencesAsset({
               compilation: compilation as unknown as EntryClientReferencesCompilation,
+              filename: this.entryClientReferencesFilename,
+              compilerContext: flightCompiler.context,
+              isServer: this.isServer,
               isClientReference: (resource) => resolvedClientFiles.has(resource),
               isTraversalBoundary: (resource) =>
                 isReactOnRailsRSCRuntimeResource(resource, this.isServer),
+              emitWarning: (message) => {
+                compilation.warnings.push(new webpack.WebpackError(message));
+              },
+              emitAsset: (filename, source) => {
+                compilation.emitAsset(
+                  filename,
+                  new webpack.sources.RawSource(source, false),
+                );
+              },
             });
-            if (entryReferences === null) {
-              compilation.warnings.push(
-                new webpack.WebpackError(
-                  'React Server Components: entryClientReferencesFilename was set, but this compilation does not expose the module-graph APIs needed for entry-scoped client-reference discovery ' +
-                    '(entrypoints, chunkGraph.getChunkEntryModulesIterable, moduleGraph.getOutgoingConnections). ' +
-                    this.entryClientReferencesFilename +
-                    ' was not created.',
-                ),
-              );
-            } else {
-              const payload = buildEntryClientReferencesPayload({
-                entries: entryReferences,
-                compilerContext: flightCompiler.context,
-                isServer: this.isServer,
-              });
-              compilation.emitAsset(
-                this.entryClientReferencesFilename,
-                new webpack.sources.RawSource(`${JSON.stringify(payload, null, 2)}\n`, false),
-              );
-            }
           }
 
           compilation.emitAsset(

@@ -26,8 +26,7 @@ import {
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from '../clientReferences';
 import {
-  buildEntryClientReferencesPayload,
-  collectEntryClientReferences,
+  emitEntryClientReferencesAsset,
   type EntryClientReferencesCompilation,
 } from '../entryClientReferences';
 import {
@@ -456,14 +455,12 @@ export class RSCRspackPlugin {
             logger?.debug(`Resolved ${resolvedClientCount} RSC client reference(s)`);
           }
           const diagnosticsCssFiles = new Map<string, string[]>();
-          const manifestState = { clientRuntimeFound: true };
-          const manifest = this.buildManifest(
+          const { manifest, clientRuntimeFound } = this.buildManifest(
             compilation,
             bundler,
-            diagnosticsCssFiles,
-            manifestState,
+            diagnosticsCssFiles
           );
-          if (!manifestState.clientRuntimeFound) return;
+          if (!clientRuntimeFound) return;
           logger?.debug(
             `Emitting ${manifestFilename} with ` +
               `${Object.keys(manifest.filePathToModuleMetadata).length} entries`,
@@ -650,11 +647,13 @@ export class RSCRspackPlugin {
   private buildManifest(
     compilation: AnyCompilation,
     bundler: Bundler,
-    diagnosticsCssFiles: Map<string, string[]>,
-    manifestState?: { clientRuntimeFound: boolean },
+    diagnosticsCssFiles: Map<string, string[]>
   ): {
-    moduleLoading: { prefix: string; crossOrigin: string | null };
-    filePathToModuleMetadata: Record<string, ModuleMetadata>;
+    manifest: {
+      moduleLoading: { prefix: string; crossOrigin: string | null };
+      filePathToModuleMetadata: Record<string, ModuleMetadata>;
+    };
+    clientRuntimeFound: boolean;
   } {
     // Check if the client runtime module was found in this compilation.
     // The webpack plugin emits a warning and skips manifest emission if
@@ -833,10 +832,6 @@ export class RSCRspackPlugin {
         );
       compilation.warnings.push(warning);
     }
-    if (manifestState) {
-      manifestState.clientRuntimeFound = clientFileNameFound;
-    }
-
     const crossOriginRaw = compilation.outputOptions.crossOriginLoading;
     const crossOrigin =
       typeof crossOriginRaw === 'string'
@@ -846,15 +841,18 @@ export class RSCRspackPlugin {
         : null;
 
     return {
-      moduleLoading: {
-        prefix: publicPathIsAuto
-          ? ''
-          : typeof configuredPublicPath === 'string'
-            ? configuredPublicPath
-            : '',
-        crossOrigin,
+      manifest: {
+        moduleLoading: {
+          prefix: publicPathIsAuto
+            ? ''
+            : typeof configuredPublicPath === 'string'
+              ? configuredPublicPath
+              : '',
+          crossOrigin,
+        },
+        filePathToModuleMetadata,
       },
-      filePathToModuleMetadata,
+      clientRuntimeFound: clientFileNameFound,
     };
   }
 
@@ -873,31 +871,22 @@ export class RSCRspackPlugin {
     filename: string,
   ): void {
     const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
-    const entryReferences = collectEntryClientReferences({
+    emitEntryClientReferencesAsset({
       compilation: compilation as unknown as EntryClientReferencesCompilation,
-      isClientReference: (resource) => resolvedClientFiles.has(resource),
-      isTraversalBoundary: (resource) => isRuntimeResource(resource, this.options.isServer),
-    });
-    if (entryReferences === null) {
-      const message =
-        'React Server Components: entryClientReferencesFilename was set, but this compilation does not expose the module-graph APIs needed for entry-scoped client-reference discovery ' +
-        '(entrypoints, chunkGraph.getChunkEntryModulesIterable, moduleGraph.getOutgoingConnections). ' +
-        filename +
-        ' was not created.';
-      compilation.warnings.push(
-        bundler.WebpackError ? new bundler.WebpackError(message) : new Error(message),
-      );
-      return;
-    }
-    const payload = buildEntryClientReferencesPayload({
-      entries: entryReferences,
+      filename,
       compilerContext,
       isServer: this.options.isServer,
+      isClientReference: (resource) => resolvedClientFiles.has(resource),
+      isTraversalBoundary: (resource) => isRuntimeResource(resource, this.options.isServer),
+      emitWarning: (message) => {
+        compilation.warnings.push(
+          bundler.WebpackError ? new bundler.WebpackError(message) : new Error(message),
+        );
+      },
+      emitAsset: (assetFilename, source) => {
+        compilation.emitAsset(assetFilename, new bundler.sources.RawSource(source, false));
+      },
     });
-    compilation.emitAsset(
-      filename,
-      new bundler.sources.RawSource(`${JSON.stringify(payload, null, 2)}\n`, false),
-    );
   }
 
   private buildDiagnostics(

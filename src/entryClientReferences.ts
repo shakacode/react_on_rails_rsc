@@ -87,6 +87,17 @@ export type EntryClientReferencesPayload = {
   >;
 };
 
+type EmitEntryClientReferencesAssetOptions = {
+  compilation: EntryClientReferencesCompilation;
+  filename: string;
+  compilerContext: string;
+  isServer: boolean;
+  isClientReference(resource: string): boolean;
+  isTraversalBoundary(resource: string): boolean;
+  emitWarning(message: string): void;
+  emitAsset(filename: string, source: string): void;
+};
+
 /**
  * Walk each entrypoint's module graph and return the client references
  * statically reachable from it, as a map of entry name to sorted absolute
@@ -199,4 +210,34 @@ export function buildEntryClientReferencesPayload(options: {
     compilerContext: options.compilerContext,
     entries,
   };
+}
+
+/**
+ * Shared collect/warn/emit glue for webpack and rspack entry-scoped artifacts.
+ * The plugins provide bundler-specific warning and Source constructors.
+ */
+export function emitEntryClientReferencesAsset(
+  options: EmitEntryClientReferencesAssetOptions
+): void {
+  const entryReferences = collectEntryClientReferences({
+    compilation: options.compilation,
+    isClientReference: options.isClientReference,
+    isTraversalBoundary: options.isTraversalBoundary,
+  });
+  if (entryReferences === null) {
+    options.emitWarning(
+      'React Server Components: entryClientReferencesFilename was set, but this compilation does not expose the module-graph APIs needed for entry-scoped client-reference discovery ' +
+        '(entrypoints, chunkGraph.getChunkEntryModulesIterable, moduleGraph.getOutgoingConnections). ' +
+        options.filename +
+        ' was not created.'
+    );
+    return;
+  }
+
+  const payload = buildEntryClientReferencesPayload({
+    entries: entryReferences,
+    compilerContext: options.compilerContext,
+    isServer: options.isServer,
+  });
+  options.emitAsset(options.filename, `${JSON.stringify(payload, null, 2)}\n`);
 }

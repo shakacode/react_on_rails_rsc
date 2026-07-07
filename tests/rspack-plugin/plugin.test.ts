@@ -1202,10 +1202,13 @@ describe('RSCRspackPlugin', () => {
           compilation: unknown,
           bundler: unknown,
           diagnosticsCssFiles: Map<string, string[]>,
-        ) => { moduleLoading: { prefix: string } };
+        ) => {
+          manifest: { moduleLoading: { prefix: string } };
+          clientRuntimeFound: boolean;
+        };
       };
 
-      const manifest = internals.buildManifest(
+      const { manifest, clientRuntimeFound } = internals.buildManifest(
         {
           outputOptions: { publicPath: () => '/assets/' },
           entrypoints: new Map(),
@@ -1217,6 +1220,7 @@ describe('RSCRspackPlugin', () => {
         new Map(),
       );
 
+      expect(clientRuntimeFound).toBe(false);
       expect(manifest.moduleLoading.prefix).toBe('');
       expect(warnings.map((warning) => warning.message).join('\n')).toContain(
         'output.publicPath is a function',

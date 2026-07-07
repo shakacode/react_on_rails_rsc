@@ -26,6 +26,11 @@ import {
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from '../clientReferences';
 import {
+  emitEntryClientReferencesAsset,
+  toRelativePosixPath,
+  type EntryClientReferencesCompilation,
+} from '../entryClientReferences';
+import {
   getGeneratedChunkNamesForCompiler,
   setInjectionStateForCompiler,
 } from './injection-loader';
@@ -76,6 +81,7 @@ type AnyChunkGroup = {
 type AnyEntrypoint = {
   chunks?: Iterable<unknown>;
   getChunks?: () => Iterable<unknown>;
+  getEntrypointChunk?: () => unknown;
   getRuntimeChunk?: () => { files: Iterable<string> } | null;
 };
 
@@ -231,6 +237,14 @@ export interface Options {
    * chunk files, and known emitted asset byte sizes. Disabled by default.
    */
   clientReferenceDiagnosticsFilename?: string | false;
+  /**
+   * Opt-in asset listing, for each entrypoint, the client references
+   * statically reachable from its module graph (issue #134). Meaningful on
+   * the server/RSC build, whose entry trees are the rendered pages; a
+   * downstream consumer can join it against the client manifest to scope
+   * per-route client-reference metadata. Disabled by default.
+   */
+  entryClientReferencesFilename?: string | false;
 }
 
 // Legacy rule export kept for consumers that imported the historical symbol.
@@ -431,7 +445,8 @@ export class RSCRspackPlugin {
           stage: bundler.Compilation.PROCESS_ASSETS_STAGE_REPORT,
         },
         () => {
-          const resolvedClientCount = this._resolvedClientFiles.length;
+          const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
+          const resolvedClientCount = resolvedClientFiles.size;
           const logger = compilation.getLogger?.('RSCRspackPlugin');
           if (resolvedClientCount === 0) {
             logger?.info(
@@ -442,7 +457,13 @@ export class RSCRspackPlugin {
             logger?.debug(`Resolved ${resolvedClientCount} RSC client reference(s)`);
           }
           const diagnosticsCssFiles = new Map<string, string[]>();
-          const manifest = this.buildManifest(compilation, bundler, diagnosticsCssFiles);
+          const { manifest, clientRuntimeFound } = this.buildManifest(
+            compilation,
+            bundler,
+            diagnosticsCssFiles,
+            resolvedClientFiles,
+          );
+          if (!clientRuntimeFound) return;
           logger?.debug(
             `Emitting ${manifestFilename} with ` +
               `${Object.keys(manifest.filePathToModuleMetadata).length} entries`,
@@ -457,6 +478,15 @@ export class RSCRspackPlugin {
             compilation.emitAsset(
               this.options.clientReferenceDiagnosticsFilename,
               new bundler.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false),
+            );
+          }
+          if (typeof this.options.entryClientReferencesFilename === 'string') {
+            this.emitEntryClientReferences(
+              compilation,
+              bundler,
+              compiler.context,
+              this.options.entryClientReferencesFilename,
+              resolvedClientFiles,
             );
           }
           compilation.emitAsset(
@@ -530,7 +560,7 @@ export class RSCRspackPlugin {
       try { stat = fs.statSync(full); } catch { continue; }
 
       if (stat.isDirectory()) {
-        const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
+        const relPath = './' + toRelativePosixPath(walkRoot, full);
         if (ref.exclude && ref.exclude.test(relPath)) continue;
         if (ref.recursive !== false) this.walkDir(full, walkRoot, ref, out, watchDependencies);
       } else if (stat.isFile()) {
@@ -538,7 +568,7 @@ export class RSCRspackPlugin {
         // root (e.g. "./components/Button.tsx"), matching the webpack
         // plugin's contextModuleFactory behavior which tests against the
         // relative request path.
-        const relPath = './' + path.relative(walkRoot, full).replace(/\\/g, '/');
+        const relPath = './' + toRelativePosixPath(walkRoot, full);
         if (!ref.include.test(relPath)) continue;
         if (ref.exclude && ref.exclude.test(relPath)) continue;
         watchDependencies.files.add(full);
@@ -622,9 +652,13 @@ export class RSCRspackPlugin {
     compilation: AnyCompilation,
     bundler: Bundler,
     diagnosticsCssFiles: Map<string, string[]>,
+    resolvedClientFiles: ReadonlySet<string>,
   ): {
-    moduleLoading: { prefix: string; crossOrigin: string | null };
-    filePathToModuleMetadata: Record<string, ModuleMetadata>;
+    manifest: {
+      moduleLoading: { prefix: string; crossOrigin: string | null };
+      filePathToModuleMetadata: Record<string, ModuleMetadata>;
+    };
+    clientRuntimeFound: boolean;
   } {
     // Check if the client runtime module was found in this compilation.
     // The webpack plugin emits a warning and skips manifest emission if
@@ -637,7 +671,6 @@ export class RSCRspackPlugin {
     // mirrors the webpack plugin's `isReactOnRailsRSCRuntimeResource` (#43).
     let clientFileNameFound = false;
 
-    const resolvedClientFiles = new Set(this._resolvedClientFiles ?? []);
     const generatedChunkNamesByResource = this.getGeneratedChunkNamesByResource();
     const runtimeChunkFiles = this.getRuntimeChunkFiles(compilation);
     const availableChunkGroupNames = this.getAvailableChunkGroupNames(compilation);
@@ -800,10 +833,9 @@ export class RSCRspackPlugin {
           )
         : new Error(
             `Client runtime at react-on-rails-rsc/client was not found.`,
-          );
+        );
       compilation.warnings.push(warning);
     }
-
     const crossOriginRaw = compilation.outputOptions.crossOriginLoading;
     const crossOrigin =
       typeof crossOriginRaw === 'string'
@@ -813,16 +845,52 @@ export class RSCRspackPlugin {
         : null;
 
     return {
-      moduleLoading: {
-        prefix: publicPathIsAuto
-          ? ''
-          : typeof configuredPublicPath === 'string'
-            ? configuredPublicPath
-            : '',
-        crossOrigin,
+      manifest: {
+        moduleLoading: {
+          prefix: publicPathIsAuto
+            ? ''
+            : typeof configuredPublicPath === 'string'
+              ? configuredPublicPath
+              : '',
+          crossOrigin,
+        },
+        filePathToModuleMetadata,
       },
-      filePathToModuleMetadata,
+      clientRuntimeFound: clientFileNameFound,
     };
+  }
+
+  /**
+   * Emit the entry-scoped client-reference asset (issue #134): for each
+   * entrypoint, the client references statically reachable from its module
+   * graph. Walks the shared traversal in ../entryClientReferences, using the
+   * filesystem-discovered reference set and the Flight runtime matcher (the
+   * injected references hang off the runtime module, so it is a traversal
+   * boundary).
+   */
+  private emitEntryClientReferences(
+    compilation: AnyCompilation,
+    bundler: Bundler,
+    compilerContext: string,
+    filename: string,
+    resolvedClientFiles: ReadonlySet<string>,
+  ): void {
+    emitEntryClientReferencesAsset({
+      compilation: compilation as unknown as EntryClientReferencesCompilation,
+      filename,
+      compilerContext,
+      isServer: this.options.isServer,
+      isClientReference: (resource) => resolvedClientFiles.has(resource),
+      isTraversalBoundary: (resource) => isRuntimeResource(resource, this.options.isServer),
+      emitWarning: (message) => {
+        compilation.warnings.push(
+          bundler.WebpackError ? new bundler.WebpackError(message) : new Error(message),
+        );
+      },
+      emitAsset: (assetFilename, source) => {
+        compilation.emitAsset(assetFilename, new bundler.sources.RawSource(source, false));
+      },
+    });
   }
 
   private buildDiagnostics(
@@ -1041,7 +1109,7 @@ export class RSCRspackPlugin {
     moduleId: string | number | null,
     chunks: (string | number | null)[],
     css: string[],
-    resolvedClientFiles: Set<string>,
+    resolvedClientFiles: ReadonlySet<string>,
     filePathToModuleMetadata: Record<string, ModuleMetadata>,
     diagnosticsCssFiles: Map<string, string[]>,
   ): void {

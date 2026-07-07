@@ -5,6 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [19.2.1-rc.0] - 2026-07-05
 
 ### Added
+- Added an opt-in `entryClientReferencesFilename` option to `RSCWebpackPlugin` and `RSCRspackPlugin` that emits, for each entrypoint, the client references statically reachable from its module graph, keyed by the same `file://` hrefs as the client manifests. The client manifests themselves are unchanged; a downstream consumer can join the asset against the client manifest to scope per-route client-reference metadata, so static RSC pages stop needing a global `clientReferences: []` workaround. ([#176])
 - Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. The default `react-on-rails-rsc/server` fallback keeps failing fast at import time without the `react-server` condition while still publishing the expanded type surface. ([#143])
 - Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
 
@@ -14,6 +15,7 @@ All notable changes to this package will be documented in this file.
 
 ### Fixed
 - Fixed Webpack client-reference string paths to resolve relative to the compiler context and warned when `output.publicPath: "auto"` cannot be serialized into the RSC manifest. ([#171])
+- Fixed `RSCRspackPlugin` to skip manifest and diagnostics emission when the Flight client runtime is missing, matching the Webpack plugin's misconfiguration behavior instead of writing unusable assets. ([#176])
 - Fixed Rspack client-reference manifests to emit deterministic chunk pair ordering under Rspack 2 while preserving the full sibling chunk set. ([#140])
 - Fixed Rspack client manifests to emit stylesheet hints, normalize unserializable `output.publicPath: "auto"`, preserve `.mjs` chunk files, and match webpack split-runtime chunk metadata. ([#172])
 - Fixed `RSCRspackPlugin` runtime injection state to be scoped by compiler, avoiding MultiCompiler and sequential-build cross-talk between rspack client/server builds with different client references or chunk names. ([#168])
@@ -76,6 +78,7 @@ All notable changes to this package will be documented in this file.
 [#167]: https://github.com/shakacode/react_on_rails_rsc/pull/167
 [#168]: https://github.com/shakacode/react_on_rails_rsc/pull/168
 [#172]: https://github.com/shakacode/react_on_rails_rsc/pull/172
+[#176]: https://github.com/shakacode/react_on_rails_rsc/pull/176
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
 [#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151

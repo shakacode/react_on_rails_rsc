@@ -18,6 +18,7 @@ export interface CompileOptions {
   isServer?: boolean;
   clientManifestFilename?: string;
   clientReferenceDiagnosticsFilename?: string | false;
+  entryClientReferencesFilename?: string | false;
   /** Passed through to the plugin; RegExps survive the child-process hop. */
   clientReferences?: unknown;
   /** Chunk name template, e.g. 'client-[request]' for readable chunk ids. */
@@ -65,6 +66,23 @@ export interface ClientReferenceDiagnostics {
   }>;
 }
 
+export interface EntryClientReferences {
+  version: 1;
+  isServer: boolean;
+  compilerContext: string;
+  entries: Record<
+    string,
+    { clientReferences: string[]; relativeClientReferences: string[] }
+  >;
+}
+
+export interface BuildModuleStat {
+  name?: string;
+  identifier?: string;
+  moduleType?: string;
+  modules?: BuildModuleStat[];
+}
+
 export interface CompileResult {
   manifest: {
     moduleLoading: { prefix: string; crossOrigin: string | null };
@@ -74,8 +92,10 @@ export interface CompileResult {
   manifestPath: string;
   clientReferenceDiagnostics?: ClientReferenceDiagnostics;
   clientReferenceDiagnosticsSource?: string;
+  entryClientReferences?: EntryClientReferences;
   assets: string[];
   warnings: string[];
+  modules: BuildModuleStat[];
   outputPath: string;
 }
 
@@ -109,6 +129,7 @@ const compileInto = (
     isServer: options.isServer ?? false,
     clientManifestFilename: options.clientManifestFilename,
     clientReferenceDiagnosticsFilename: options.clientReferenceDiagnosticsFilename,
+    entryClientReferencesFilename: options.entryClientReferencesFilename,
     clientReferences: serializeForRunner(options.clientReferences),
     chunkName: options.chunkName,
     publicPath: options.publicPath,
@@ -139,6 +160,7 @@ const compileInto = (
     errors?: string[];
     warnings?: string[];
     assets?: string[];
+    modules?: BuildModuleStat[];
   };
   if (!result.ok) {
     // Warnings often carry the actual hint for a failed build.
@@ -172,6 +194,15 @@ const compileInto = (
   const clientReferenceDiagnostics = clientReferenceDiagnosticsSource
     ? (JSON.parse(clientReferenceDiagnosticsSource) as ClientReferenceDiagnostics)
     : undefined;
+  const entryReferencesFilename = options.entryClientReferencesFilename;
+  const entryReferencesPath =
+    typeof entryReferencesFilename === 'string'
+      ? path.join(outputPath, entryReferencesFilename)
+      : undefined;
+  const entryClientReferences =
+    entryReferencesPath && fs.existsSync(entryReferencesPath)
+      ? (JSON.parse(fs.readFileSync(entryReferencesPath, 'utf8')) as EntryClientReferences)
+      : undefined;
 
   return {
     manifest,
@@ -179,8 +210,10 @@ const compileInto = (
     manifestPath,
     clientReferenceDiagnostics,
     clientReferenceDiagnosticsSource,
+    entryClientReferences,
     assets: result.assets ?? [],
     warnings: result.warnings ?? [],
+    modules: result.modules ?? [],
     outputPath,
   };
 };

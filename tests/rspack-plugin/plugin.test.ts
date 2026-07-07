@@ -169,6 +169,18 @@ describe('RSCRspackPlugin', () => {
       expect(result.assets).not.toContain('react-client-manifest.json');
     });
 
+    it('skips manifest emission when the client runtime is missing without entry-scope opt-in', () => {
+      let error: Error | undefined;
+      try {
+        run('basic-client', { isServer: false, omitRuntimeEntry: true });
+      } catch (e) {
+        error = e as Error;
+      }
+
+      expect(error?.message).toContain('Manifest not emitted');
+      expect(error?.message).toContain('react-client-manifest.json');
+    });
+
     it('produces valid JSON', () => {
       const result = run('basic-client');
       expect(() => JSON.parse(result.manifestSource)).not.toThrow();
@@ -1190,10 +1202,14 @@ describe('RSCRspackPlugin', () => {
           compilation: unknown,
           bundler: unknown,
           diagnosticsCssFiles: Map<string, string[]>,
-        ) => { moduleLoading: { prefix: string } };
+          resolvedClientFiles: ReadonlySet<string>,
+        ) => {
+          manifest: { moduleLoading: { prefix: string } };
+          clientRuntimeFound: boolean;
+        };
       };
 
-      const manifest = internals.buildManifest(
+      const { manifest, clientRuntimeFound } = internals.buildManifest(
         {
           outputOptions: { publicPath: () => '/assets/' },
           entrypoints: new Map(),
@@ -1203,8 +1219,10 @@ describe('RSCRspackPlugin', () => {
         },
         { WebpackError: Error },
         new Map(),
+        new Set(),
       );
 
+      expect(clientRuntimeFound).toBe(false);
       expect(manifest.moduleLoading.prefix).toBe('');
       expect(warnings.map((warning) => warning.message).join('\n')).toContain(
         'output.publicPath is a function',

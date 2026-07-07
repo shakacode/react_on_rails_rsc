@@ -161,13 +161,71 @@ outside Flight. If a route renders real Flight client components, keep those
 components in `clientReferences` and use the diagnostics output to prove the
 declared island set is still narrow.
 
+## Entry-Scoped Client Reference Discovery
+
+Both plugins can emit an opt-in asset that lists, for each entrypoint, the
+client references statically reachable from that entry's module graph:
+
+```js
+new RSCWebpackPlugin({
+  isServer: true,
+  entryClientReferencesFilename: 'react-entry-client-references.json',
+});
+```
+
+`RSCRspackPlugin` supports the same option. Set it on the server/RSC build,
+whose entry trees are the rendered pages; the client manifest itself is
+unchanged and stays build-wide.
+
+The emitted JSON maps entry names to the reachable references, keyed the same
+way as the client manifests so a consumer can join the two:
+
+```json
+{
+  "version": 1,
+  "isServer": true,
+  "compilerContext": "/app",
+  "entries": {
+    "static-home": {
+      "clientReferences": [],
+      "relativeClientReferences": []
+    },
+    "dashboard": {
+      "clientReferences": ["file:///app/components/TinyIsland.jsx"],
+      "relativeClientReferences": ["components/TinyIsland.jsx"]
+    }
+  }
+}
+```
+
+Reachability is computed from the bundler module graph: the walk starts at
+each entry's modules, follows static and dynamic import edges, records a
+client reference when it reaches one without walking past that boundary, and
+never walks through the Flight client runtime module. The plugin-injected
+references all attach there, so walking through it would mark every discovered
+reference reachable from every entry.
+
+The walk is static. A client reference rendered through an indirection the
+module graph cannot see, for example a dynamic `require` built from a string,
+is not attributed to the entry. A consumer that filters the client manifest by
+an entry's reference set should fail fast on a missing reference and offer a
+per-route escape hatch back to the full manifest.
+
+An entry with an empty `clientReferences` list is the machine-checkable form
+of the static-page patterns above: the page's tree renders no client
+component, so a consumer can skip client-reference preloads and stylesheet
+hints for it entirely instead of the app disabling discovery globally with
+`clientReferences: []`.
+
 ## Boundaries
 
 This diagnostics slice is intentionally narrow:
 
-- It does not create route-scoped or page-scoped manifests.
-- It does not discover the exact client references rendered by a specific RSC
-  page.
+- It does not create route-scoped or page-scoped manifests; the entry-scoped
+  asset above is discovery metadata for a consumer-side join, not a second
+  manifest format.
+- It does not observe which client references a specific request actually
+  rendered at runtime; entry-scoped discovery is a static over-approximation.
 - It does not eliminate vendor chunks automatically.
 - It does not solve the broader dependency and manifest scoping work tracked
   outside this page.

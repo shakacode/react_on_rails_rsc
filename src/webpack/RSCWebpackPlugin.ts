@@ -38,6 +38,10 @@ import * as path from 'path';
 import * as url from 'url';
 import webpack = require('webpack');
 import { hasUseClientDirective } from '../clientReferences';
+import {
+  emitEntryClientReferencesAsset,
+  type EntryClientReferencesCompilation,
+} from '../entryClientReferences';
 
 // neo-async ships no type definitions; declare the two helpers we use.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -164,6 +168,7 @@ export type Options = {
   clientManifestFilename?: string;
   serverConsumerManifestFilename?: string;
   clientReferenceDiagnosticsFilename?: string | false;
+  entryClientReferencesFilename?: string | false;
 };
 
 const DEFAULT_CHUNK_GROUP_WARNING_THRESHOLD = 4;
@@ -449,6 +454,15 @@ export class RSCWebpackPlugin {
 
   readonly clientReferenceDiagnosticsFilename: string | false | undefined;
 
+  /**
+   * Opt-in asset listing, for each entrypoint, the client references
+   * statically reachable from its module graph (issue #134). Meaningful on
+   * the server/RSC build, whose entry trees are the rendered pages; a
+   * downstream consumer can join it against the client manifest to scope
+   * per-route client-reference metadata.
+   */
+  readonly entryClientReferencesFilename: string | false | undefined;
+
   static __internal_isReactOnRailsRSCRuntimeResource = isReactOnRailsRSCRuntimeResource;
 
   constructor(options: Options) {
@@ -494,6 +508,7 @@ export class RSCWebpackPlugin {
     this.serverConsumerManifestFilename =
       options.serverConsumerManifestFilename || 'react-ssr-manifest.json';
     this.clientReferenceDiagnosticsFilename = options.clientReferenceDiagnosticsFilename;
+    this.entryClientReferencesFilename = options.entryClientReferencesFilename;
   }
 
   apply(compiler: webpack.Compiler): void {
@@ -1028,6 +1043,27 @@ export class RSCWebpackPlugin {
               this.clientReferenceDiagnosticsFilename,
               new webpack.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false),
             );
+          }
+
+          if (typeof this.entryClientReferencesFilename === 'string') {
+            emitEntryClientReferencesAsset({
+              compilation: compilation as unknown as EntryClientReferencesCompilation,
+              filename: this.entryClientReferencesFilename,
+              compilerContext: flightCompiler.context,
+              isServer: this.isServer,
+              isClientReference: (resource) => resolvedClientFiles.has(resource),
+              isTraversalBoundary: (resource) =>
+                isReactOnRailsRSCRuntimeResource(resource, this.isServer),
+              emitWarning: (message) => {
+                compilation.warnings.push(new webpack.WebpackError(message));
+              },
+              emitAsset: (filename, source) => {
+                compilation.emitAsset(
+                  filename,
+                  new webpack.sources.RawSource(source, false),
+                );
+              },
+            });
           }
 
           compilation.emitAsset(

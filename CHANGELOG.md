@@ -15,6 +15,7 @@ All notable changes to this package will be documented in this file.
 - Skipped rspack diagnostics CSS collection when client-reference diagnostics are disabled, avoiding dead per-chunk-group CSS scans on the default build path. ([#152])
 
 ### Fixed
+- Recovered RSC stylesheet hints for CSS imported by a client reference's child module when a CSS-merging SplitChunks cache group moves the stylesheet into a CSS-only split chunk. ([#184])
 - Fixed Webpack client-reference string paths to resolve relative to the compiler context and warned when `output.publicPath: "auto"` cannot be serialized into the RSC manifest. ([#171])
 - Fixed `RSCRspackPlugin` to skip manifest and diagnostics emission when the Flight client runtime is missing, matching the Webpack plugin's misconfiguration behavior instead of writing unusable assets. ([#176])
 - Fixed Rspack client-reference manifests to emit deterministic chunk pair ordering under Rspack 2 while preserving the full sibling chunk set. ([#140])
@@ -81,6 +82,7 @@ All notable changes to this package will be documented in this file.
 [#172]: https://github.com/shakacode/react_on_rails_rsc/pull/172
 [#176]: https://github.com/shakacode/react_on_rails_rsc/pull/176
 [#183]: https://github.com/shakacode/react_on_rails_rsc/pull/183
+[#184]: https://github.com/shakacode/react_on_rails_rsc/pull/184
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
 [#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151

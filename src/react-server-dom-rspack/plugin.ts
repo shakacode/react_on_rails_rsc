@@ -708,6 +708,17 @@ export class RSCRspackPlugin {
     // plugin, lines 241-294). Each module gets the full list of sibling
     // chunks in its group — this ensures splitChunks dependencies are
     // included.
+    const chunkGroupUseCount = new Map<AnyChunk, number>();
+    for (const candidateGroup of compilation.chunkGroups) {
+      for (const candidateChunkUnknown of candidateGroup.chunks) {
+        const candidateChunk = candidateChunkUnknown as AnyChunk;
+        chunkGroupUseCount.set(
+          candidateChunk,
+          (chunkGroupUseCount.get(candidateChunk) ?? 0) + 1,
+        );
+      }
+    }
+
     for (const chunkGroup of compilation.chunkGroups) {
       const groupChunkList = [...chunkGroup.chunks].map((chunk) => chunk as AnyChunk);
       const normalizedChunkGroup = { name: chunkGroup.name, chunks: groupChunkList };
@@ -728,6 +739,11 @@ export class RSCRspackPlugin {
       const directCssDepFiles = (module: AnyModule): string[] => {
         if (!getOutgoingConnections || cssPrefix === null) return [];
         const files = new Set<string>();
+        const moduleChunks = new Set(
+          [...compilation.chunkGraph.getModuleChunks(module)]
+            .map((chunk) => chunk as AnyChunk)
+            .filter((chunk) => groupChunkSet.has(chunk)),
+        );
         const addCssFromModuleChunks = (cssModule: AnyModule): void => {
           for (const cssChunkUnknown of compilation.chunkGraph.getModuleChunks(cssModule)) {
             const cssChunk = cssChunkUnknown as AnyChunk;
@@ -737,18 +753,44 @@ export class RSCRspackPlugin {
             }
           }
         };
+        const addDirectStyleImports = (sourceModule: AnyModule): void => {
+          for (const connection of getOutgoingConnections(sourceModule)) {
+            const depModule = connection.module ?? connection.resolvedModule;
+            if (!depModule?.resource) continue;
+            const depResource = depModule.resource.replace(/[?#].*$/, '');
+            if (!STYLE_SOURCE_RE.test(depResource)) continue;
+            addCssFromModuleChunks(depModule);
+            for (const cssConnection of getOutgoingConnections(depModule)) {
+              const extractedCssModule = cssConnection.module ?? cssConnection.resolvedModule;
+              if (!extractedCssModule || extractedCssModule.type !== 'css/mini-extract') continue;
+              addCssFromModuleChunks(extractedCssModule);
+            }
+          }
+        };
+        // Match the webpack plugin: a one-hop non-style child qualifies only
+        // when it shares the reference module's chunk or rspack split it to a
+        // chunk used by this async chunk group only. The use-count check keeps
+        // local child-component CSS without re-broadcasting shared dependency
+        // chunks across reference groups (#108).
+        const belongsToReferenceChunkGroup = (depModule: AnyModule): boolean => {
+          for (const depChunkUnknown of compilation.chunkGraph.getModuleChunks(depModule)) {
+            const depChunk = depChunkUnknown as AnyChunk;
+            if (moduleChunks.has(depChunk)) return true;
+            if (groupChunkSet.has(depChunk) && (chunkGroupUseCount.get(depChunk) ?? 0) === 1) {
+              return true;
+            }
+          }
+          return false;
+        };
 
+        addDirectStyleImports(module);
         for (const connection of getOutgoingConnections(module)) {
           const depModule = connection.module ?? connection.resolvedModule;
           if (!depModule?.resource) continue;
           const depResource = depModule.resource.replace(/[?#].*$/, '');
-          if (!STYLE_SOURCE_RE.test(depResource)) continue;
-          addCssFromModuleChunks(depModule);
-          for (const cssConnection of getOutgoingConnections(depModule)) {
-            const extractedCssModule = cssConnection.module ?? cssConnection.resolvedModule;
-            if (!extractedCssModule || extractedCssModule.type !== 'css/mini-extract') continue;
-            addCssFromModuleChunks(extractedCssModule);
-          }
+          if (STYLE_SOURCE_RE.test(depResource)) continue;
+          if (!belongsToReferenceChunkGroup(depModule)) continue;
+          addDirectStyleImports(depModule);
         }
 
         return [...files];

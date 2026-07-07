@@ -413,6 +413,85 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
+  describe('CSS-only SplitChunks chunks: transitive CSS moved away from client-reference JS', () => {
+    let result: CompileResult;
+
+    beforeAll(() => {
+      result = run('transitive-css-only-chunk', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: {
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              styles: {
+                name: 'styles',
+                type: 'css/mini-extract',
+                chunks: 'all',
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+    });
+
+    it('emits the child stylesheet as a CSS-only split chunk (precondition)', () => {
+      expect(result.assets).toContain('styles.chunk.css');
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(chunkFiles(button)).toContain('client-Button-js.chunk.js');
+      expect(result.assets).not.toContain('client-Button-js.chunk.css');
+    });
+
+    it("keeps CSS imported by the client reference's child module", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      expect(button.css).toContain('/assets/styles.chunk.css');
+    });
+
+    it("keeps child-module CSS when the child is split into its own JS chunk", () => {
+      const splitChild = run('transitive-css-only-chunk', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: {
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              panel: {
+                test: /Panel\.js$/,
+                name: 'panel',
+                chunks: 'all',
+                enforce: true,
+              },
+              styles: {
+                name: 'styles',
+                type: 'css/mini-extract',
+                chunks: 'all',
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+
+      expect(splitChild.assets).toEqual(expect.arrayContaining(['panel.chunk.js', 'styles.chunk.css']));
+      const button = entryEndingWith(splitChild.manifest, '/Button.js');
+      expect(chunkFiles(button)).toContain('panel.chunk.js');
+      expect(button.css).toContain('/assets/styles.chunk.css');
+    });
+
+    it('produces no fallback warning', () => {
+      expectNoWarnings(result);
+    });
+  });
+
   describe('CSS-only shared dependency chunks stay excluded from client-reference CSS', () => {
     let result: CompileResult;
 
@@ -718,6 +797,45 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
         'client-SettingsPage-js.chunk.js',
       ]);
       expect(chunkFiles(settings)).toEqual(['client-SettingsPage-js.chunk.js']);
+      expectNoWarnings(result);
+    });
+
+    it("does not broadcast a shared dependency's split stylesheet on the server build", () => {
+      const result = run('split-shared-css', {
+        isServer: true,
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: {
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              sharedJs: {
+                test: /shared\.js$/,
+                name: 'shared-js',
+                minChunks: 2,
+                enforce: true,
+              },
+              sharedStyles: {
+                test: /shared\.css$/,
+                name: 'shared-styles',
+                type: 'css/mini-extract',
+                chunks: 'all',
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+
+      expect(result.assets).toContain('shared-styles.chunk.css');
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(button.css ?? []).not.toContain('/assets/shared-styles.chunk.css');
+      expect(settings.css ?? []).not.toContain('/assets/shared-styles.chunk.css');
       expectNoWarnings(result);
     });
   });

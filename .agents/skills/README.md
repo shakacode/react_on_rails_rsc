@@ -13,9 +13,9 @@ Invoke shared skills with their `$name` (for example `$pr-batch`, `$plan-pr-batc
 `.agents/bin/shared-skill-dir <skill-name>`.
 
 For the maintainer-facing guide to choosing and running these skills, see
-[`internal/contributor-info/agent-pr-batch-skills.md`](../../internal/contributor-info/agent-pr-batch-skills.md).
+[`internal/docs/agent-workflows/agent-pr-batch-skills.md`](../../internal/docs/agent-workflows/agent-pr-batch-skills.md).
 For the workflow adoption and retargeting checklist, see
-[`internal/contributor-info/agent-workflow-adoption.md`](../../internal/contributor-info/agent-workflow-adoption.md).
+[`internal/docs/agent-workflows/agent-workflow-adoption.md`](../../internal/docs/agent-workflows/agent-workflow-adoption.md).
 
 ## Local Skill Status
 
@@ -29,7 +29,7 @@ runtime maintenance workflows.
 | `run-e2e` | Adapted — runs `scripts/e2e/run.sh` with `RSC_E2E_BUNDLER=webpack|rspack|both` |
 | `downstream-e2e` | Stub — documents the intended downstream e2e wrapper and blocks on #59 |
 | `react-upgrade` | Legacy — emergency vendored-runtime maintenance only; not the Option 4 patch-file fallback |
-| `rsc-triage` | Manual stub — refreshes `docs/open-rsc-work-status.md` from live `gh` state and reports `UNKNOWN` for unverifiable facts |
+| `rsc-triage` | Manual stub — refreshes `internal/docs/open-rsc-work-status.md` from live `gh` state and reports `UNKNOWN` for unverifiable facts |
 | `rsc-update-changelog` | Adapted — Keep-a-Changelog format + `scripts/release.sh` npm release flow |
 | `rsc-verify-pr-fix` | Adapted — before/after reproduction reframed around jest, plugin output, and RSC package behavior |
 | `stress-test` | **Not adapted** — still Rails/Pro/node-renderer-specific; reference only until rewritten for this package |

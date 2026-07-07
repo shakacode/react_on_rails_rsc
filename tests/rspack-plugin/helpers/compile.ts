@@ -29,6 +29,8 @@ export interface CompileOptions {
   maxChunks?: number;
   outputFilename?: string;
   outputChunkFilename?: string;
+  /** Drops the Flight runtime entry to assert missing-runtime behavior. */
+  omitRuntimeEntry?: boolean;
   /** Additional entrypoints (name -> request) besides the default `main`. */
   extraEntries?: Record<string, string>;
   /** Additional rspack config to merge. Use sparingly. */
@@ -64,7 +66,15 @@ export interface CompileResult {
   entryClientReferences?: EntryClientReferences;
   assets: string[];
   warnings: string[];
+  modules: BuildModuleStat[];
   outputPath: string;
+}
+
+export interface BuildModuleStat {
+  name?: string;
+  identifier?: string;
+  moduleType?: string;
+  modules?: BuildModuleStat[];
 }
 
 export interface EntryClientReferences {
@@ -86,7 +96,21 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
   const outputPath = fs.mkdtempSync(
     path.join(os.tmpdir(), `ror-rsc-rspack-plugin-${fixture}-`),
   );
+  try {
+    return compileInto(context, outputPath, options);
+  } catch (e) {
+    // Failed compiles never reach the caller's cleanup list — remove the
+    // tmp dir here so they don't leak.
+    fs.rmSync(outputPath, { recursive: true, force: true });
+    throw e;
+  }
+};
 
+const compileInto = (
+  context: string,
+  outputPath: string,
+  options: CompileOptions,
+): CompileResult => {
   const runnerArgs = {
     context,
     outputPath,
@@ -101,6 +125,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     maxChunks: options.maxChunks,
     outputFilename: options.outputFilename,
     outputChunkFilename: options.outputChunkFilename,
+    omitRuntimeEntry: options.omitRuntimeEntry,
     extraEntries: options.extraEntries,
     configExtra: serializeForRunner(options.configExtra ?? {}),
   };
@@ -124,6 +149,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     errors?: string[];
     warnings?: string[];
     assets?: string[];
+    modules?: BuildModuleStat[];
     outputPath?: string;
   };
   if (!result.ok) {
@@ -171,6 +197,7 @@ export const compile = (fixture: string, options: CompileOptions = {}): CompileR
     entryClientReferences,
     assets: result.assets ?? [],
     warnings: result.warnings ?? [],
+    modules: result.modules ?? [],
     outputPath,
   };
 };

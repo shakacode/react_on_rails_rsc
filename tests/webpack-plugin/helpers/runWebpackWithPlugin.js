@@ -170,7 +170,7 @@ webpack(config, (err, stats) => {
     process.stdout.write(JSON.stringify({ ok: false, errors: ['no stats returned'] }));
     process.exit(1);
   }
-  const info = stats.toJson({ errors: true, warnings: true, assets: true });
+  const info = stats.toJson({ errors: true, warnings: true, assets: true, modules: true });
   if (stats.hasErrors()) {
     process.stdout.write(
       JSON.stringify({
@@ -188,9 +188,19 @@ webpack(config, (err, stats) => {
       ok: true,
       warnings: (info.warnings || []).map((w) => w.message),
       assets: (info.assets || []).map((a) => a.name),
+      modules: compactModules(info.modules || []),
     }),
   );
 });
+
+function compactModules(modules) {
+  return modules.map((module) => ({
+    name: module.name,
+    identifier: module.identifier,
+    moduleType: module.moduleType,
+    modules: module.modules ? compactModules(module.modules) : undefined,
+  }));
+}
 
 function reviveFromRunner(value) {
   if (value && typeof value === 'object' && value.__type === 'RegExp') {

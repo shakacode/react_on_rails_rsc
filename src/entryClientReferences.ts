@@ -9,9 +9,9 @@
  * server builds especially, chunk merging folds every injected reference into
  * the entry chunk.
  *
- * This module answers that question from the module graph instead: a BFS from
- * each entrypoint's entry modules over `moduleGraph.getOutgoingConnections`,
- * stopping at two kinds of boundary:
+ * This module answers that question from the module graph instead: a
+ * depth-first walk from each entrypoint's entry modules over
+ * `moduleGraph.getOutgoingConnections`, stopping at two kinds of boundary:
  *
  *  - a client-reference module (recorded, not descended into — its imports
  *    belong to the client bundle's graph, not the server tree), and
@@ -125,18 +125,20 @@ export function collectEntryClientReferences(options: {
     }
 
     const found = new Set<string>();
-    // Keyed by identifier() when available so bundlers that hand out fresh
-    // wrapper objects for the same module (rspack bindings) still terminate
-    // on graph cycles.
+    // Keyed by identifier() or resource when available so bundlers that hand
+    // out fresh wrapper objects for the same module (rspack bindings) still
+    // terminate on graph cycles.
     const visited = new Set<unknown>();
-    const queue: EntryClientReferencesModule[] = [
+    const stack: EntryClientReferencesModule[] = [
       ...getChunkEntryModulesIterable(entrypoint.getEntrypointChunk()),
     ];
 
-    while (queue.length > 0) {
-      const module = queue.pop()!;
+    while (stack.length > 0) {
+      const module = stack.pop()!;
       const visitKey =
-        typeof module.identifier === 'function' ? module.identifier() : module;
+        typeof module.identifier === 'function'
+          ? module.identifier()
+          : module.resource ?? module;
       if (visited.has(visitKey)) continue;
       visited.add(visitKey);
 
@@ -161,7 +163,7 @@ export function collectEntryClientReferences(options: {
 
       for (const connection of getOutgoingConnections(module)) {
         const depModule = connection.module ?? connection.resolvedModule;
-        if (depModule) queue.push(depModule);
+        if (depModule) stack.push(depModule);
       }
     }
 

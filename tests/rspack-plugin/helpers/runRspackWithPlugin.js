@@ -19,6 +19,7 @@
  *     withCss?: boolean,
  *     maxChunks?: number,
  *     extraEntries?: object,        // additional entrypoints: name -> request
+ *     omitRuntimeEntry?: boolean,   // omit Flight runtime for negative tests
  *     configExtra?: object,
  *   }
  *
@@ -55,6 +56,7 @@ const {
   maxChunks,
   outputFilename,
   outputChunkFilename,
+  omitRuntimeEntry,
   extraEntries,
   configExtra,
 } = args;
@@ -107,7 +109,10 @@ const config = {
   mode: typeof maxChunks === 'number' ? 'none' : 'development',
   target: isServer ? 'node' : 'web',
   context,
-  entry: { main: [runtimeEntry, './index.js'], ...(extraEntries || {}) },
+  entry: {
+    main: omitRuntimeEntry ? ['./index.js'] : [runtimeEntry, './index.js'],
+    ...(extraEntries || {}),
+  },
   output: {
     path: outputPath,
     filename: outputFilename ?? '[name].js',
@@ -141,7 +146,7 @@ rspack(config, (err, stats) => {
     process.stdout.write(JSON.stringify({ ok: false, errors: ['no stats returned'] }));
     process.exit(1);
   }
-  const info = stats.toJson({ errors: true, warnings: true, assets: true });
+  const info = stats.toJson({ errors: true, warnings: true, assets: true, modules: true });
   if (stats.hasErrors()) {
     process.stdout.write(
       JSON.stringify({
@@ -157,9 +162,19 @@ rspack(config, (err, stats) => {
       ok: true,
       warnings: (info.warnings || []).map((w) => w.message),
       assets: (info.assets || []).map((a) => a.name),
+      modules: compactModules(info.modules || []),
     }),
   );
 });
+
+function compactModules(modules) {
+  return modules.map((module) => ({
+    name: module.name,
+    identifier: module.identifier,
+    moduleType: module.moduleType,
+    modules: module.modules ? compactModules(module.modules) : undefined,
+  }));
+}
 
 function reviveFromRunner(value) {
   if (value && typeof value === 'object' && value.__type === 'RegExp') {

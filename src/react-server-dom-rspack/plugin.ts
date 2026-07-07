@@ -81,6 +81,7 @@ type AnyChunkGroup = {
 type AnyEntrypoint = {
   chunks?: Iterable<unknown>;
   getChunks?: () => Iterable<unknown>;
+  getEntrypointChunk?: () => unknown;
   getRuntimeChunk?: () => { files: Iterable<string> } | null;
 };
 
@@ -455,7 +456,14 @@ export class RSCRspackPlugin {
             logger?.debug(`Resolved ${resolvedClientCount} RSC client reference(s)`);
           }
           const diagnosticsCssFiles = new Map<string, string[]>();
-          const manifest = this.buildManifest(compilation, bundler, diagnosticsCssFiles);
+          const manifestState = { clientRuntimeFound: true };
+          const manifest = this.buildManifest(
+            compilation,
+            bundler,
+            diagnosticsCssFiles,
+            manifestState,
+          );
+          if (!manifestState.clientRuntimeFound) return;
           logger?.debug(
             `Emitting ${manifestFilename} with ` +
               `${Object.keys(manifest.filePathToModuleMetadata).length} entries`,
@@ -643,6 +651,7 @@ export class RSCRspackPlugin {
     compilation: AnyCompilation,
     bundler: Bundler,
     diagnosticsCssFiles: Map<string, string[]>,
+    manifestState?: { clientRuntimeFound: boolean },
   ): {
     moduleLoading: { prefix: string; crossOrigin: string | null };
     filePathToModuleMetadata: Record<string, ModuleMetadata>;
@@ -821,8 +830,11 @@ export class RSCRspackPlugin {
           )
         : new Error(
             `Client runtime at react-on-rails-rsc/client was not found.`,
-          );
+        );
       compilation.warnings.push(warning);
+    }
+    if (manifestState) {
+      manifestState.clientRuntimeFound = clientFileNameFound;
     }
 
     const crossOriginRaw = compilation.outputOptions.crossOriginLoading;

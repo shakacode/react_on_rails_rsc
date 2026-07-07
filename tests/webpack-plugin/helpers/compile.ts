@@ -76,6 +76,13 @@ export interface EntryClientReferences {
   >;
 }
 
+export interface BuildModuleStat {
+  name?: string;
+  identifier?: string;
+  moduleType?: string;
+  modules?: BuildModuleStat[];
+}
+
 export interface CompileResult {
   manifest: {
     moduleLoading: { prefix: string; crossOrigin: string | null };
@@ -88,6 +95,7 @@ export interface CompileResult {
   entryClientReferences?: EntryClientReferences;
   assets: string[];
   warnings: string[];
+  modules: BuildModuleStat[];
   outputPath: string;
 }
 
@@ -152,6 +160,7 @@ const compileInto = (
     errors?: string[];
     warnings?: string[];
     assets?: string[];
+    modules?: BuildModuleStat[];
   };
   if (!result.ok) {
     // Warnings often carry the actual hint for a failed build.
@@ -204,6 +213,7 @@ const compileInto = (
     entryClientReferences,
     assets: result.assets ?? [],
     warnings: result.warnings ?? [],
+    modules: result.modules ?? [],
     outputPath,
   };
 };

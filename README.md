@@ -46,11 +46,12 @@ Release this package from `main` using the changelog-driven workflow in
 ## Compatibility Policy
 
 The package peer dependencies are the current source of truth for supported
-React and webpack ranges. CI also runs a focused compatibility matrix covering
-React 19.0.4 and 19.2.x, Node.js 20 and 22, webpack 5.59.0 and latest 5.x, and
-rspack latest 1.x. A weekly React canary job is signal-only and is allowed to
-fail while upstream canary APIs move; review its GitHub Actions summary for
-early warnings.
+React, webpack, and rspack ranges. CI also runs a focused compatibility matrix
+covering React 19.0.4 and 19.2.x, Node.js 20 and 22, webpack 5.59.0 and latest
+5.x, and rspack latest 1.x plus latest 2.x. The `@rspack/core` peer is optional
+so webpack-only consumers do not need to install rspack. A weekly React canary
+job is signal-only and is allowed to fail while upstream canary APIs move;
+review its GitHub Actions summary for early warnings.
 
 A formal versioning policy is tracked in
 [#70](https://github.com/shakacode/react_on_rails_rsc/issues/70).

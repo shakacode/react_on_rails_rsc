@@ -247,18 +247,23 @@ function assertWebpackSpec(spec) {
 }
 
 function assertRspackSpec(spec) {
-  if (spec === '^1' || spec === '1.x') return;
+  if (getRspackMajorSpec(spec) !== null) return;
 
   const version = parseVersion(stripSimpleRangePrefix(spec));
-  if (version.major !== 1) {
-    throw new Error(`@rspack/core@${spec} is outside the supported rspack 1.x compatibility matrix`);
+  if (version.major !== 1 && version.major !== 2) {
+    throw new Error(
+      `@rspack/core@${spec} is outside the supported rspack 1.x/2.x compatibility matrix`
+    );
   }
 }
 
 function matchesSpec(packageName, actualVersion, spec) {
   if (isCanarySpec(spec)) return actualVersion.includes('canary');
-  if (spec === '^1' || spec === '1.x') {
-    return parseVersion(actualVersion).major === 1;
+  if (packageName === '@rspack/core') {
+    const rspackMajorSpec = getRspackMajorSpec(spec);
+    if (rspackMajorSpec !== null) {
+      return parseVersion(actualVersion).major === rspackMajorSpec;
+    }
   }
 
   if (spec.startsWith('^')) {
@@ -284,6 +289,12 @@ function matchesSpec(packageName, actualVersion, spec) {
   }
 
   return actualVersion === spec;
+}
+
+function getRspackMajorSpec(spec) {
+  if (spec === '^1' || spec === '1.x') return 1;
+  if (spec === '^2' || spec === '2.x') return 2;
+  return null;
 }
 
 function isCanarySpec(spec) {

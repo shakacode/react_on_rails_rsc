@@ -46,9 +46,11 @@ Each runtime line owns its peer dependency policy:
 - Lowering a root peer minimum, advertising a new React minor line, or broadening
   the supported peer contract needs explicit matrix and downstream evidence in
   the release PR before `latest` is promoted.
-- `webpack` and other bundler peers are compatibility contracts for the plugin
-  layer. Keep them tied to tested bundler behavior rather than to the React
-  runtime version alone.
+- `webpack`, `@rspack/core`, and other bundler peers are compatibility
+  contracts for the plugin layer. Keep them tied to tested bundler behavior
+  rather than to the React runtime version alone. When consumers can use only
+  one bundler integration, declare the bundler-specific peer as optional and
+  pair every advertised major range with an explicit compatibility-matrix lane.
 
 When a newer runtime line becomes `latest`, older runtime lines enter
 maintenance mode:

@@ -457,6 +457,100 @@ describe('RSCRspackPlugin', () => {
     });
   });
 
+  describe('shared async dependency chunk CSS (#188)', () => {
+    // Button and SettingsPage are independent 'use client' components that
+    // both import a plain `shared` module carrying shared.css. splitChunks
+    // hoists `shared` (JS + CSS) into one chunk present in both
+    // client-reference chunk groups. Nothing but these references loads that
+    // chunk, so its CSS must be hinted for both — otherwise the stylesheet
+    // only arrives with the shared JS chunk during hydration and the shared
+    // component paints unstyled first (FOUC). Mirrors the webpack
+    // plugin-integration split-shared-css coverage.
+    // The cacheGroup sets its own `chunks: 'all'`, overriding the plugin's
+    // guarded root selector (which shields generated client chunks from
+    // extraction) — the same per-cacheGroup override users write for styles
+    // cache groups, and the configuration that produces the #188 topology in
+    // rspack client builds.
+    const sharedJsCssSplit = {
+      optimization: {
+        splitChunks: {
+          chunks: 'all',
+          minSize: 0,
+          cacheGroups: {
+            default: false,
+            defaultVendors: false,
+            shared: {
+              test: /shared\.(js|css)$/,
+              name: 'shared',
+              minChunks: 2,
+              chunks: 'all',
+              enforce: true,
+            },
+          },
+        },
+      },
+    };
+
+    it("attaches a shared async chunk's CSS to every referencing client reference", () => {
+      const result = run('split-shared-css', {
+        clientReferences: staticIslandClientReferences(
+          /^\.\/(?:Button|SettingsPage)\.js$/,
+        ),
+        publicPath: '/assets',
+        withCss: true,
+        configExtra: sharedJsCssSplit,
+      });
+
+      expect(result.assets).toContain('shared.chunk.css');
+      const button = manifestMetadataFor(result, '/Button.js');
+      const settings = manifestMetadataFor(result, '/SettingsPage.js');
+      expect(button.css).toContain('/assets/shared.chunk.css');
+      expect(settings.css).toContain('/assets/shared.chunk.css');
+      // Each reference keeps its own extracted CSS as well.
+      expect(readManifestCss(result, '/Button.js')).toContain('.shared');
+      expect(readManifestCss(result, '/SettingsPage.js')).toContain('.shared');
+    });
+
+    it("keeps an initial shared chunk's CSS out of client references (#108 canary)", () => {
+      // The extra `vendor` entrypoint also imports `shared`, so the split
+      // shared chunk becomes initial (`canBeInitial() === true`) yet still
+      // appears in both client-reference groups — the #108 vendor topology. The
+      // manifest policy excludes initial chunks to avoid re-broadcasting
+      // entry-pack CSS per reference; hinting it would re-create the #108
+      // regression. (Compilation-global, so conservative for a `main`-only
+      // page — a documented known limitation, no worse than the old guard.)
+      const result = run('split-shared-css', {
+        clientReferences: staticIslandClientReferences(
+          /^\.\/(?:Button|SettingsPage)\.js$/,
+        ),
+        publicPath: '/assets',
+        withCss: true,
+        extraEntries: { vendor: './vendorEntry.js' },
+        configExtra: sharedJsCssSplit,
+      });
+
+      const sharedCssAsset = result.assets.find(
+        (asset) => /^shared(\.chunk)?\.css$/.test(asset),
+      );
+      expect(sharedCssAsset).toBeTruthy();
+      const sharedCssUrl = `/assets/${sharedCssAsset!}`;
+      const sharedJsAsset = result.assets.find(
+        (asset) => /^shared(\.chunk)?\.js$/.test(asset),
+      );
+      expect(sharedJsAsset).toBeTruthy();
+      const button = manifestMetadataFor(result, '/Button.js');
+      const settings = manifestMetadataFor(result, '/SettingsPage.js');
+      // Non-vacuous precondition: the initial shared chunk is genuinely still in
+      // both client-reference chunk groups (its JS is listed for both) — only
+      // its CSS is excluded. Without this, the css[] assertions below could pass
+      // simply because the shared chunk was not in the groups at all.
+      expect(manifestChunkFiles(button.chunks)).toContain(sharedJsAsset!);
+      expect(manifestChunkFiles(settings.chunks)).toContain(sharedJsAsset!);
+      expect(button.css ?? []).not.toContain(sharedCssUrl);
+      expect(settings.css ?? []).not.toContain(sharedCssUrl);
+    });
+  });
+
   describe('top-level manifest shape', () => {
     it('has exactly `moduleLoading` and `filePathToModuleMetadata` keys', () => {
       const result = run('basic-client');

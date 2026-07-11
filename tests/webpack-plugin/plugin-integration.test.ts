@@ -303,15 +303,15 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
-  describe('per-chunk CSS scoping: a shared dependency chunk does not broadcast its CSS', () => {
+  describe('shared async dependency chunk CSS attaches to every referencing group (#188)', () => {
     // Button and SettingsPage are independent 'use client' components, each
     // with its own CSS, that both import a non-client `shared` module carrying
-    // shared.css. splitChunks forces `shared` into a chunk present in both
-    // client-reference chunk groups. Per-chunk scoping attaches a chunk's CSS
-    // only to the client references that chunk contains: shared.css lives in
-    // the shared chunk (whose only module is the non-client `shared`), so it is
-    // attached to neither reference, while each component keeps its own CSS.
-    // The pre-fix group-wide collection attached shared.css to both references.
+    // shared.css. splitChunks forces `shared` into an async chunk present in
+    // both client-reference chunk groups. Nothing but these references loads
+    // that chunk, so its CSS must be hinted for both of them — otherwise the
+    // stylesheet only arrives with the shared JS chunk during hydration and
+    // the shared component paints unstyled first (#188 FOUC). Duplicate
+    // preinit hints dedupe by href, so attaching to both references is safe.
     let result: CompileResult;
 
     beforeAll(() => {
@@ -349,11 +349,78 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(settings.css).toContain('/assets/client-SettingsPage-js.chunk.css');
     });
 
-    it("does not broadcast the shared chunk's CSS onto either reference", () => {
+    it("attaches the shared async chunk's CSS to both references", () => {
       const button = entryEndingWith(result.manifest, '/Button.js');
       const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
-      expect(button.css ?? []).not.toContain('/assets/shared.chunk.css');
-      expect(settings.css ?? []).not.toContain('/assets/shared.chunk.css');
+      expect(button.css).toContain('/assets/shared.chunk.css');
+      expect(settings.css).toContain('/assets/shared.chunk.css');
+    });
+
+    it('produces no fallback warning', () => {
+      expectNoWarnings(result);
+    });
+  });
+
+  describe('initial shared chunk CSS stays excluded from client references (#108 canary)', () => {
+    // A `vendor` entrypoint also imports the shared CSS-bearing module, so the
+    // split `shared` chunk is initial (`canBeInitial() === true`) yet still
+    // appears in both async client-reference chunk groups. This is the #108
+    // vendor topology, and the ONLY shape that exercises the recovery guard for
+    // an initial chunk (when the reference's own hosting entry imports `shared`
+    // instead, webpack folds it into the initial entry chunk and it is not a
+    // distinct chunk in the reference groups at all). The manifest policy
+    // excludes initial chunks to avoid re-broadcasting entry-pack CSS as
+    // render-blocking `<link precedence="rsc-css">` per reference; hinting this
+    // chunk per reference would re-create the #108 regression. NOTE: this
+    // exclusion is compilation-global, so it is conservative for a page that
+    // loads `main` but not `vendor` — a documented known limitation of the #188
+    // fix, no worse than the prior `useCount`-based guard.
+    let result: CompileResult;
+
+    beforeAll(() => {
+      result = run('split-shared-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        extraEntries: { vendor: './vendorEntry.js' },
+        optimizationExtra: {
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              shared: {
+                test: /shared\.(js|css)$/,
+                name: 'shared',
+                minChunks: 2,
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+    });
+
+    it('emits the shared chunk and keeps it in the reference chunk groups (precondition)', () => {
+      // The chunk is initial, so it uses the entry `filename` template
+      // (`shared.css`), not the async `chunkFilename` (`shared.chunk.css`).
+      expect(result.assets).toContain('shared.css');
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      // The shared chunk's JS is still listed for both references, proving
+      // the chunk is part of their groups — only its CSS is excluded.
+      expect(chunkFiles(button)).toContain('shared.js');
+      expect(chunkFiles(settings)).toContain('shared.js');
+    });
+
+    it("keeps the initial shared chunk's CSS out of both references", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(button.css).toContain('/assets/client-Button-js.chunk.css');
+      expect(settings.css).toContain('/assets/client-SettingsPage-js.chunk.css');
+      expect(button.css ?? []).not.toContain('/assets/shared.css');
+      expect(settings.css ?? []).not.toContain('/assets/shared.css');
     });
 
     it('produces no fallback warning', () => {
@@ -553,7 +620,10 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
-  describe('CSS-only shared dependency chunks stay excluded from client-reference CSS', () => {
+  describe('CSS-only shared async dependency chunks attach to every referencing group (#188)', () => {
+    // Same topology as above, but the shared module's stylesheet is merged
+    // into a CSS-only split chunk. That chunk is async and loaded by nothing
+    // but the two client-reference groups, so it must be hinted for both.
     let result: CompileResult;
 
     beforeAll(() => {
@@ -591,13 +661,13 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(result.assets).toContain('shared-styles.chunk.css');
     });
 
-    it('does not attach the CSS-only shared dependency stylesheet to client references', () => {
+    it('attaches the CSS-only shared dependency stylesheet to both client references', () => {
       const button = entryEndingWith(result.manifest, '/Button.js');
       const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
       expect(button.css).toContain('/assets/client-Button-js.chunk.css');
       expect(settings.css).toContain('/assets/client-SettingsPage-js.chunk.css');
-      expect(button.css ?? []).not.toContain('/assets/shared-styles.chunk.css');
-      expect(settings.css ?? []).not.toContain('/assets/shared-styles.chunk.css');
+      expect(button.css).toContain('/assets/shared-styles.chunk.css');
+      expect(settings.css).toContain('/assets/shared-styles.chunk.css');
     });
 
     it('produces no fallback warning', () => {
@@ -876,7 +946,7 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expectNoWarnings(result);
     });
 
-    it("does not broadcast a shared dependency's split stylesheet on the server build", () => {
+    it("attaches a shared dependency's split stylesheet on the server build (#188)", () => {
       const result = run('split-shared-css', {
         isServer: true,
         chunkName: 'client-[request]',
@@ -910,8 +980,8 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(result.assets).toContain('shared-styles.chunk.css');
       const button = entryEndingWith(result.manifest, '/Button.js');
       const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
-      expect(button.css ?? []).not.toContain('/assets/shared-styles.chunk.css');
-      expect(settings.css ?? []).not.toContain('/assets/shared-styles.chunk.css');
+      expect(button.css).toContain('/assets/shared-styles.chunk.css');
+      expect(settings.css).toContain('/assets/shared-styles.chunk.css');
       expectNoWarnings(result);
     });
   });

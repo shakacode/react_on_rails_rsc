@@ -251,6 +251,9 @@ type FlightModule = {
 type FlightChunk = {
   id: string | number | null;
   files: Iterable<string>;
+  // Real webpack only; absent in the unit-test mocks. When missing, the
+  // entrypoint-chunk set is the fallback initial-chunk signal.
+  canBeInitial?: () => boolean;
 };
 
 type FlightChunkGroup = {
@@ -265,6 +268,12 @@ type FlightBlock = {
 
 type FlightEntrypoint = {
   getRuntimeChunk(): { files: Iterable<string> } | null;
+  // Initial-chunk sources, used only when a chunk lacks `canBeInitial()`
+  // (unit-test mocks). Real webpack exposes `chunks`; the method forms are
+  // accepted for webpack-compatible bundlers.
+  getChunks?: () => Iterable<FlightChunk>;
+  chunks?: Iterable<FlightChunk>;
+  getEntrypointChunk?: () => FlightChunk | null;
 };
 
 type FlightCompilation = {
@@ -677,15 +686,33 @@ export class RSCWebpackPlugin {
 
           let missingClientReferenceBlocksWarningEmitted = false;
           const clientReferenceChunkGroupsByResource = new Map<string, Set<FlightChunkGroup>>();
-          const chunkGroupUseCount = new Map<FlightChunk, number>();
-          for (const candidateGroup of compilation.chunkGroups) {
-            for (const candidateChunk of candidateGroup.chunks) {
-              chunkGroupUseCount.set(
-                candidateChunk,
-                (chunkGroupUseCount.get(candidateChunk) ?? 0) + 1,
-              );
+          // The manifest excludes initial chunks' CSS to avoid re-broadcasting
+          // entry-pack CSS onto every client reference (#108): an initial
+          // chunk's CSS is already delivered render-blocking by the page's own
+          // stylesheet links, while an async chunk's CSS has no delivery path
+          // besides these manifest hints (#188). This is a compilation-global
+          // signal (`canBeInitial()`), so it is conservative for partial
+          // multi-pack page loads — see the known limitation in the #188 fix.
+          // Prefer the chunk's own `canBeInitial()`; the entrypoint chunk set is
+          // only a fallback for bundlers/mocks whose chunks omit that method.
+          const entrypointChunks = new Set<FlightChunk>();
+          compilation.entrypoints.forEach((entrypoint) => {
+            const entryChunks =
+              entrypoint.getChunks?.() ??
+              entrypoint.chunks ??
+              (entrypoint.getEntrypointChunk
+                ? [entrypoint.getEntrypointChunk()].filter(
+                    (chunk): chunk is FlightChunk => chunk != null,
+                  )
+                : []);
+            for (const entryChunk of entryChunks) {
+              entrypointChunks.add(entryChunk);
             }
-          }
+          });
+          const isInitialChunk = (chunk: FlightChunk): boolean =>
+            typeof chunk.canBeInitial === 'function'
+              ? chunk.canBeInitial()
+              : entrypointChunks.has(chunk);
 
           // Records every module of `chunkGroup` whose resource is in
           // `chunkResolvedClientFiles`, listing the chunk group's own
@@ -814,9 +841,11 @@ export class RSCWebpackPlugin {
             // chunk group, and merge that CSS. Also follow one non-style child
             // hop when that child belongs to the reference's async chunk group:
             // either it shares one of the reference module's chunks, or webpack
-            // split it to a chunk used by this group only. That second check
-            // keeps a split local child component's stylesheet while still
-            // excluding chunks shared by multiple reference groups (#108).
+            // split it to a non-initial chunk of this group. Splitting on
+            // initial-vs-async (not chunk sharing) keeps a shared local child
+            // component's stylesheet — which nothing but these references
+            // delivers (#188) — while still excluding vendor/common chunks the
+            // page entry already loads render-blocking (#108).
             // Guarded on `moduleGraph`/`getModuleChunksIterable`, which the
             // unit-test mocks omit (they exercise the per-chunk pass only).
             const moduleGraph = compilation.moduleGraph;
@@ -857,7 +886,7 @@ export class RSCWebpackPlugin {
               const belongsToReferenceChunkGroup = (depModule: FlightModule): boolean => {
                 for (const depChunk of getModuleChunksIterable(depModule)) {
                   if (moduleChunks.has(depChunk)) return true;
-                  if (groupChunks.has(depChunk) && (chunkGroupUseCount.get(depChunk) ?? 0) === 1) {
+                  if (groupChunks.has(depChunk) && !isInitialChunk(depChunk)) {
                     return true;
                   }
                 }

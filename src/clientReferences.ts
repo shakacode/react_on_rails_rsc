@@ -88,3 +88,36 @@ export function hasUseClientDirective(source: string | Buffer): boolean {
 
   return false;
 }
+
+/**
+ * Builds a memoized "is this chunk initial?" predicate shared by the webpack and
+ * rspack RSC plugins.
+ *
+ * An initial chunk is loaded render-blocking by an entrypoint's own
+ * script/stylesheet tags, so its CSS is already delivered to the page and must
+ * NOT be re-hinted per client reference (the #108 broadcast regression). An
+ * async chunk's CSS has no such delivery path, so it must be attached to every
+ * referencing client reference (#188). `canBeInitial()` is the bundler's own
+ * signal for this and is present on every real webpack/rspack chunk; a chunk
+ * that lacks it (only the unit-test mocks, which never reach this predicate
+ * because the CSS-recovery walk is gated off `moduleGraph`) is treated as
+ * non-initial. The result is memoized because the recovery walk can revisit the
+ * same chunk many times across a large module graph.
+ *
+ * Kept here (rather than duplicated in each plugin) so the webpack and rspack
+ * copies cannot silently diverge on the next #108/#188-style change, matching
+ * the `hasUseClientDirective` sharing precedent.
+ */
+export function createIsInitialChunk<Chunk extends { canBeInitial?: () => boolean }>(): (
+  chunk: Chunk,
+) => boolean {
+  const cache = new Map<Chunk, boolean>();
+  return (chunk: Chunk): boolean => {
+    let initial = cache.get(chunk);
+    if (initial === undefined) {
+      initial = typeof chunk.canBeInitial === 'function' ? chunk.canBeInitial() : false;
+      cache.set(chunk, initial);
+    }
+    return initial;
+  };
+}

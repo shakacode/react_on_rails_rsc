@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import {
+  createIsInitialChunk,
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
 } from '../clientReferences';
@@ -79,9 +80,6 @@ type AnyChunkGroup = {
 };
 
 type AnyEntrypoint = {
-  chunks?: Iterable<unknown>;
-  getChunks?: () => Iterable<unknown>;
-  getEntrypointChunk?: () => unknown;
   getRuntimeChunk?: () => { files: Iterable<string> } | null;
 };
 
@@ -714,25 +712,8 @@ export class RSCRspackPlugin {
     // while an async chunk's CSS has no delivery path besides these manifest
     // hints (#188). This is a compilation-global signal (`canBeInitial()`), so
     // it is conservative for partial multi-pack page loads (see the known
-    // limitation in the #188 fix). Prefer the chunk's own `canBeInitial()`; the
-    // entrypoint chunk set is only a fallback for bundlers/mocks whose chunks
-    // omit that method. Mirrors the webpack plugin.
-    const entrypointChunks = new Set<AnyChunk>();
-    for (const entrypoint of compilation.entrypoints?.values() ?? []) {
-      const chunks =
-        entrypoint.getChunks?.() ??
-        entrypoint.chunks ??
-        (entrypoint.getEntrypointChunk
-          ? [entrypoint.getEntrypointChunk()].filter((chunk) => chunk != null)
-          : []);
-      for (const entryChunkUnknown of chunks) {
-        entrypointChunks.add(entryChunkUnknown as AnyChunk);
-      }
-    }
-    const isInitialChunk = (chunk: AnyChunk): boolean =>
-      typeof chunk.canBeInitial === 'function'
-        ? chunk.canBeInitial()
-        : entrypointChunks.has(chunk);
+    // limitation in the #188 fix). Mirrors the webpack plugin.
+    const isInitialChunk = createIsInitialChunk<AnyChunk>();
 
     for (const chunkGroup of compilation.chunkGroups) {
       const groupChunkList = [...chunkGroup.chunks].map((chunk) => chunk as AnyChunk);

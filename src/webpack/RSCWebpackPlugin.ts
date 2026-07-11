@@ -37,7 +37,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import webpack = require('webpack');
-import { hasUseClientDirective } from '../clientReferences';
+import { createIsInitialChunk, hasUseClientDirective } from '../clientReferences';
 import {
   emitEntryClientReferencesAsset,
   type EntryClientReferencesCompilation,
@@ -268,12 +268,6 @@ type FlightBlock = {
 
 type FlightEntrypoint = {
   getRuntimeChunk(): { files: Iterable<string> } | null;
-  // Initial-chunk sources, used only when a chunk lacks `canBeInitial()`
-  // (unit-test mocks). Real webpack exposes `chunks`; the method forms are
-  // accepted for webpack-compatible bundlers.
-  getChunks?: () => Iterable<FlightChunk>;
-  chunks?: Iterable<FlightChunk>;
-  getEntrypointChunk?: () => FlightChunk | null;
 };
 
 type FlightCompilation = {
@@ -693,26 +687,7 @@ export class RSCWebpackPlugin {
           // besides these manifest hints (#188). This is a compilation-global
           // signal (`canBeInitial()`), so it is conservative for partial
           // multi-pack page loads — see the known limitation in the #188 fix.
-          // Prefer the chunk's own `canBeInitial()`; the entrypoint chunk set is
-          // only a fallback for bundlers/mocks whose chunks omit that method.
-          const entrypointChunks = new Set<FlightChunk>();
-          compilation.entrypoints.forEach((entrypoint) => {
-            const entryChunks =
-              entrypoint.getChunks?.() ??
-              entrypoint.chunks ??
-              (entrypoint.getEntrypointChunk
-                ? [entrypoint.getEntrypointChunk()].filter(
-                    (chunk): chunk is FlightChunk => chunk != null,
-                  )
-                : []);
-            for (const entryChunk of entryChunks) {
-              entrypointChunks.add(entryChunk);
-            }
-          });
-          const isInitialChunk = (chunk: FlightChunk): boolean =>
-            typeof chunk.canBeInitial === 'function'
-              ? chunk.canBeInitial()
-              : entrypointChunks.has(chunk);
+          const isInitialChunk = createIsInitialChunk<FlightChunk>();
 
           // Records every module of `chunkGroup` whose resource is in
           // `chunkResolvedClientFiles`, listing the chunk group's own

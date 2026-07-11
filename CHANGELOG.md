@@ -2,24 +2,32 @@
 
 All notable changes to this package will be documented in this file.
 
-## [19.2.1-rc.0] - 2026-07-05
+## [19.2.1-rc.1] - 2026-07-11
 
 ### Added
 - Added an opt-in `entryClientReferencesFilename` option to `RSCWebpackPlugin` and `RSCRspackPlugin` that emits, for each entrypoint, the client references statically reachable from its module graph, keyed by the same `file://` hrefs as the client manifests. The client manifests themselves are unchanged; a downstream consumer can join the asset against the client manifest to scope per-route client-reference metadata, so static RSC pages stop needing a global `clientReferences: []` workaround. ([#176])
-- Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. The default `react-on-rails-rsc/server` fallback keeps failing fast at import time without the `react-server` condition while still publishing the expanded type surface. ([#143])
-- Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
 
 ### Changed
 - Declared the optional `@rspack/core` peer range as Rspack 1.x or 2.x and added explicit Rspack 2.x compatibility coverage. ([#183])
-- Stopped `RSCRspackPlugin` from injecting a no-op `"use client"` tagging loader into every first-party module, preserving rspack incremental caching while keeping filesystem-based client-reference discovery. ([#167])
-- Skipped rspack diagnostics CSS collection when client-reference diagnostics are disabled, avoiding dead per-chunk-group CSS scans on the default build path. ([#152])
 
 ### Fixed
 - Recovered RSC stylesheet hints for a plain (non-`"use client"`) child component's CSS when the child is shared by two or more client references and SplitChunks hoists it into a shared async chunk. The manifest now attaches the shared chunk's CSS to every referencing client reference instead of dropping it, fixing a flash of unstyled content on the shared component; initial (entry-loaded) chunks stay excluded to preserve the #108 render-blocking fix. ([#190])
 - Fixed Webpack parity for function-valued `output.publicPath` warnings and symlinked string `clientReferences` realpath matching. ([#185])
 - Recovered RSC stylesheet hints for CSS imported by a client reference's child module when a CSS-merging SplitChunks cache group moves the stylesheet into a CSS-only split chunk. ([#184])
-- Fixed Webpack client-reference string paths to resolve relative to the compiler context and warned when `output.publicPath: "auto"` cannot be serialized into the RSC manifest. ([#171])
 - Fixed `RSCRspackPlugin` to skip manifest and diagnostics emission when the Flight client runtime is missing, matching the Webpack plugin's misconfiguration behavior instead of writing unusable assets. ([#176])
+
+## [19.2.1-rc.0] - 2026-07-05
+
+### Added
+- Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. The default `react-on-rails-rsc/server` fallback keeps failing fast at import time without the `react-server` condition while still publishing the expanded type surface. ([#143])
+- Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. ([#144])
+
+### Changed
+- Stopped `RSCRspackPlugin` from injecting a no-op `"use client"` tagging loader into every first-party module, preserving rspack incremental caching while keeping filesystem-based client-reference discovery. ([#167])
+- Skipped rspack diagnostics CSS collection when client-reference diagnostics are disabled, avoiding dead per-chunk-group CSS scans on the default build path. ([#152])
+
+### Fixed
+- Fixed Webpack client-reference string paths to resolve relative to the compiler context and warned when `output.publicPath: "auto"` cannot be serialized into the RSC manifest. ([#171])
 - Fixed Rspack client-reference manifests to emit deterministic chunk pair ordering under Rspack 2 while preserving the full sibling chunk set. ([#140])
 - Fixed Rspack client manifests to emit stylesheet hints, normalize unserializable `output.publicPath: "auto"`, preserve `.mjs` chunk files, and match webpack split-runtime chunk metadata. ([#172])
 - Fixed `RSCRspackPlugin` runtime injection state to be scoped by compiler, avoiding MultiCompiler and sequential-build cross-talk between rspack client/server builds with different client references or chunk names. ([#168])
@@ -71,6 +79,7 @@ All notable changes to this package will be documented in this file.
 ### Security
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
+[19.2.1-rc.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1-rc.0...19.2.1-rc.1
 [19.2.1-rc.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.0...19.2.1-rc.0
 [19.2.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5

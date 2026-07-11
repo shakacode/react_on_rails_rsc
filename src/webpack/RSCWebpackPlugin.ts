@@ -251,8 +251,8 @@ type FlightModule = {
 type FlightChunk = {
   id: string | number | null;
   files: Iterable<string>;
-  // Real webpack only; absent in the unit-test mocks. When missing, the
-  // entrypoint-chunk set is the fallback initial-chunk signal.
+  // Real webpack only; absent in the unit-test mocks, which are treated as
+  // non-initial (see `createIsInitialChunk` in `clientReferences.ts`).
   canBeInitial?: () => boolean;
 };
 

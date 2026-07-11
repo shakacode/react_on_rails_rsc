@@ -37,7 +37,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import webpack = require('webpack');
-import { createIsInitialChunk, hasUseClientDirective } from '../clientReferences';
+import { hasUseClientDirective, isInitialChunk } from '../clientReferences';
 import {
   emitEntryClientReferencesAsset,
   type EntryClientReferencesCompilation,
@@ -252,7 +252,7 @@ type FlightChunk = {
   id: string | number | null;
   files: Iterable<string>;
   // Real webpack only; absent in the unit-test mocks, which are treated as
-  // non-initial (see `createIsInitialChunk` in `clientReferences.ts`).
+  // non-initial (see `isInitialChunk` in `clientReferences.ts`).
   canBeInitial?: () => boolean;
 };
 
@@ -680,14 +680,6 @@ export class RSCWebpackPlugin {
 
           let missingClientReferenceBlocksWarningEmitted = false;
           const clientReferenceChunkGroupsByResource = new Map<string, Set<FlightChunkGroup>>();
-          // The manifest excludes initial chunks' CSS to avoid re-broadcasting
-          // entry-pack CSS onto every client reference (#108): an initial
-          // chunk's CSS is already delivered render-blocking by the page's own
-          // stylesheet links, while an async chunk's CSS has no delivery path
-          // besides these manifest hints (#188). This is a compilation-global
-          // signal (`canBeInitial()`), so it is conservative for partial
-          // multi-pack page loads — see the known limitation in the #188 fix.
-          const isInitialChunk = createIsInitialChunk<FlightChunk>();
 
           // Records every module of `chunkGroup` whose resource is in
           // `chunkResolvedClientFiles`, listing the chunk group's own
@@ -820,7 +812,9 @@ export class RSCWebpackPlugin {
             // initial-vs-async (not chunk sharing) keeps a shared local child
             // component's stylesheet — which nothing but these references
             // delivers (#188) — while still excluding vendor/common chunks the
-            // page entry already loads render-blocking (#108).
+            // page entry already loads render-blocking (#108). `isInitialChunk`
+            // is a compilation-global signal, so it is conservative for partial
+            // multi-pack page loads — see the known limitation in the #188 fix.
             // Guarded on `moduleGraph`/`getModuleChunksIterable`, which the
             // unit-test mocks omit (they exercise the per-chunk pass only).
             const moduleGraph = compilation.moduleGraph;

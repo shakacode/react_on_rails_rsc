@@ -22,9 +22,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import {
-  createIsInitialChunk,
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
+  isInitialChunk,
 } from '../clientReferences';
 import {
   emitEntryClientReferencesAsset,
@@ -706,15 +706,6 @@ export class RSCRspackPlugin {
     // plugin, lines 241-294). Each module gets the full list of sibling
     // chunks in its group — this ensures splitChunks dependencies are
     // included.
-    // The manifest excludes initial chunks' CSS to avoid re-broadcasting
-    // entry-pack CSS onto every client reference (#108): an initial chunk's CSS
-    // is already delivered render-blocking by the page's own stylesheet links,
-    // while an async chunk's CSS has no delivery path besides these manifest
-    // hints (#188). This is a compilation-global signal (`canBeInitial()`), so
-    // it is conservative for partial multi-pack page loads (see the known
-    // limitation in the #188 fix). Mirrors the webpack plugin.
-    const isInitialChunk = createIsInitialChunk<AnyChunk>();
-
     for (const chunkGroup of compilation.chunkGroups) {
       const groupChunkList = [...chunkGroup.chunks].map((chunk) => chunk as AnyChunk);
       const normalizedChunkGroup = { name: chunkGroup.name, chunks: groupChunkList };
@@ -769,7 +760,9 @@ export class RSCRspackPlugin {
         // initial-vs-async keeps a shared local child component's stylesheet —
         // which nothing but these references delivers (#188) — while still
         // excluding vendor/common chunks the page entry already loads
-        // render-blocking (#108).
+        // render-blocking (#108). `isInitialChunk` is a compilation-global
+        // signal, so it is conservative for partial multi-pack page loads — see
+        // the known limitation in the #188 fix.
         const belongsToReferenceChunkGroup = (depModule: AnyModule): boolean => {
           for (const depChunkUnknown of compilation.chunkGraph.getModuleChunks(depModule)) {
             const depChunk = depChunkUnknown as AnyChunk;

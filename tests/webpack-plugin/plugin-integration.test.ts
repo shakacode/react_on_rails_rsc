@@ -366,9 +366,14 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     // split `shared` chunk is initial (`canBeInitial() === true`) yet still
     // appears in both async client-reference chunk groups. This is the #108
     // vendor topology, and the ONLY shape that exercises the recovery guard for
-    // an initial chunk (when the reference's own hosting entry imports `shared`
-    // instead, webpack folds it into the initial entry chunk and it is not a
-    // distinct chunk in the reference groups at all). The manifest policy
+    // an initial chunk. A separate entry is required: if the reference's own
+    // hosting entry (`main`) imported `shared` directly, `shared` would live in
+    // `main`'s initial chunk and the async reference groups would reach it from
+    // that parent rather than duplicating it — so SplitChunks' `minChunks: 2` is
+    // not met, no distinct `shared` chunk is emitted, and there is nothing in
+    // the reference groups for the guard to exclude (verified empirically). Only
+    // an unrelated entry keeps `shared` a distinct initial chunk inside the
+    // reference groups. The manifest policy
     // excludes initial chunks to avoid re-broadcasting entry-pack CSS as
     // render-blocking `<link precedence="rsc-css">` per reference; hinting this
     // chunk per reference would re-create the #108 regression. NOTE: this

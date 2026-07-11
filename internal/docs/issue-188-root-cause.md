@@ -468,10 +468,12 @@ if (groupChunks.has(depChunk) && (chunkGroupUseCount.get(depChunk) ?? 0) === 1) 
 if (groupChunks.has(depChunk) && !isInitialChunk(depChunk)) return true;
 ```
 
-where `isInitialChunk` prefers the chunk's own `canBeInitial()` (public API on
-both webpack and rspack chunks) and falls back to membership in any
-entrypoint's chunk list. The `chunkGroupUseCount` map is deleted — this guard
-was its only consumer.
+where `isInitialChunk` (a small shared helper in `src/clientReferences.ts`, used
+by both plugins) calls the chunk's own `canBeInitial()` — the public initial-vs-
+async signal on every real webpack and rspack chunk — and treats a chunk that
+lacks it (only the unit-test mocks, which never reach this predicate) as
+non-initial. The `chunkGroupUseCount` map is deleted — this guard was its only
+consumer.
 
 Verified behavior on this branch:
 

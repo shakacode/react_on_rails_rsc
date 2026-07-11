@@ -15,6 +15,7 @@ All notable changes to this package will be documented in this file.
 - Skipped rspack diagnostics CSS collection when client-reference diagnostics are disabled, avoiding dead per-chunk-group CSS scans on the default build path. ([#152])
 
 ### Fixed
+- Recovered RSC stylesheet hints for a plain (non-`"use client"`) child component's CSS when the child is shared by two or more client references and SplitChunks hoists it into a shared async chunk. The manifest now attaches the shared chunk's CSS to every referencing client reference instead of dropping it, fixing a flash of unstyled content on the shared component; initial (entry-loaded) chunks stay excluded to preserve the #108 render-blocking fix. ([#190])
 - Fixed Webpack parity for function-valued `output.publicPath` warnings and symlinked string `clientReferences` realpath matching. ([#185])
 - Recovered RSC stylesheet hints for CSS imported by a client reference's child module when a CSS-merging SplitChunks cache group moves the stylesheet into a CSS-only split chunk. ([#184])
 - Fixed Webpack client-reference string paths to resolve relative to the compiler context and warned when `output.publicPath: "auto"` cannot be serialized into the RSC manifest. ([#171])
@@ -85,6 +86,7 @@ All notable changes to this package will be documented in this file.
 [#183]: https://github.com/shakacode/react_on_rails_rsc/pull/183
 [#184]: https://github.com/shakacode/react_on_rails_rsc/pull/184
 [#185]: https://github.com/shakacode/react_on_rails_rsc/pull/185
+[#190]: https://github.com/shakacode/react_on_rails_rsc/pull/190
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
 [#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151

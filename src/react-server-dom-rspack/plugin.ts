@@ -24,6 +24,7 @@ import * as url from 'url';
 import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
+  isInitialChunk,
 } from '../clientReferences';
 import {
   emitEntryClientReferencesAsset,
@@ -79,9 +80,6 @@ type AnyChunkGroup = {
 };
 
 type AnyEntrypoint = {
-  chunks?: Iterable<unknown>;
-  getChunks?: () => Iterable<unknown>;
-  getEntrypointChunk?: () => unknown;
   getRuntimeChunk?: () => { files: Iterable<string> } | null;
 };
 
@@ -708,17 +706,6 @@ export class RSCRspackPlugin {
     // plugin, lines 241-294). Each module gets the full list of sibling
     // chunks in its group — this ensures splitChunks dependencies are
     // included.
-    const chunkGroupUseCount = new Map<AnyChunk, number>();
-    for (const candidateGroup of compilation.chunkGroups) {
-      for (const candidateChunkUnknown of candidateGroup.chunks) {
-        const candidateChunk = candidateChunkUnknown as AnyChunk;
-        chunkGroupUseCount.set(
-          candidateChunk,
-          (chunkGroupUseCount.get(candidateChunk) ?? 0) + 1,
-        );
-      }
-    }
-
     for (const chunkGroup of compilation.chunkGroups) {
       const groupChunkList = [...chunkGroup.chunks].map((chunk) => chunk as AnyChunk);
       const normalizedChunkGroup = { name: chunkGroup.name, chunks: groupChunkList };
@@ -767,16 +754,20 @@ export class RSCRspackPlugin {
             }
           }
         };
-        // Match the webpack plugin: a one-hop non-style child qualifies only
-        // when it shares the reference module's chunk or rspack split it to a
-        // chunk used by this async chunk group only. The use-count check keeps
-        // local child-component CSS without re-broadcasting shared dependency
-        // chunks across reference groups (#108).
+        // Match the webpack plugin: a one-hop non-style child qualifies when
+        // it shares the reference module's chunk or rspack split it to a
+        // non-initial chunk of this async chunk group. Splitting on
+        // initial-vs-async keeps a shared local child component's stylesheet —
+        // which nothing but these references delivers (#188) — while still
+        // excluding vendor/common chunks the page entry already loads
+        // render-blocking (#108). `isInitialChunk` is a compilation-global
+        // signal, so it is conservative for partial multi-pack page loads — see
+        // the known limitation in the #188 fix.
         const belongsToReferenceChunkGroup = (depModule: AnyModule): boolean => {
           for (const depChunkUnknown of compilation.chunkGraph.getModuleChunks(depModule)) {
             const depChunk = depChunkUnknown as AnyChunk;
             if (moduleChunks.has(depChunk)) return true;
-            if (groupChunkSet.has(depChunk) && (chunkGroupUseCount.get(depChunk) ?? 0) === 1) {
+            if (groupChunkSet.has(depChunk) && !isInitialChunk(depChunk)) {
               return true;
             }
           }

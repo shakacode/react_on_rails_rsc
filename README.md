@@ -37,6 +37,16 @@ This package provides internal tooling for React Server Components integration:
 The package `major.minor` tracks the React runtime line it ships or requires.
 Maintainer policy lives in [`internal/docs/versioning.md`](internal/docs/versioning.md).
 
+## License
+
+Starting with version `19.2.1`, this package is offered as a related software
+component of React on Rails Pro under commercial terms for ShakaCode-owned or
+authorized portions. Production Use requires an appropriate paid subscription
+or Complimentary OSS License; the license also permits the free non-commercial,
+educational, and demo uses it defines. Prior MIT grants, contributor copyrights,
+and Meta's MIT terms for the Webpack plugin port remain preserved. See
+[LICENSE.md](LICENSE.md) for the exact scope and terms.
+
 ## Releasing
 
 Release this package from `main` using the changelog-driven workflow in

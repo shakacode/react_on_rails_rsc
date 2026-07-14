@@ -1,5 +1,13 @@
 /**
- * RSCWebpackPlugin — the webpack React Server Components plugin, owned as
+ * @license React
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * Portions derived from ReactFlightWebpackPlugin are licensed under the MIT
+ * terms reproduced in LICENSE.md.
+ */
+
+/**
+ * RSCWebpackPlugin — the webpack React Server Components plugin, maintained as
  * TypeScript source.
  *
  * This is a faithful port of the previously vendored build of React's

@@ -71,13 +71,66 @@ echo "  - Tarball: $TARBALL"
 log "Installing packed artifact into a temporary project"
 CONSUMER_DIR="$TMP_DIR/consumer"
 mkdir -p "$CONSUMER_DIR"
+node - "$ROOT_DIR/package.json" "$CONSUMER_DIR/package.json" <<'NODE'
+const fs = require('fs');
+
+const [rootPackagePath, consumerPackagePath] = process.argv.slice(2);
+const rootPackage = JSON.parse(fs.readFileSync(rootPackagePath, 'utf8'));
+fs.writeFileSync(
+  consumerPackagePath,
+  `${JSON.stringify({ private: true, packageManager: rootPackage.packageManager }, null, 2)}\n`
+);
+NODE
 (
   cd "$CONSUMER_DIR"
-  yarn init -y >/dev/null
   yarn add --ignore-scripts --silent "$TARBALL"
 )
 
 PACKAGE_DIR="$CONSUMER_DIR/node_modules/react-on-rails-rsc"
+
+cat > "$TMP_DIR/verify-package-license.cjs" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+
+const packageDir = process.argv[2];
+const packageJsonPath = path.join(packageDir, 'package.json');
+const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+const expectedLicense = 'SEE LICENSE IN LICENSE.md';
+
+if (pkg.license !== expectedLicense) {
+  throw new Error(`package.json license expected ${expectedLicense}, got ${pkg.license}`);
+}
+
+const licensePath = path.join(packageDir, 'LICENSE.md');
+if (!fs.existsSync(licensePath)) {
+  throw new Error('Packed artifact is missing LICENSE.md');
+}
+
+const licenseText = fs.readFileSync(licensePath, 'utf8');
+for (const requiredText of [
+  'react-on-rails-rsc',
+  'ShakaCode React on Rails Pro – End User License Agreement (EULA)',
+  '_Version 2.2 — 2026-04-12_',
+  'Third-Party and Prior-License Notices',
+]) {
+  if (!licenseText.includes(requiredText)) {
+    throw new Error(`Packed LICENSE.md is missing required text: ${requiredText}`);
+  }
+}
+
+const webpackPluginPath = path.join(packageDir, 'dist/webpack/RSCWebpackPlugin.js');
+const webpackPluginText = fs.readFileSync(webpackPluginPath, 'utf8');
+if (!webpackPluginText.includes('Copyright (c) Meta Platforms, Inc. and affiliates.')) {
+  throw new Error('Packed Webpack plugin is missing its Meta Platforms copyright notice');
+}
+
+console.log(
+  `  - Verified ${expectedLicense} metadata, packed LICENSE.md, and the Webpack plugin copyright notice`
+);
+NODE
+
+log "Verifying commercial license metadata"
+node "$TMP_DIR/verify-package-license.cjs" "$PACKAGE_DIR"
 
 cat > "$TMP_DIR/verify-package-targets.cjs" <<'NODE'
 const fs = require('fs');

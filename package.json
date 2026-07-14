@@ -1,6 +1,6 @@
 {
   "name": "react-on-rails-rsc",
-  "version": "19.2.1-rc.1",
+  "version": "19.2.1",
   "description": "React Server Components support for react_on_rails Ruby gem",
   "exports": {
     "./client": {
@@ -90,7 +90,8 @@
   "files": [
     "dist",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE.md"
   ],
   "scripts": {
     "test": "yarn test:rsc && yarn test:non-rsc",
@@ -154,6 +155,6 @@
     "react-on-rails"
   ],
   "author": "ShakaCode",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE.md",
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

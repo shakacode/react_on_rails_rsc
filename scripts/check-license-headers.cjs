@@ -62,17 +62,24 @@ function containsThirdPartyNotice(block) {
 }
 
 function thirdPartyNoticeOnly(block) {
-  const lines = normalizeLineEndings(block).split('\n');
-  let noticeEnd = lines.findIndex((line) => line === thirdPartyBridge);
-  if (noticeEnd < 0) {
-    noticeEnd = lines.findIndex((line) => line === ' * @license React on Rails RSC');
-  }
-  if (noticeEnd < 0) return block;
+  const normalizedBlock = normalizeLineEndings(block);
+  const rscNoticeMarkers = [
+    /The\s+following\s+notice\s+applies\s+to\s+the\s+ShakaCode-owned\s+and\s+contributor\s+portions:/,
+    /@license\s+React\s+on\s+Rails\s+RSC/,
+    /Copyright\s+\(c\)[^\n]*ShakaCode\s+LLC[^\n]*React\s+on\s+Rails\s+RSC/,
+  ];
+  const noticeStarts = rscNoticeMarkers
+    .map((pattern) => normalizedBlock.match(pattern)?.index)
+    .filter((index) => index !== undefined);
+  if (noticeStarts.length === 0) return block;
 
-  const preservedLines = lines.slice(0, noticeEnd);
-  while (preservedLines.at(-1)?.trim() === '*') preservedLines.pop();
-  preservedLines.push(' */');
-  return preservedLines.join('\n');
+  const noticeStart = Math.min(...noticeStarts);
+  const preserved = normalizedBlock
+    .slice(0, noticeStart)
+    .replace(/[ \t]+$/, '')
+    .replace(/(?:\n[ \t]*\*)+[ \t]*$/, '')
+    .trimEnd();
+  return `${preserved}\n */`;
 }
 
 function combineWithThirdPartyNotice(block) {
@@ -120,12 +127,35 @@ function selfTest() {
   assert(withMetaNotice.match(/^\/\*\*[\s\S]*?\*\//)[0].includes(sentinel));
   assert(withMetaNotice.endsWith(plain));
 
-  const staleMetaHeader = withMetaNotice.replace('19.2.1', '19.2.0');
+  const staleMetaHeader = withMetaNotice
+    .replace('19.2.1', '19.2.0')
+    .replace(' * The following notice applies', ' *  The following notice applies')
+    .replace(' * @license React on Rails RSC', ' *  @license React on Rails RSC');
   assert(!hasRequiredHeader(staleMetaHeader));
   const refreshedMetaHeader = applyHeader(staleMetaHeader);
   assert(refreshedMetaHeader.includes('Copyright (c) Meta Platforms, Inc.'));
   assert(hasRequiredHeader(refreshedMetaHeader));
   assert.strictEqual(refreshedMetaHeader.match(/Copyright \(c\) Meta Platforms/g).length, 1);
+  assert.strictEqual(refreshedMetaHeader.match(/@license React on Rails RSC/g).length, 1);
+  assert.strictEqual(refreshedMetaHeader.match(/The following notice applies/g).length, 1);
+
+  const thirdPartySentinelNotice = metaNotice.replace(
+    ' */',
+    ` * ${sentinel}\n */`
+  );
+  const withThirdPartySentinel = applyHeader(`${thirdPartySentinelNotice}${plain}`);
+  const thirdPartySentinelIndex = withThirdPartySentinel.indexOf(sentinel);
+  const bridgeIndex = withThirdPartySentinel.indexOf(thirdPartyBridge);
+  assert(thirdPartySentinelIndex >= 0);
+  assert(bridgeIndex >= 0);
+  assert(thirdPartySentinelIndex < bridgeIndex);
+
+  const singleLineCombinedNotice =
+    '/** @license React Copyright (c) Meta Platforms, Inc. @license React on Rails RSC */\n';
+  const repairedSingleLineNotice = applyHeader(`${singleLineCombinedNotice}const value = 1;\n`);
+  assert.doesNotThrow(() => new Function(repairedSingleLineNotice));
+  assert(repairedSingleLineNotice.includes('Copyright (c) Meta Platforms, Inc.'));
+  assert(hasRequiredHeader(repairedSingleLineNotice));
 
   const incompleteHeader = withHeader.replace(
     'mixed commercial, third-party, and prior-license terms in LICENSE.md. Do not',
@@ -147,7 +177,16 @@ function selfTest() {
 }
 
 const args = new Set(process.argv.slice(2));
-if (args.has('--self-test')) {
+const supportedModes = new Set(['--check', '--fix', '--self-test']);
+const unknownArgs = [...args].filter((arg) => !supportedModes.has(arg));
+const selectedModes = [...args].filter((arg) => supportedModes.has(arg));
+if (unknownArgs.length > 0 || selectedModes.length > 1) {
+  console.error('Usage: check-license-headers.cjs [--check|--fix|--self-test]');
+  process.exit(2);
+}
+
+const mode = selectedModes[0] ?? '--check';
+if (mode === '--self-test') {
   selfTest();
   process.exit(0);
 }
@@ -155,7 +194,7 @@ if (args.has('--self-test')) {
 const files = sourceFiles(sourceDir);
 const missing = files.filter((file) => !hasRequiredHeader(fs.readFileSync(file, 'utf8')));
 
-if (args.has('--fix')) {
+if (mode === '--fix') {
   for (const file of missing) {
     fs.writeFileSync(file, applyHeader(fs.readFileSync(file, 'utf8')));
     console.log(`Added license header: ${path.relative(rootDir, file)}`);

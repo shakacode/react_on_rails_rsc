@@ -79,3 +79,16 @@ declare module 'react-server-dom-webpack/server.node' {
   ) => unknown;
   export const renderToReadableStream: RSCServerFunction;
 }
+
+declare module 'react-server-dom-webpack/static.node' {
+  export const prerenderToNodeStream: (
+    model: unknown,
+    webpackMap: unknown,
+    options?: unknown
+  ) => Promise<{ prelude: import('stream').Readable }>;
+  export const prerender: (
+    model: unknown,
+    webpackMap: unknown,
+    options?: unknown
+  ) => Promise<{ prelude: ReadableStream }>;
+}

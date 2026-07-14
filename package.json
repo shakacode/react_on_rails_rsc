@@ -94,6 +94,8 @@
     "LICENSE.md"
   ],
   "scripts": {
+    "check:license-headers": "node scripts/check-license-headers.cjs --check",
+    "check:license-headers:self-test": "node scripts/check-license-headers.cjs --self-test",
     "test": "yarn test:rsc && yarn test:non-rsc",
     "test:rsc": "NODE_CONDITIONS=react-server jest tests/*.rsc.test.*",
     "test:non-rsc": "jest tests --testPathIgnorePatterns=\".*\\.rsc\\.test\\..*\"",

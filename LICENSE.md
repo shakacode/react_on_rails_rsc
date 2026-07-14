@@ -217,6 +217,12 @@ The archived React patch material under
 `react-server-dom-webpack` source retain Meta Platforms, Inc.'s MIT terms. The
 historical vendored source is not part of current npm package artifacts.
 
+The currently shipped `src/webpack/RSCWebpackPlugin.ts` source and its compiled
+`dist/webpack/RSCWebpackPlugin.js` artifact include portions derived from Meta's
+`ReactFlightWebpackPlugin`. Those derived portions remain available under
+Meta's MIT terms reproduced below. Their Meta notice is preserved alongside the
+package's mixed-license source header.
+
 Contributions and versions made available under the repository's prior MIT
 designation remain subject to any MIT rights already granted by their copyright
 holders. The commercial package license does not revoke those prior grants.

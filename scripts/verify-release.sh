@@ -157,6 +157,7 @@ const expectedRuntimeEntrypoints = [
   './RspackPlugin',
   './server',
   './server.node',
+  './static.node',
   './WebpackLoader',
   './WebpackPlugin',
 ].sort();

@@ -29,6 +29,10 @@
       "types": "./dist/server.node.d.ts",
       "default": "./dist/server.node.js"
     },
+    "./static.node": {
+      "types": "./dist/static.node.d.ts",
+      "default": "./dist/static.node.js"
+    },
     "./WebpackPlugin": {
       "types": "./dist/WebpackPlugin.d.ts",
       "default": "./dist/WebpackPlugin.js"

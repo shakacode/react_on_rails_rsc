@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [19.2.1] - 2026-07-14
 
 ### Changed
-- Changed the published npm license metadata from `MIT` to `SEE LICENSE IN LICENSE.md` and included the license file in the package. Starting with `19.2.1`, ShakaCode-owned or authorized portions use the React on Rails Pro v2.2 terms: Production Use requires an appropriate paid subscription or Complimentary OSS License, while the defined non-commercial, educational, and demo uses remain free. Prior MIT grants, contributor copyrights, and Meta's MIT terms for the Webpack plugin port remain preserved. See [LICENSE.md](LICENSE.md) for the exact scope and terms.
+- Changed the published npm license metadata from `MIT` to `SEE LICENSE IN LICENSE.md` and included the license file in the package. Starting with `19.2.1`, ShakaCode-owned or authorized portions use the React on Rails Pro v2.2 terms: Production Use requires an appropriate paid subscription or Complimentary OSS License, while the defined non-commercial, educational, and demo uses remain free. Prior MIT grants, contributor copyrights, and Meta's MIT terms for the Webpack plugin port remain preserved. See [LICENSE.md](LICENSE.md) for the exact scope and terms. ([#193])
 
 ## [19.2.1-rc.1] - 2026-07-11
 
@@ -102,6 +102,7 @@ All notable changes to this package will be documented in this file.
 [#184]: https://github.com/shakacode/react_on_rails_rsc/pull/184
 [#185]: https://github.com/shakacode/react_on_rails_rsc/pull/185
 [#190]: https://github.com/shakacode/react_on_rails_rsc/pull/190
+[#193]: https://github.com/shakacode/react_on_rails_rsc/pull/193
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
 [#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151

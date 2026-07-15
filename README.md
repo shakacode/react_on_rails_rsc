@@ -40,12 +40,11 @@ Maintainer policy lives in [`internal/docs/versioning.md`](internal/docs/version
 ## License
 
 Starting with version `19.2.1`, this package is offered as a related software
-component of React on Rails Pro under commercial terms for ShakaCode-owned or
-authorized portions. Production Use requires an appropriate paid subscription
-or Complimentary OSS License; the license also permits the free non-commercial,
-educational, and demo uses it defines. Prior MIT grants, contributor copyrights,
-and Meta's MIT terms for the Webpack plugin port remain preserved. See
-[LICENSE.md](LICENSE.md) for the exact scope and terms.
+component of React on Rails Pro under commercial terms. Production Use requires
+an appropriate paid subscription or Complimentary OSS License; the license also
+permits the free non-commercial, educational, and demo uses it defines. See
+[LICENSE.md](LICENSE.md) for the exact terms and the Meta notice that applies to
+the derived Webpack plugin portions.
 
 ## Releasing
 

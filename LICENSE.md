@@ -1,28 +1,20 @@
 # react-on-rails-rsc License
 
-## Package License and Scope
+Beginning with version `19.2.1`, the `react-on-rails-rsc` npm package is a
+commercially licensed related component of React on Rails Pro. Production Use
+requires the appropriate paid subscription or Complimentary OSS License. The
+royalty-free uses defined in Section 4 remain permitted subject to the EULA,
+including its attribution requirement.
 
-Beginning with version `19.2.1`, the `react-on-rails-rsc` npm package is offered
-as a related software component of React on Rails Pro under the canonical React
-on Rails Pro License reproduced below. Production Use requires the appropriate
-paid subscription or Complimentary OSS License. The free non-commercial,
-educational, and demo uses listed in Section 4 remain permitted without a paid
-subscription.
-
-The commercial terms apply only to portions that ShakaCode owns or is
-authorized to license under those terms. They do not replace the third-party or
-prior-license rights identified below. Where ShakaCode does not own copyright
-in a contribution, this file does not assert a transfer of that copyright.
-
-This change is prospective. Versions through and including `19.2.1-rc.1` remain
-available under the terms under which they were published, and nothing in this
-file revokes rights already granted for those versions.
+The package includes portions of Meta's `ReactFlightWebpackPlugin` in
+`src/webpack/RSCWebpackPlugin.ts`. Those portions remain governed by the Meta
+MIT notice reproduced after the canonical commercial terms.
 
 ## Canonical Commercial Terms
 
 # ShakaCode React on Rails Pro – End User License Agreement (EULA)
 
-_Version 2.2 — 2026-04-12_
+_Version 2.3 — 2026-07-14_\
 © 2015–2026 ShakaCode, LLC. All rights reserved.
 
 ---
@@ -30,28 +22,31 @@ _Version 2.2 — 2026-04-12_
 ## 1. Definitions
 
 - **Organization** – the single legal entity identified in the order (e.g., GitHub Sponsors, invoice).
+- **Licensee** – the Organization or any other person or entity exercising royalty-free rights under Section 4.
 - **Production Use** – any use of the Software in connection with a live application, website, or service accessed by end users **other than**:
   - evaluation or testing
   - classroom instruction, tutorials, workshops, coursework
   - recorded demos, livestreams, or videos
   - personal/hobby experiments not offered as a service
 - **Complimentary OSS License** – a license issued under Section 4.1 at no charge to a qualifying open-source Organization.
+- **Covered HTML Document** – an HTML document containing output rendered by the integrated React on Rails Pro product.
+- **Attribution Provider** – the part of the integrated React on Rails Pro product that generates and inserts the Generated Attribution on behalf of the product as a whole.
+- **Generated Attribution** – the complete, non-visual HTML comment emitted by the Attribution Provider, including its license-status suffix.
 
 ---
 
 ## 2. Grant of License (Per-Organization)
 
-ShakaCode grants the subscribing Organization a **non-exclusive, non-transferable, revocable** license to install and use React on Rails Pro (“Software”) for the Organization’s internal applications.
+Subject to this Agreement, ShakaCode grants the subscribing Organization a **non-exclusive, non-transferable** license, during the applicable license term, to install, internally modify, and use React on Rails Pro (“Software”) in the Organization’s own applications, websites, and services, whether accessed internally or by public end users.
 
-- Internal modifications are allowed.
-- Redistribution, sublicensing, or hosting the Software for third parties is prohibited.
+This grant does not permit redistribution or sublicensing of the Software, offering the Software itself to third parties, or using one Organization’s license for another Organization or consulting client.
 
 ---
 
 ## 3. Consulting Firms and Individual Consultants
 
-- **Consulting Firms** – this license covers only the firm’s own internal systems. Each client Organization requires its own license for any Production Use.
-- **Individual Consultants** – this license covers only the consultant’s own projects personally operated by them, not client organizations. Each client Organization must obtain its own license.
+- **Consulting Firms** – this license covers only the firm’s own applications, websites, and services, whether accessed internally or by public end users. Each client Organization requires its own license for any Production Use.
+- **Individual Consultants** – this license covers only the consultant’s own applications, websites, and services personally operated by them, not client Organizations. Each client Organization must obtain its own license.
 
 ---
 
@@ -93,19 +88,25 @@ The Organization shall not:
 4. **circumvent, bypass, modify, disable, or tamper with any license validation mechanisms, license checks, or authentication systems;**
 5. **reverse engineer, decompile, or disassemble the Software for the purpose of circumventing license restrictions;**
 6. **create, use, or distribute any tools, scripts, patches, or modifications designed to enable unauthorized use of Pro features;**
-7. **attempt to access or use Pro features without a valid, active license (including a Complimentary OSS License) or subscription.**
+7. **access or use the Software outside the rights granted by this Agreement, including any Production Use without a valid, active paid or Complimentary OSS License.**
 
 ---
 
-## 6. Attribution (HTML Source)
+## 6. Product-Level Attribution (HTML Source)
 
-Pages rendered using the Software must include a retained non-visual attribution comment in the HTML source (provided by the software):
+Every Covered HTML Document must retain exactly one complete, unmodified Generated Attribution in its HTML source. The Attribution Provider emits this comment once on behalf of the integrated React on Rails Pro product. A related component, including `react-on-rails-rsc`, has no independent obligation to insert another attribution comment when it does not control the HTML document or generate or insert the Generated Attribution.
+
+This requirement applies to paid Production Use, Production Use under a Complimentary OSS License, and every royalty-free use permitted by Section 4.
+
+The Generated Attribution uses the following form, where the status suffix is generated by the Software:
 
 ```html
-<!-- Powered by React on Rails Pro (c) ShakaCode -->
+<!-- Powered by React on Rails Pro (c) ShakaCode | STATUS -->
 ```
 
-The Organization may not remove or obfuscate this attribution.
+For a valid license credential, the status suffix is `Licensed` and does not identify the Organization. Expired, invalid, and missing license credentials use `LICENSE EXPIRED`, `INVALID LICENSE`, and `UNLICENSED`, respectively. `UNLICENSED` indicates that no license credential was present; that status alone does not establish a violation because the use may be permitted by Section 4.
+
+The Licensee may not remove, modify, obfuscate, or disable the Generated Attribution.
 
 ---
 
@@ -113,8 +114,8 @@ The Organization may not remove or obfuscate this attribution.
 
 Paid subscriptions may be purchased or renewed at [pro.reactonrails.com](https://pro.reactonrails.com/) or through another ShakaCode-approved order channel.
 
-Fees and billing terms are as agreed in the applicable order (e.g., GitHub Sponsors subscription or annual invoice).
-For paid subscriptions, the license remains active only while fees are paid. ShakaCode may suspend or terminate for non-payment or material breach. Complimentary OSS Licenses remain active for the term specified in the grant, subject to the revocation terms in Section 4.1.
+Fees and billing terms are as agreed in the applicable order (e.g., GitHub Sponsors subscription or annual invoice).\
+For paid subscriptions, the license remains active only while fees are paid. ShakaCode may suspend or terminate for non-payment or material breach. Complimentary OSS Licenses remain active for the term specified in the grant, subject to the revocation terms in Section 4.1.\
 Upon termination, lapse, or revocation, the Organization must immediately cease use and remove the Software (including derivatives) from all Production systems and repositories, except for (a) non-commercial uses explicitly permitted in Section 4, or (b) Complimentary OSS Licenses revoked under Section 4.1(ii) for eligibility changes, in which case the Organization has thirty (30) days from written notice to comply.
 
 ---
@@ -129,7 +130,7 @@ While subscribed, the Organization receives software updates and reasonable supp
 
 If ShakaCode reasonably suspects non-compliance, the Organization will cooperate in good faith to verify compliance, including enabling inspection for attribution presence and providing a usage statement. ShakaCode will use commercially reasonable efforts to minimize disruption.
 
-**9.1 Detailed Audits**
+**9.1 Detailed Audits**\
 ShakaCode or a certified auditor acting on its behalf may, upon reasonable request and at ShakaCode’s expense, audit the Organization’s use of the Software to verify compliance with this Agreement. Audits may be conducted by mail, electronically, or by in-person visits during regular business hours and shall minimize disruption to the Organization’s business. If the audit reveals a material unauthorized use, the Organization shall reimburse ShakaCode for reasonable audit costs.
 
 ---
@@ -160,7 +161,7 @@ License keys and any non-public materials are ShakaCode confidential information
 
 ## 14. Limitation of Liability
 
-To the maximum extent permitted by law, ShakaCode is not liable for indirect, incidental, special, consequential, or punitive damages.
+To the maximum extent permitted by law, ShakaCode is not liable for indirect, incidental, special, consequential, or punitive damages.\
 Direct damages are limited to amounts paid in the 12 months preceding the claim.
 
 ---
@@ -191,13 +192,13 @@ This Agreement is governed by the laws of the **State of Hawaii**, USA. Exclusiv
 
 ## 19. Miscellaneous
 
-- **19.1 Severability**
+- **19.1 Severability**\
   If any provision is held invalid or unenforceable, the remainder shall continue in full force.
 
-- **19.2 Waiver**
+- **19.2 Waiver**\
   Failure to enforce any provision is not a waiver of rights.
 
-- **19.3 Assignment**
+- **19.3 Assignment**\
   The Organization may not assign this Agreement without prior written consent.
 
 ---
@@ -206,26 +207,11 @@ This Agreement is governed by the laws of the **State of Hawaii**, USA. Exclusiv
 
 This EULA and any order (pricing/term) are the entire agreement. If there is a conflict, the order controls.
 
-## Third-Party and Prior-License Notices
+## Third-Party Notices
 
-The commercial license above does not replace licenses for third-party software.
-Dependencies are licensed by their respective copyright holders under the terms
-shipped with those dependencies.
-
-The archived React patch material under
-`patches/archive/abanoubghadban-react/` and the historical vendored
-`react-server-dom-webpack` source retain Meta Platforms, Inc.'s MIT terms. The
-historical vendored source is not part of current npm package artifacts.
-
-The currently shipped `src/webpack/RSCWebpackPlugin.ts` source and its compiled
+The shipped `src/webpack/RSCWebpackPlugin.ts` source and its compiled
 `dist/webpack/RSCWebpackPlugin.js` artifact include portions derived from Meta's
-`ReactFlightWebpackPlugin`. Those derived portions remain available under
-Meta's MIT terms reproduced below. Their Meta notice is preserved alongside the
-package's mixed-license source header.
-
-Contributions and versions made available under the repository's prior MIT
-designation remain subject to any MIT rights already granted by their copyright
-holders. The commercial package license does not revoke those prior grants.
+`ReactFlightWebpackPlugin`. The following notice applies to those portions.
 
 ### Meta Platforms, Inc. MIT License
 

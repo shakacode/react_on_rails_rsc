@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [19.2.1] - 2026-07-14
 
 ### Changed
-- Changed the published npm license metadata from `MIT` to `SEE LICENSE IN LICENSE.md` and included the license file in the package. Starting with `19.2.1`, ShakaCode-owned or authorized portions use the React on Rails Pro v2.2 terms: Production Use requires an appropriate paid subscription or Complimentary OSS License, while the defined non-commercial, educational, and demo uses remain free. Prior MIT grants, contributor copyrights, and Meta's MIT terms for the Webpack plugin port remain preserved. See [LICENSE.md](LICENSE.md) for the exact scope and terms. ([#193])
+- Changed the published npm license metadata to `SEE LICENSE IN LICENSE.md` and included the license file in the package. Starting with `19.2.1`, the package uses the React on Rails Pro v2.3 terms: Production Use requires an appropriate paid subscription or Complimentary OSS License, while the defined non-commercial, educational, and demo uses remain free. See [LICENSE.md](LICENSE.md) for the exact terms and the Meta notice that applies to the derived Webpack plugin portions. ([#193])
 
 ## [19.2.1-rc.1] - 2026-07-11
 

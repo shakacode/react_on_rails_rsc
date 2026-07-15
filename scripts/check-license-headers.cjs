@@ -3,15 +3,19 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { collectCodeFiles, headerLines } = require('./license-header.cjs');
+const {
+  collectCodeFiles,
+  headerLines,
+  requiredHeaderLinesForContent,
+  thirdPartyHeaderLines,
+} = require('./license-header.cjs');
 
 const rootDir = path.resolve(__dirname, '..');
 const sourceDir = path.join(rootDir, 'src');
-const sentinel = 'License: SEE LICENSE IN LICENSE.md';
+const sentinel = 'https://github.com/shakacode/react_on_rails_rsc/blob/main/LICENSE.md';
 const header = `/**
 ${headerLines}/`;
-const thirdPartyBridge =
-  ' * The following notice applies to the ShakaCode-owned and contributor portions:';
+const thirdPartyBridge = ' * The following notice applies to ShakaCode modifications:';
 
 function normalizeLineEndings(content) {
   return content.replace(/\r\n/g, '\n');
@@ -42,6 +46,7 @@ function thirdPartyNoticeOnly(block) {
   const normalizedBlock = normalizeLineEndings(block);
   const rscNoticeMarkers = [
     /The\s+following\s+notice\s+applies\s+to\s+the\s+ShakaCode-owned\s+and\s+contributor\s+portions:/,
+    /The\s+following\s+notice\s+applies\s+to\s+ShakaCode\s+modifications:/,
     /@license\s+React\s+on\s+Rails\s+RSC/,
     /Copyright\s+\(c\)[^\n]*ShakaCode\s+LLC[^\n]*React\s+on\s+Rails\s+RSC/,
   ];
@@ -61,7 +66,7 @@ function thirdPartyNoticeOnly(block) {
 
 function combineWithThirdPartyNotice(block) {
   const preserved = thirdPartyNoticeOnly(block).replace(/[ \t\r\n]*\*\/$/, '');
-  return `${preserved}\n *\n${thirdPartyBridge}\n *\n${headerLines}/`;
+  return `${preserved}\n *\n${thirdPartyBridge}\n *\n${thirdPartyHeaderLines}/`;
 }
 
 function applyHeader(content) {
@@ -78,7 +83,11 @@ function applyHeader(content) {
     return `${content.slice(0, comment.start)}${combinedHeader}${content.slice(comment.end)}`;
   }
 
-  if (comment.block.includes(sentinel) || comment.block.includes('@license React on Rails RSC')) {
+  if (
+    comment.block.includes(sentinel) ||
+    comment.block.includes('@license React on Rails RSC') ||
+    comment.block.includes('React on Rails RSC (commercial license)')
+  ) {
     return `${content.slice(0, comment.start)}${header}${content.slice(comment.end)}`;
   }
 
@@ -88,7 +97,12 @@ function applyHeader(content) {
 
 function hasRequiredHeader(content) {
   const comment = leadingComment(content);
-  return Boolean(normalizeLineEndings(comment?.block ?? '').includes(headerLines));
+  const normalizedContent = normalizeLineEndings(content);
+  const normalizedComment = normalizeLineEndings(comment?.block ?? '');
+  return (
+    normalizedComment.startsWith('/**') &&
+    normalizedComment.includes(requiredHeaderLinesForContent(normalizedContent))
+  );
 }
 
 function selfTest() {
@@ -105,15 +119,18 @@ function selfTest() {
   assert(withMetaNotice.endsWith(plain));
 
   const staleMetaHeader = withMetaNotice
-    .replace('19.2.1', '19.2.0')
+    .replace('React on Rails Pro commercial terms', 'stale commercial terms')
     .replace(' * The following notice applies', ' *  The following notice applies')
-    .replace(' * @license React on Rails RSC', ' *  @license React on Rails RSC');
+    .replace(' * Copyright (c) 2025-2026 ShakaCode LLC', ' *  Copyright (c) 2025-2026 ShakaCode LLC');
   assert(!hasRequiredHeader(staleMetaHeader));
   const refreshedMetaHeader = applyHeader(staleMetaHeader);
   assert(refreshedMetaHeader.includes('Copyright (c) Meta Platforms, Inc.'));
   assert(hasRequiredHeader(refreshedMetaHeader));
   assert.strictEqual(refreshedMetaHeader.match(/Copyright \(c\) Meta Platforms/g).length, 1);
-  assert.strictEqual(refreshedMetaHeader.match(/@license React on Rails RSC/g).length, 1);
+  assert.strictEqual(
+    refreshedMetaHeader.match(/Copyright \(c\) 2025-2026 ShakaCode LLC/g).length,
+    1
+  );
   assert.strictEqual(refreshedMetaHeader.match(/The following notice applies/g).length, 1);
 
   const thirdPartySentinelNotice = metaNotice.replace(
@@ -135,8 +152,8 @@ function selfTest() {
   assert(hasRequiredHeader(repairedSingleLineNotice));
 
   const incompleteHeader = withHeader.replace(
-    'mixed commercial, third-party, and prior-license terms in LICENSE.md. Do not',
-    'commercial terms in LICENSE.md. Do not'
+    'This file is NOT licensed under the MIT (open source) license.',
+    'This file has commercial terms.'
   );
   assert(!hasRequiredHeader(incompleteHeader));
   assert(hasRequiredHeader(applyHeader(incompleteHeader)));

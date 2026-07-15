@@ -15,6 +15,7 @@ documentation.
 - [Critical Resource Hints](critical-resource-hints.md)
 - [CSS-to-Component Association Approaches](css-to-component-association-approaches.md)
 - [Eliminating the React Fork Repository](eliminate-react-fork.md)
+- [Licensing terminology and decisions](licensing/)
 - [Open RSC Work Status](open-rsc-work-status.md)
 - [Rails System Specs for Streamed RSC Payloads](rails-system-spec-streaming-rsc.md)
 - [Releasing react-on-rails-rsc](releasing.md)

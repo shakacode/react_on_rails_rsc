@@ -95,10 +95,12 @@ PACKAGE_DIR="$CONSUMER_DIR/node_modules/react-on-rails-rsc"
 cat > "$TMP_DIR/verify-package-license.cjs" <<'NODE'
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const {
   collectCodeFiles,
+  expectedCanonicalEulaSha256,
   expectedEulaVersionMarker,
-  headerLines: requiredHeader,
+  requiredHeaderLinesForContent,
 } = require(process.argv[3]);
 
 const packageDir = process.argv[2];
@@ -120,23 +122,40 @@ for (const requiredText of [
   'react-on-rails-rsc',
   'ShakaCode React on Rails Pro – End User License Agreement (EULA)',
   expectedEulaVersionMarker,
-  'Third-Party and Prior-License Notices',
+  'Third-Party Notices',
 ]) {
   if (!licenseText.includes(requiredText)) {
     throw new Error(`Packed LICENSE.md is missing required text: ${requiredText}`);
   }
 }
 
+const canonicalEulaStart = licenseText.indexOf(
+  '# ShakaCode React on Rails Pro – End User License Agreement (EULA)'
+);
+const thirdPartyNoticesStart = licenseText.indexOf('\n## Third-Party Notices\n');
+if (canonicalEulaStart < 0 || thirdPartyNoticesStart <= canonicalEulaStart) {
+  throw new Error('Packed LICENSE.md does not contain a bounded canonical EULA block');
+}
+const canonicalEula = licenseText.slice(canonicalEulaStart, thirdPartyNoticesStart);
+const canonicalEulaSha256 = crypto.createHash('sha256').update(canonicalEula).digest('hex');
+if (canonicalEulaSha256 !== expectedCanonicalEulaSha256) {
+  throw new Error(
+    `Canonical EULA SHA-256 expected ${expectedCanonicalEulaSha256}, got ${canonicalEulaSha256}`
+  );
+}
+
 const distDir = path.join(packageDir, 'dist');
 const publishedCodeFiles = collectCodeFiles(distDir, { includeDeclarations: true });
 
 const missingHeaders = publishedCodeFiles.filter(
-  (file) =>
-    !fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').slice(0, 4096).includes(requiredHeader)
+  (file) => {
+    const content = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').slice(0, 4096);
+    return !content.includes(requiredHeaderLinesForContent(content));
+  }
 );
 if (missingHeaders.length > 0) {
   throw new Error(
-    `Packed JavaScript or declaration files missing the mixed-license header:\n${missingHeaders
+    `Packed JavaScript or declaration files missing the required commercial header:\n${missingHeaders
       .map((file) => `  - ${path.relative(packageDir, file)}`)
       .join('\n')}`
   );
@@ -149,7 +168,7 @@ if (!webpackPluginText.includes('Copyright (c) Meta Platforms, Inc. and affiliat
 }
 
 console.log(
-  `  - Verified ${expectedLicense} metadata, packed LICENSE.md, ${publishedCodeFiles.length} code headers, and the Webpack plugin copyright notice`
+  `  - Verified ${expectedLicense} metadata, canonical EULA ${canonicalEulaSha256}, packed LICENSE.md, ${publishedCodeFiles.length} code headers, and the Webpack plugin copyright notice`
 );
 NODE
 

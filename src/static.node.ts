@@ -25,7 +25,7 @@ import {
 export interface PrerenderOptions {
   environmentName?: string;
   onError?: (error: unknown) => void;
-  onPostpone?: () => void;
+  onPostpone?: (reason: string) => void;
   identifierPrefix?: string;
   signal?: AbortSignal;
 }

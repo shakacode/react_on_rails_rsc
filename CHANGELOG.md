@@ -2,6 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
+## [19.2.1] - 2026-07-14
+
+### Changed
+- Changed the published npm license metadata to `SEE LICENSE IN LICENSE.md` and included the license file in the package. Starting with `19.2.1`, the package uses the React on Rails Pro v2.3 terms: Production Use requires an appropriate paid subscription or Complimentary OSS License, while the defined non-commercial, educational, and demo uses remain free. See [LICENSE.md](LICENSE.md) for the exact terms and the Meta notice that applies to the derived Webpack plugin portions. ([#193])
+
 ## [19.2.1-rc.1] - 2026-07-11
 
 ### Added
@@ -79,6 +84,7 @@ All notable changes to this package will be documented in this file.
 ### Security
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
+[19.2.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1-rc.1...19.2.1
 [19.2.1-rc.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1-rc.0...19.2.1-rc.1
 [19.2.1-rc.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.0...19.2.1-rc.0
 [19.2.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0
@@ -96,6 +102,7 @@ All notable changes to this package will be documented in this file.
 [#184]: https://github.com/shakacode/react_on_rails_rsc/pull/184
 [#185]: https://github.com/shakacode/react_on_rails_rsc/pull/185
 [#190]: https://github.com/shakacode/react_on_rails_rsc/pull/190
+[#193]: https://github.com/shakacode/react_on_rails_rsc/pull/193
 [#165]: https://github.com/shakacode/react_on_rails_rsc/pull/165
 [#164]: https://github.com/shakacode/react_on_rails_rsc/pull/164
 [#151]: https://github.com/shakacode/react_on_rails_rsc/pull/151

@@ -25,6 +25,10 @@ if (( NODE_MAJOR < 20 )); then
   exit 1
 fi
 
+log "Checking license-header tooling and source headers"
+yarn run check:license-headers:self-test
+yarn run check:license-headers
+
 log "Building distributable files"
 yarn run build
 
@@ -71,13 +75,105 @@ echo "  - Tarball: $TARBALL"
 log "Installing packed artifact into a temporary project"
 CONSUMER_DIR="$TMP_DIR/consumer"
 mkdir -p "$CONSUMER_DIR"
+node - "$ROOT_DIR/package.json" "$CONSUMER_DIR/package.json" <<'NODE'
+const fs = require('fs');
+
+const [rootPackagePath, consumerPackagePath] = process.argv.slice(2);
+const rootPackage = JSON.parse(fs.readFileSync(rootPackagePath, 'utf8'));
+fs.writeFileSync(
+  consumerPackagePath,
+  `${JSON.stringify({ private: true, packageManager: rootPackage.packageManager }, null, 2)}\n`
+);
+NODE
 (
   cd "$CONSUMER_DIR"
-  yarn init -y >/dev/null
   yarn add --ignore-scripts --silent "$TARBALL"
 )
 
 PACKAGE_DIR="$CONSUMER_DIR/node_modules/react-on-rails-rsc"
+
+cat > "$TMP_DIR/verify-package-license.cjs" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const {
+  collectCodeFiles,
+  expectedCanonicalEulaSha256,
+  expectedEulaVersionMarker,
+  requiredHeaderLinesForContent,
+} = require(process.argv[3]);
+
+const packageDir = process.argv[2];
+const packageJsonPath = path.join(packageDir, 'package.json');
+const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+const expectedLicense = 'SEE LICENSE IN LICENSE.md';
+
+if (pkg.license !== expectedLicense) {
+  throw new Error(`package.json license expected ${expectedLicense}, got ${pkg.license}`);
+}
+
+const licensePath = path.join(packageDir, 'LICENSE.md');
+if (!fs.existsSync(licensePath)) {
+  throw new Error('Packed artifact is missing LICENSE.md');
+}
+
+const licenseText = fs.readFileSync(licensePath, 'utf8');
+for (const requiredText of [
+  'react-on-rails-rsc',
+  'ShakaCode React on Rails Pro – End User License Agreement (EULA)',
+  expectedEulaVersionMarker,
+  'Third-Party Notices',
+]) {
+  if (!licenseText.includes(requiredText)) {
+    throw new Error(`Packed LICENSE.md is missing required text: ${requiredText}`);
+  }
+}
+
+const canonicalEulaStart = licenseText.indexOf(
+  '# ShakaCode React on Rails Pro – End User License Agreement (EULA)'
+);
+const thirdPartyNoticesStart = licenseText.indexOf('\n## Third-Party Notices\n');
+if (canonicalEulaStart < 0 || thirdPartyNoticesStart <= canonicalEulaStart) {
+  throw new Error('Packed LICENSE.md does not contain a bounded canonical EULA block');
+}
+const canonicalEula = licenseText.slice(canonicalEulaStart, thirdPartyNoticesStart);
+const canonicalEulaSha256 = crypto.createHash('sha256').update(canonicalEula).digest('hex');
+if (canonicalEulaSha256 !== expectedCanonicalEulaSha256) {
+  throw new Error(
+    `Canonical EULA SHA-256 expected ${expectedCanonicalEulaSha256}, got ${canonicalEulaSha256}`
+  );
+}
+
+const distDir = path.join(packageDir, 'dist');
+const publishedCodeFiles = collectCodeFiles(distDir, { includeDeclarations: true });
+
+const missingHeaders = publishedCodeFiles.filter(
+  (file) => {
+    const content = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').slice(0, 4096);
+    return !content.includes(requiredHeaderLinesForContent(content));
+  }
+);
+if (missingHeaders.length > 0) {
+  throw new Error(
+    `Packed JavaScript or declaration files missing the required commercial header:\n${missingHeaders
+      .map((file) => `  - ${path.relative(packageDir, file)}`)
+      .join('\n')}`
+  );
+}
+
+const webpackPluginPath = path.join(packageDir, 'dist/webpack/RSCWebpackPlugin.js');
+const webpackPluginText = fs.readFileSync(webpackPluginPath, 'utf8');
+if (!webpackPluginText.includes('Copyright (c) Meta Platforms, Inc. and affiliates.')) {
+  throw new Error('Packed Webpack plugin is missing its Meta Platforms copyright notice');
+}
+
+console.log(
+  `  - Verified ${expectedLicense} metadata, canonical EULA ${canonicalEulaSha256}, packed LICENSE.md, ${publishedCodeFiles.length} code headers, and the Webpack plugin copyright notice`
+);
+NODE
+
+log "Verifying commercial license metadata"
+node "$TMP_DIR/verify-package-license.cjs" "$PACKAGE_DIR" "$ROOT_DIR/scripts/license-header.cjs"
 
 cat > "$TMP_DIR/verify-package-targets.cjs" <<'NODE'
 const fs = require('fs');

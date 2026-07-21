@@ -25,6 +25,8 @@ export interface CompileOptions {
   crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   clientReferences?: unknown;
   withCss?: boolean;
+  cssWrapper?: boolean;
+  chunkName?: string;
   /** Applies rspack.optimize.LimitChunkCountPlugin({ maxChunks }). */
   maxChunks?: number;
   outputFilename?: string;
@@ -122,6 +124,8 @@ const compileInto = (
     publicPath: options.publicPath,
     crossOriginLoading: options.crossOriginLoading,
     withCss: options.withCss,
+    cssWrapper: options.cssWrapper,
+    chunkName: options.chunkName,
     maxChunks: options.maxChunks,
     outputFilename: options.outputFilename,
     outputChunkFilename: options.outputChunkFilename,

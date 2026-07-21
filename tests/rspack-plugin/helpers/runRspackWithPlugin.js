@@ -53,6 +53,8 @@ const {
   publicPath,
   crossOriginLoading,
   withCss,
+  cssWrapper,
+  chunkName,
   maxChunks,
   outputFilename,
   outputChunkFilename,
@@ -91,6 +93,8 @@ const plugins = [
     clientReferenceDiagnosticsFilename: clientReferenceDiagnosticsFilename,
     entryClientReferencesFilename: entryClientReferencesFilename,
     clientReferences: clientReferences,
+    cssWrapper: cssWrapper,
+    ...(chunkName ? { chunkName } : {}),
   }),
 ];
 if (withCss) {

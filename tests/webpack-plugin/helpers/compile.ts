@@ -38,6 +38,8 @@ export interface CompileOptions {
   extraEntries?: Record<string, string>;
   /** Wires css-loader + MiniCssExtractPlugin so fixtures can import CSS. */
   withCss?: boolean;
+  /** Enable the CSS FOUC wrapper (issue #4598). */
+  cssWrapper?: boolean;
   /**
    * Appends a re-export of the Flight node client to `main` so a build with
    * `output.library` exposes `createFromNodeStream` from inside the bundle's
@@ -144,6 +146,7 @@ const compileInto = (
     maxChunks: options.maxChunks,
     extraEntries: options.extraEntries,
     withCss: options.withCss,
+    cssWrapper: options.cssWrapper,
     exposeClientRuntime: options.exposeClientRuntime,
   };
   const argsFile = path.join(outputPath, '__args__.json');

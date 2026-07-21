@@ -19,22 +19,25 @@ const emitManifestMetadata = ({
   files,
   publicPath = '/assets/',
   isServer = false,
+  cssWrapper = false,
   chunks: chunkDefs,
   entrypoints: entrypointDefs,
 }: {
   files?: string[];
   publicPath?: string;
   isServer?: boolean;
+  cssWrapper?: boolean;
   chunks?: ChunkDef[];
   entrypoints?: Array<{ runtimeChunk: ChunkDef }>;
 }) => {
   const clientFile = '/app/components/ClientComponent.js';
   // The plugin matches this specific runtime resource to inject client-reference dependency blocks.
   const runtimeFile = require.resolve(
-    isServer ? 'react-server-dom-webpack/client.node' : 'react-server-dom-webpack/client.browser',
+    isServer ? 'react-server-dom-webpack/client.node' : 'react-server-dom-webpack/client.browser'
   );
   const plugin = new ReactFlightWebpackPlugin({
     isServer,
+    cssWrapper,
     clientReferences: [clientFile],
   });
 
@@ -46,12 +49,12 @@ const emitManifestMetadata = ({
       _normalResolver: unknown,
       _fs: unknown,
       _contextModuleFactory: unknown,
-      callback: (error: Error | null, refs?: ClientReference[]) => void,
+      callback: (error: Error | null, refs?: ClientReference[]) => void
     ) => {
       callback(null, [
         { request: clientFile, type: 'client-reference', userRequest: './ClientComponent.js' },
       ]);
-    },
+    }
   );
 
   const beforeCompileCallbacks: AsyncHookCallback[] = [];
@@ -85,12 +88,9 @@ const emitManifestMetadata = ({
   plugin.apply(compiler);
 
   expect(beforeCompileCallbacks).toHaveLength(1);
-  beforeCompileCallbacks[0]!(
-    { contextModuleFactory: {} },
-    (error?: Error | null) => {
-      if (error) throw error;
-    },
-  );
+  beforeCompileCallbacks[0]!({ contextModuleFactory: {} }, (error?: Error | null) => {
+    if (error) throw error;
+  });
 
   const programCallbacks: Array<() => void> = [];
   const clientReferenceBlocks: unknown[] = [];
@@ -131,10 +131,15 @@ const emitManifestMetadata = ({
   const module = {
     resource: clientFile,
   };
-  const entrypoints = new Map<string, { getRuntimeChunk: () => (typeof resolvedChunks)[0] | null }>();
+  const entrypoints = new Map<
+    string,
+    { getRuntimeChunk: () => (typeof resolvedChunks)[0] | null }
+  >();
   if (entrypointDefs) {
     for (let i = 0; i < entrypointDefs.length; i++) {
-      const runtimeChunkObj = resolvedChunks.find((c) => c.id === entrypointDefs[i]!.runtimeChunk.id) ?? {
+      const runtimeChunkObj = resolvedChunks.find(
+        (c) => c.id === entrypointDefs[i]!.runtimeChunk.id
+      ) ?? {
         id: entrypointDefs[i]!.runtimeChunk.id,
         files: new Set(entrypointDefs[i]!.runtimeChunk.files),
       };
@@ -155,6 +160,7 @@ const emitManifestMetadata = ({
         chunks: resolvedChunks,
       },
     ],
+    chunks: resolvedChunks,
     chunkGraph: {
       getChunkModulesIterable: jest.fn(() => [module]),
       getModuleId: jest.fn(() => './ClientComponent.js'),
@@ -169,6 +175,7 @@ const emitManifestMetadata = ({
     emitAsset: (filename: string, source: { source(): string | Buffer }) => {
       emittedAssets.set(filename, source);
     },
+    updateAsset: jest.fn(),
   };
 
   expect(thisCompilationCallbacks).toHaveLength(1);
@@ -182,7 +189,7 @@ const emitManifestMetadata = ({
   processAssetCallbacks[0]!();
 
   const manifestAsset = emittedAssets.get(
-    isServer ? 'react-server-client-manifest.json' : 'react-client-manifest.json',
+    isServer ? 'react-server-client-manifest.json' : 'react-client-manifest.json'
   );
   expect(manifestAsset).toBeDefined();
   const manifestSource = manifestAsset!.source().toString();
@@ -265,16 +272,17 @@ describe('ReactFlightWebpackPlugin manifest chunk files', () => {
     });
   });
 
-  it('does not record document-relative CSS hrefs for the webpack publicPath auto sentinel', () => {
+  it('records document-relative CSS hrefs when webpack publicPath is auto with cssWrapper', () => {
     const metadata = emitManifestMetadata({
       files: ['client.css', 'client.js'],
       publicPath: 'auto',
+      cssWrapper: true,
     });
 
     expect(metadata).toEqual({
       id: './ClientComponent.js',
       chunks: ['client-chunk', 'client.js'],
-      css: [],
+      css: ['client.css'],
       name: '*',
     });
   });

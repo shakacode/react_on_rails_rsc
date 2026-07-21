@@ -36,13 +36,19 @@ import { getGeneratedChunkName } from './shared';
 export let _discoveredClientFiles: string[] = [];
 export let _chunkName = 'client[index]';
 export let _generatedChunkNames: Set<string> = new Set();
+let _cssWrapper = false;
 
 type CompilerKey = object;
+
+// Wrapper loader that renders each client component's CSS <link precedence>
+// (issue #4598). Same loader used by the webpack plugin.
+const RSC_CSS_WRAPPER_LOADER = require.resolve('../webpack/rscCssWrapperLoader');
 
 export type InjectionState = {
   discoveredClientFiles: string[];
   chunkName: string;
   generatedChunkNames: Set<string>;
+  cssWrapper: boolean;
 };
 
 const compilerInjectionState = new WeakMap<CompilerKey, InjectionState>();
@@ -53,28 +59,33 @@ const emptyInjectionState = (): InjectionState => ({
   discoveredClientFiles: [],
   chunkName: _chunkName,
   generatedChunkNames: new Set(),
+  cssWrapper: _cssWrapper,
 });
 
 const fallbackInjectionState = (): InjectionState => ({
   discoveredClientFiles: _discoveredClientFiles,
   chunkName: _chunkName,
   generatedChunkNames: _generatedChunkNames,
+  cssWrapper: _cssWrapper,
 });
 
 export function setInjectionStateForCompiler(
   compiler: CompilerKey,
   discoveredClientFiles: string[],
   chunkName: string,
+  cssWrapper = false,
 ): void {
   const nextDiscoveredClientFiles = discoveredClientFiles.slice();
   _discoveredClientFiles = nextDiscoveredClientFiles;
   _chunkName = chunkName;
   _generatedChunkNames = new Set();
+  _cssWrapper = cssWrapper;
 
   compilerInjectionState.set(compiler, {
     discoveredClientFiles: nextDiscoveredClientFiles,
     chunkName,
     generatedChunkNames: new Set(),
+    cssWrapper,
   });
 }
 
@@ -110,6 +121,7 @@ export function setGeneratedChunkNamesForCompiler(
     discoveredClientFiles: [],
     chunkName: _chunkName,
     generatedChunkNames: nextGeneratedChunkNames,
+    cssWrapper: _cssWrapper,
   });
 }
 
@@ -152,7 +164,7 @@ const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
     );
   }
 
-  const { discoveredClientFiles, chunkName } = getInjectionStateForCompiler(compiler);
+  const { discoveredClientFiles, chunkName, cssWrapper } = getInjectionStateForCompiler(compiler);
 
   if (!discoveredClientFiles.length) {
     setGeneratedChunkNamesForCompiler(compiler, []);
@@ -163,7 +175,10 @@ const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
   const imports = discoveredClientFiles.map((file, i) => {
     const name = getGeneratedChunkName(chunkName, file, i);
     names.push(name);
-    return `import(/* webpackChunkName: ${JSON.stringify(name)} */ ${JSON.stringify(file)});`;
+    // With cssWrapper, import the generated wrapper (which renders the client
+    // component's CSS <link precedence>) instead of the client file directly.
+    const request = cssWrapper ? `!!${RSC_CSS_WRAPPER_LOADER}!${file}` : file;
+    return `import(/* webpackChunkName: ${JSON.stringify(name)} */ ${JSON.stringify(request)});`;
   });
 
   setGeneratedChunkNamesForCompiler(compiler, names);

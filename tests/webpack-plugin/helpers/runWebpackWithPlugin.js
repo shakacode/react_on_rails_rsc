@@ -79,6 +79,7 @@ const {
   entryClientReferencesFilename,
   clientReferences: rawClientReferences,
   chunkName,
+  cssWrapper,
   publicPath,
   publicPathAsFunction,
   crossOriginLoading,
@@ -108,6 +109,7 @@ const plugins = [
     entryClientReferencesFilename,
     clientReferences,
     chunkName,
+    cssWrapper,
   }),
 ];
 if (typeof maxChunks === 'number') {

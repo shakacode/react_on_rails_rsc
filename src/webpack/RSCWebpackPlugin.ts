@@ -75,18 +75,18 @@ const asyncLib = require('neo-async') as {
   map<T, R>(
     arr: ReadonlyArray<T>,
     iterator: (item: T, callback: (err: Error | null, result?: R) => void) => void,
-    callback: (err: Error | null, results?: R[]) => void,
+    callback: (err: Error | null, results?: R[]) => void
   ): void;
   mapLimit<T, R>(
     arr: ReadonlyArray<T>,
     limit: number,
     iterator: (item: T, callback: (err: Error | null, result?: R) => void) => void,
-    callback: (err: Error | null, results?: R[]) => void,
+    callback: (err: Error | null, results?: R[]) => void
   ): void;
   filter<T>(
     arr: ReadonlyArray<T>,
     iterator: (item: T, callback: (err: Error | null, keep?: boolean) => void) => void,
-    callback: (err: Error | null, results?: T[]) => void,
+    callback: (err: Error | null, results?: T[]) => void
   ): void;
 };
 
@@ -113,6 +113,11 @@ export class ClientReferenceDependency extends ModuleDependency {
 const clientFileNameOnClient = require.resolve('react-server-dom-webpack/client.browser');
 const clientFileNameOnServer = require.resolve('react-server-dom-webpack/client.node');
 
+// Loader that generates the CSS wrapper module for a client reference (issue #4598).
+const RSC_CSS_WRAPPER_LOADER = require.resolve('./rscCssWrapperLoader');
+// Global (per JS runtime) populated by the plugin with { clientFileURL: cssHref[] }.
+const RSC_CSS_HREFS_GLOBAL = '__RSC_CSS_HREFS__';
+
 const runtimeResourceDetectionCache = new Map<string, boolean>();
 
 // Style-import source extensions a client reference may import directly and
@@ -126,7 +131,10 @@ const STYLE_SOURCE_RE = /\.(css|scss|sass|less|styl|pcss)$/i;
  * the plugin keys its client-reference injection on. Results are memoized
  * because the parser hook runs for every module in the compilation.
  */
-function isReactOnRailsRSCRuntimeResource(resource: string | undefined, isServer: boolean): boolean {
+function isReactOnRailsRSCRuntimeResource(
+  resource: string | undefined,
+  isServer: boolean
+): boolean {
   const cacheKey = `${isServer}\0${resource}`;
   const cached = runtimeResourceDetectionCache.get(cacheKey);
   if (cached !== undefined) return cached;
@@ -137,7 +145,7 @@ function isReactOnRailsRSCRuntimeResource(resource: string | undefined, isServer
 
 function detectReactOnRailsRSCRuntimeResource(
   resource: string | undefined,
-  isServer: boolean,
+  isServer: boolean
 ): boolean {
   // Fast path: the runtime module of THIS package install.
   if (resource === (isServer ? clientFileNameOnServer : clientFileNameOnClient)) {
@@ -152,7 +160,7 @@ function detectReactOnRailsRSCRuntimeResource(
   const normalizedResource = path.normalize(resource);
   const expectedSuffix = path.join(
     'react-server-dom-webpack',
-    isServer ? 'client.node.js' : 'client.browser.js',
+    isServer ? 'client.node.js' : 'client.browser.js'
   );
   if (!normalizedResource.endsWith(path.sep + expectedSuffix)) return false;
 
@@ -195,6 +203,14 @@ export type Options = {
   serverConsumerManifestFilename?: string;
   clientReferenceDiagnosticsFilename?: string | false;
   entryClientReferencesFilename?: string | false;
+  /**
+   * When true, each client reference resolves (in this SSR-server/browser-client
+   * build) to a generated wrapper module that renders a render-blocking
+   * `<link rel="stylesheet" precedence="rsc-css">` for the component's CSS before
+   * the component, so React natively prevents CSS FOUC (issue #4598). Never applied
+   * to the RSC/react-server build, so client references keep their metadata.
+   */
+  cssWrapper?: boolean;
 };
 
 const DEFAULT_CHUNK_GROUP_WARNING_THRESHOLD = 4;
@@ -203,7 +219,7 @@ const CHUNK_GROUP_WARNING_DOCS =
   'https://github.com/shakacode/react_on_rails/blob/main/docs/oss/migrating/rsc-troubleshooting.md';
 
 function normalizeChunkGroupWarningThreshold(
-  threshold: number | false | undefined,
+  threshold: number | false | undefined
 ): number | false {
   if (threshold === undefined) {
     return DEFAULT_CHUNK_GROUP_WARNING_THRESHOLD;
@@ -220,7 +236,7 @@ function normalizeChunkGroupWarningThreshold(
     threshold < 2
   ) {
     throw new Error(
-      'React Server Components: chunkGroupWarningThreshold must be false/0 to disable, or an integer at least 2.',
+      'React Server Components: chunkGroupWarningThreshold must be false/0 to disable, or an integer at least 2.'
     );
   }
   return threshold;
@@ -280,6 +296,7 @@ type FlightChunk = {
   // Real webpack only; absent in the unit-test mocks, which are treated as
   // non-initial (see `isInitialChunk` in `clientReferences.ts`).
   canBeInitial?: () => boolean;
+  hasRuntime?(): boolean;
 };
 
 type FlightChunkGroup = {
@@ -320,17 +337,19 @@ type FlightCompilation = {
   // sibling-chunk CSS recovery pass (see #112).
   moduleGraph?: {
     getOutgoingConnections(
-      module: FlightModule,
+      module: FlightModule
     ): Iterable<{ module?: FlightModule | null; resolvedModule?: FlightModule | null }>;
   };
   assets?: Record<string, AssetSource>;
   getAsset?: (filename: string) => FlightAsset | undefined;
+  chunks: Iterable<FlightChunk>;
   hooks: {
     processAssets: {
       tap(options: { name: string; stage: number }, fn: () => void): void;
     };
   };
   emitAsset(filename: string, source: unknown): void;
+  updateAsset(filename: string, updater: (source: unknown) => unknown): void;
 };
 
 type FlightParser = {
@@ -360,7 +379,7 @@ function createClientReferenceWatchDependencies(): ClientReferenceWatchDependenc
 
 function addClientReferenceWatchDependencies(
   compilation: FlightCompilation,
-  dependencies: ClientReferenceWatchDependencies,
+  dependencies: ClientReferenceWatchDependencies
 ): void {
   for (const file of dependencies.files) {
     compilation.fileDependencies?.add(file);
@@ -387,7 +406,7 @@ type FlightResolver = {
     basePath: string,
     request: string,
     resolveContext: object,
-    callback: (err: Error | null, result?: unknown) => void,
+    callback: (err: Error | null, result?: unknown) => void
   ): void;
 };
 
@@ -402,7 +421,7 @@ type FlightContextModuleFactory = {
       include: undefined;
       exclude: RegExp | undefined;
     },
-    callback: (err: Error | null, dependencies?: Array<{ userRequest: string }>) => void,
+    callback: (err: Error | null, dependencies?: Array<{ userRequest: string }>) => void
   ): void;
 };
 
@@ -418,8 +437,8 @@ type FlightCompiler = {
         name: string,
         fn: (
           params: { contextModuleFactory: FlightContextModuleFactory },
-          callback: (err?: Error | null) => void,
-        ) => void,
+          callback: (err?: Error | null) => void
+        ) => void
       ): void;
     };
     thisCompilation: {
@@ -427,8 +446,8 @@ type FlightCompiler = {
         name: string,
         fn: (
           compilation: FlightCompilation,
-          params: { normalModuleFactory: FlightNormalModuleFactory },
-        ) => void,
+          params: { normalModuleFactory: FlightNormalModuleFactory }
+        ) => void
       ): void;
     };
     make: {
@@ -441,22 +460,22 @@ type ReadFileFs = {
   readFile(
     filePath: string,
     encoding: string,
-    callback: (err: Error | null, content?: string) => void,
+    callback: (err: Error | null, content?: string) => void
   ): void;
 };
 
 type WatchInputFileSystem = ReadFileFs & {
   readdir(
     filePath: string,
-    callback: (err: NodeJS.ErrnoException | null, files?: string[]) => void,
+    callback: (err: NodeJS.ErrnoException | null, files?: string[]) => void
   ): void;
   realpath?(
     filePath: string,
-    callback: (err: NodeJS.ErrnoException | null, realPath?: string) => void,
+    callback: (err: NodeJS.ErrnoException | null, realPath?: string) => void
   ): void;
   stat(
     filePath: string,
-    callback: (err: NodeJS.ErrnoException | null, stats?: { isDirectory(): boolean }) => void,
+    callback: (err: NodeJS.ErrnoException | null, stats?: { isDirectory(): boolean }) => void
   ): void;
 };
 
@@ -492,13 +511,13 @@ export class RSCWebpackPlugin {
    */
   readonly entryClientReferencesFilename: string | false | undefined;
 
+  readonly cssWrapper: boolean;
+
   static __internal_isReactOnRailsRSCRuntimeResource = isReactOnRailsRSCRuntimeResource;
 
   constructor(options: Options) {
     if (!options || typeof options.isServer !== 'boolean') {
-      throw new Error(
-        'React Server Plugin: You must specify the isServer option as a boolean.',
-      );
+      throw new Error('React Server Plugin: You must specify the isServer option as a boolean.');
     }
     this.isServer = options.isServer;
 
@@ -526,18 +545,18 @@ export class RSCWebpackPlugin {
     }
 
     this.chunkGroupWarningThreshold = normalizeChunkGroupWarningThreshold(
-      options.chunkGroupWarningThreshold,
+      options.chunkGroupWarningThreshold
     );
 
     const defaultClientManifestFilename = this.isServer
       ? 'react-server-client-manifest.json'
       : 'react-client-manifest.json';
-    this.clientManifestFilename =
-      options.clientManifestFilename || defaultClientManifestFilename;
+    this.clientManifestFilename = options.clientManifestFilename || defaultClientManifestFilename;
     this.serverConsumerManifestFilename =
       options.serverConsumerManifestFilename || 'react-ssr-manifest.json';
     this.clientReferenceDiagnosticsFilename = options.clientReferenceDiagnosticsFilename;
     this.entryClientReferencesFilename = options.entryClientReferencesFilename;
+    this.cssWrapper = options.cssWrapper === true;
   }
 
   apply(compiler: webpack.Compiler): void {
@@ -568,7 +587,7 @@ export class RSCWebpackPlugin {
           resolvedClientReferences = resolvedClientRefs;
           callback();
         },
-        nextWatchDependencies,
+        nextWatchDependencies
       );
     });
 
@@ -581,10 +600,7 @@ export class RSCWebpackPlugin {
 
       const normalModuleFactory = params.normalModuleFactory;
       compilation.dependencyFactories.set(ClientReferenceDependency, normalModuleFactory);
-      compilation.dependencyTemplates.set(
-        ClientReferenceDependency,
-        new NullDependency.Template(),
-      );
+      compilation.dependencyTemplates.set(ClientReferenceDependency, new NullDependency.Template());
 
       const handler = (parser: FlightParser) => {
         parser.hooks.program.tap(PLUGIN_NAME, () => {
@@ -606,12 +622,30 @@ export class RSCWebpackPlugin {
             const chunkName = this.chunkName
               .replace(/\[index\]/g, `${i}`)
               .replace(/\[request\]/g, Template.toPath(dep.userRequest));
+            // With cssWrapper, the async block builds a generated wrapper module
+            // (which imports the original client module and renders its CSS
+            // <link precedence>) instead of the client module directly. The
+            // wrapper's resource is still the client file, so the manifest entry
+            // (recorded by `module.resource`) points at the wrapper module id; the
+            // dep keeps `userRequest` = client file so chunk-group matching and
+            // `resolvedClientFiles` membership are unchanged.
+            let blockDep: ClientReferenceDependency = dep;
+            let blockRequest = dep.request;
+            if (this.cssWrapper) {
+              blockRequest = `!!${RSC_CSS_WRAPPER_LOADER}!${dep.request}`;
+              blockDep = new ClientReferenceDependency(blockRequest);
+              blockDep.userRequest = dep.userRequest;
+              // Record the original client file this wrapper stands in for, so
+              // chunk-group matching resolves it back to the real client file.
+              (blockDep as unknown as { clientFileRequest?: string }).clientFileRequest =
+                dep.request;
+            }
             const block = new webpack.AsyncDependenciesBlock(
               { name: chunkName },
               undefined,
-              dep.request,
+              blockRequest
             );
-            block.addDependency(dep);
+            block.addDependency(blockDep);
             module.addBlock!(block);
           }
         });
@@ -637,8 +671,8 @@ export class RSCWebpackPlugin {
               new webpack.WebpackError(
                 'Client runtime at react-on-rails-rsc/client was not found. React Server Components module map file ' +
                   this.clientManifestFilename +
-                  ' was not created.',
-              ),
+                  ' was not created.'
+              )
             );
             return;
           }
@@ -652,7 +686,7 @@ export class RSCWebpackPlugin {
               : null;
 
           const resolvedClientFiles = new Set(
-            (resolvedClientReferences || []).map((ref) => ref.request),
+            (resolvedClientReferences || []).map((ref) => ref.request)
           );
           const configuredPublicPath = compilation.outputOptions.publicPath;
           const publicPathIsAuto = configuredPublicPath === 'auto';
@@ -666,8 +700,8 @@ export class RSCWebpackPlugin {
               new webpack.WebpackError(
                 `React Server Components: ${publicPathDescription}, which cannot be serialized into the RSC manifest. ` +
                   'moduleLoading.prefix will be emitted as an empty string, and CSS files are omitted from the RSC manifest because their final URLs are only known at runtime. ' +
-                  'Set output.publicPath to a concrete URL or path to enable Flight chunk loading and stylesheet hints.',
-              ),
+                  'Set output.publicPath to a concrete URL or path to enable Flight chunk loading and stylesheet hints.'
+              )
             );
           }
           const moduleLoadingPrefix =
@@ -696,10 +730,18 @@ export class RSCWebpackPlugin {
             }
           });
 
-          let cssPrefix =
-            typeof configuredPublicPath === 'string' && configuredPublicPath !== 'auto'
-              ? configuredPublicPath
-              : null;
+          let cssPrefix: string | null;
+          if (typeof configuredPublicPath === 'string' && configuredPublicPath !== 'auto') {
+            cssPrefix = configuredPublicPath;
+          } else if (this.cssWrapper) {
+            // When publicPath is 'auto' or undefined but cssWrapper is on, emit document-
+            // relative CSS paths so the wrapper's <link precedence> works even without a
+            // static publicPath. The browser resolves these paths relative to the document.
+            cssPrefix = '';
+          } else {
+            // Without cssWrapper, unknown publicPath means we cannot serialize CSS hrefs.
+            cssPrefix = null;
+          }
           if (cssPrefix && !cssPrefix.endsWith('/')) {
             cssPrefix += '/';
           }
@@ -719,7 +761,7 @@ export class RSCWebpackPlugin {
           const recordChunkGroup = (
             chunkGroup: FlightChunkGroup,
             chunkResolvedClientFiles: Set<string>,
-            trackClientReferencePresence = false,
+            trackClientReferencePresence = false
           ): void => {
             const chunks: (string | number | null)[] = [];
 
@@ -735,7 +777,7 @@ export class RSCWebpackPlugin {
             const recordModule = (
               id: string | number | null,
               module: FlightModule,
-              moduleCss: readonly string[],
+              moduleCss: readonly string[]
             ): void => {
               if (!module.resource || !chunkResolvedClientFiles.has(module.resource)) {
                 return;
@@ -844,13 +886,14 @@ export class RSCWebpackPlugin {
             // Guarded on `moduleGraph`/`getModuleChunksIterable`, which the
             // unit-test mocks omit (they exercise the per-chunk pass only).
             const moduleGraph = compilation.moduleGraph;
-            const getModuleChunksIterable =
-              compilation.chunkGraph.getModuleChunksIterable?.bind(compilation.chunkGraph);
+            const getModuleChunksIterable = compilation.chunkGraph.getModuleChunksIterable?.bind(
+              compilation.chunkGraph
+            );
             const directCssDepFiles = (module: FlightModule): string[] => {
               if (!moduleGraph || !getModuleChunksIterable || cssPrefix === null) return [];
               const files = new Set<string>();
               const moduleChunks = new Set(
-                [...getModuleChunksIterable(module)].filter((chunk) => groupChunks.has(chunk)),
+                [...getModuleChunksIterable(module)].filter((chunk) => groupChunks.has(chunk))
               );
               const addCssFromModuleChunks = (cssModule: FlightModule): void => {
                 for (const cssChunk of getModuleChunksIterable(cssModule)) {
@@ -970,8 +1013,8 @@ export class RSCWebpackPlugin {
                   compilation.warnings.push(
                     new webpack.WebpackError(
                       'Client reference blocks were unavailable for one or more chunk groups. ' +
-                        'React Server Components client manifest entries for affected chunk groups were skipped.',
-                    ),
+                        'React Server Components client manifest entries for affected chunk groups were skipped.'
+                    )
                   );
                 }
                 continue;
@@ -985,13 +1028,17 @@ export class RSCWebpackPlugin {
                   // The `type` check matches dependencies created by a
                   // duplicate copy of this plugin module (e.g. two
                   // node_modules instances), where `instanceof` fails.
+                  // With cssWrapper the dep.request is the wrapper loader request;
+                  // the original client file it stands in for is stored on the dep.
+                  // Without it this is exactly the previous behavior (dep.request).
+                  const clientFileRequest =
+                    (dep as { clientFileRequest?: string }).clientFileRequest ?? dep.request;
                   if (
-                    (dep instanceof ClientReferenceDependency ||
-                      dep.type === 'client-reference') &&
-                    typeof dep.request === 'string' &&
-                    resolvedClientFiles.has(dep.request)
+                    (dep instanceof ClientReferenceDependency || dep.type === 'client-reference') &&
+                    typeof clientFileRequest === 'string' &&
+                    resolvedClientFiles.has(clientFileRequest)
                   ) {
-                    chunkResolvedClientFiles.add(dep.request);
+                    chunkResolvedClientFiles.add(clientFileRequest);
                   }
                 }
               }
@@ -1050,8 +1097,8 @@ export class RSCWebpackPlugin {
                     'React Server Components: no client manifest entry could be created for ' +
                       missing.length +
                       ' client reference(s). Rendering them will fail at runtime with a missing manifest entry:\n  ' +
-                      missing.join('\n  '),
-                  ),
+                      missing.join('\n  ')
+                  )
                 );
               }
             }
@@ -1087,8 +1134,8 @@ export class RSCWebpackPlugin {
                       'This can duplicate its client JS/CSS across routes; consider a thin client wrapper or isolating imports to avoid chunk contamination. ' +
                       'See ' +
                       CHUNK_GROUP_WARNING_DOCS +
-                      ' for mitigation guidance.',
-                  ),
+                      ' for mitigation guidance.'
+                  )
                 );
               }
 
@@ -1101,8 +1148,8 @@ export class RSCWebpackPlugin {
                       'Increase chunkGroupWarningThreshold or inspect the module graph to narrow duplicated client references. ' +
                       'See ' +
                       CHUNK_GROUP_WARNING_DOCS +
-                      ' for mitigation guidance.',
-                  ),
+                      ' for mitigation guidance.'
+                  )
                 );
               }
             }
@@ -1112,7 +1159,7 @@ export class RSCWebpackPlugin {
             const diagnostics = this.buildDiagnostics(compilation, manifest);
             compilation.emitAsset(
               this.clientReferenceDiagnosticsFilename,
-              new webpack.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false),
+              new webpack.sources.RawSource(`${JSON.stringify(diagnostics, null, 2)}\n`, false)
             );
           }
 
@@ -1129,19 +1176,51 @@ export class RSCWebpackPlugin {
                 compilation.warnings.push(new webpack.WebpackError(message));
               },
               emitAsset: (filename, source) => {
-                compilation.emitAsset(
-                  filename,
-                  new webpack.sources.RawSource(source, false),
-                );
+                compilation.emitAsset(filename, new webpack.sources.RawSource(source, false));
               },
             });
           }
 
           compilation.emitAsset(
             this.clientManifestFilename,
-            new webpack.sources.RawSource(JSON.stringify(manifest, null, 2), false),
+            new webpack.sources.RawSource(JSON.stringify(manifest, null, 2), false)
           );
-        },
+
+          // With cssWrapper, publish the per-client-module CSS hrefs into a global
+          // map the generated wrapper modules read at render time. The hrefs are
+          // only known now (post-chunking), so they are injected at the top of each
+          // runtime chunk (runs at bundle init, before any wrapper renders).
+          if (this.cssWrapper) {
+            const hrefMap: Record<string, string[]> = {};
+            for (const [fileUrl, meta] of Object.entries(filePathToModuleMetadata)) {
+              if (meta.css && meta.css.length > 0) {
+                hrefMap[fileUrl] = meta.css;
+              }
+            }
+            if (Object.keys(hrefMap).length > 0) {
+              const g = RSC_CSS_HREFS_GLOBAL;
+              const prelude =
+                `(function(){var g=(typeof globalThis!=='undefined')?globalThis:` +
+                `(typeof self!=='undefined')?self:this;` +
+                `g[${JSON.stringify(g)}]=Object.assign(g[${JSON.stringify(g)}]||{},` +
+                `${JSON.stringify(hrefMap)});})();\n`;
+              for (const chunk of compilation.chunks) {
+                if (typeof chunk.hasRuntime !== 'function' || !chunk.hasRuntime()) continue;
+                for (const file of chunk.files) {
+                  if (!file.endsWith('.js')) continue;
+                  compilation.updateAsset(
+                    file,
+                    (old: unknown) =>
+                      new webpack.sources.ConcatSource(
+                        new webpack.sources.RawSource(prelude),
+                        old as InstanceType<typeof webpack.sources.RawSource>
+                      )
+                  );
+                }
+              }
+            }
+          }
+        }
       );
     });
   }
@@ -1151,7 +1230,7 @@ export class RSCWebpackPlugin {
     manifest: {
       moduleLoading: { prefix: string; crossOrigin: string | null };
       filePathToModuleMetadata: Record<string, ModuleMetadata>;
-    },
+    }
   ): ClientReferenceDiagnostics {
     const clientReferences = Object.entries(manifest.filePathToModuleMetadata)
       .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
@@ -1170,12 +1249,16 @@ export class RSCWebpackPlugin {
           metadata.css && metadata.css.length > 0
             ? metadata.css.map((fileName) => ({
                 file: fileName,
-                bytes: getCompilationAssetSize(compilation, fileName, manifest.moduleLoading.prefix),
+                bytes: getCompilationAssetSize(
+                  compilation,
+                  fileName,
+                  manifest.moduleLoading.prefix
+                ),
               }))
             : undefined;
         const totalBytes = [...chunks, ...(css || [])].reduce(
           (sum, entry) => sum + (entry.bytes ?? 0),
-          0,
+          0
         );
 
         return {
@@ -1213,7 +1296,7 @@ export class RSCWebpackPlugin {
     fs: unknown,
     contextModuleFactory: FlightContextModuleFactory,
     callback: (err: Error | null, result?: ClientReferenceDependency[]) => void,
-    watchDependencies = createClientReferenceWatchDependencies(),
+    watchDependencies = createClientReferenceWatchDependencies()
   ): void {
     asyncLib.map<ClientReferencePath, ClientReferenceDependency[]>(
       this.clientReferences,
@@ -1233,8 +1316,8 @@ export class RSCWebpackPlugin {
               watchDependencies.missing.add(configuredRequest);
               cb(
                 new Error(
-                  `React Server Components: clientReferences entry "${clientReferencePath}" resolved to a non-file request.`,
-                ),
+                  `React Server Components: clientReferences entry "${clientReferencePath}" resolved to a non-file request.`
+                )
               );
               return;
             }
@@ -1299,26 +1382,22 @@ export class RSCWebpackPlugin {
                               return filterCb(null, false);
                             }
                             watchDependencies.files.add(resolvedPath);
-                            (fs as ReadFileFs).readFile(
-                              resolvedPath,
-                              'utf-8',
-                              (err4, content) => {
-                                if (err4 || typeof content !== 'string') {
-                                  return filterCb(null, false);
-                                }
-                                filterCb(null, hasUseClientDirective(content));
-                              },
-                            );
-                          },
+                            (fs as ReadFileFs).readFile(resolvedPath, 'utf-8', (err4, content) => {
+                              if (err4 || typeof content !== 'string') {
+                                return filterCb(null, false);
+                              }
+                              filterCb(null, hasUseClientDirective(content));
+                            });
+                          }
                         );
                       },
-                      cb,
+                      cb
                     );
-                  },
+                  }
                 );
-              },
+              }
             );
-          },
+          }
         );
       },
       (err, result) => {
@@ -1328,7 +1407,7 @@ export class RSCWebpackPlugin {
           flattened.push(...deps);
         }
         callback(null, flattened);
-      },
+      }
     );
   }
 
@@ -1337,7 +1416,7 @@ export class RSCWebpackPlugin {
     rootDirectory: string,
     clientReferencePath: ClientReferenceSearchPath,
     watchDependencies: ClientReferenceWatchDependencies,
-    callback: (err: Error | null) => void,
+    callback: (err: Error | null) => void
   ): void {
     const inputFs = fs as WatchInputFileSystem;
     const recursive = clientReferencePath.recursive !== false;
@@ -1384,7 +1463,7 @@ export class RSCWebpackPlugin {
                 mapDone(null);
               });
             },
-            (err) => done(err),
+            (err) => done(err)
           );
         });
       };
@@ -1409,7 +1488,7 @@ export class RSCWebpackPlugin {
 }
 
 function sumUniqueKnownBytes(
-  clientReferences: ClientReferenceDiagnostics['clientReferences'],
+  clientReferences: ClientReferenceDiagnostics['clientReferences']
 ): number {
   const seen = new Set<string>();
   let total = 0;
@@ -1426,7 +1505,7 @@ function sumUniqueKnownBytes(
 function getCompilationAssetSize(
   compilation: FlightCompilation,
   file: string,
-  publicPath: string,
+  publicPath: string
 ): number | null {
   const candidates = new Set<string>();
   const addCandidate = (candidate: string): void => {

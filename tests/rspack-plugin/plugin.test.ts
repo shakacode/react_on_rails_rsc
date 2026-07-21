@@ -21,8 +21,7 @@ const run = (fixture: string, options?: Parameters<typeof compile>[1]): CompileR
   return r;
 };
 
-type ManifestChunks =
-  CompileResult['manifest']['filePathToModuleMetadata'][string]['chunks'];
+type ManifestChunks = CompileResult['manifest']['filePathToModuleMetadata'][string]['chunks'];
 
 // Manifest chunks are encoded as [id, file, id, file, ...].
 const manifestChunkFiles = (chunks: ManifestChunks): string[] =>
@@ -30,7 +29,7 @@ const manifestChunkFiles = (chunks: ManifestChunks): string[] =>
 
 const readDiagnosticCss = (result: CompileResult, entryFileSuffix: string): string => {
   const entry = result.clientReferenceDiagnostics?.clientReferences.find((reference) =>
-    reference.file.endsWith(entryFileSuffix),
+    reference.file.endsWith(entryFileSuffix)
   );
   expect(entry).toBeTruthy();
   return (entry!.css ?? [])
@@ -43,10 +42,10 @@ const readDiagnosticCss = (result: CompileResult, entryFileSuffix: string): stri
 
 const manifestMetadataFor = (
   result: CompileResult,
-  entryFileSuffix: string,
+  entryFileSuffix: string
 ): CompileResult['manifest']['filePathToModuleMetadata'][string] => {
   const entry = Object.entries(result.manifest.filePathToModuleMetadata).find(([file]) =>
-    file.endsWith(entryFileSuffix),
+    file.endsWith(entryFileSuffix)
   );
   expect(entry).toBeTruthy();
   return entry![1];
@@ -131,21 +130,16 @@ afterAll(() => cleanupOutputDirs(created));
 const DIST_PLUGIN = path.resolve(__dirname, '../../dist/react-server-dom-rspack/plugin.js');
 const DIST_INJECTION_LOADER = path.resolve(
   __dirname,
-  '../../dist/react-server-dom-rspack/injection-loader.js',
+  '../../dist/react-server-dom-rspack/injection-loader.js'
 );
-const DIST_RSPACK_LOADER = path.resolve(
-  __dirname,
-  '../../dist/react-server-dom-rspack/loader.js',
-);
+const DIST_RSPACK_LOADER = path.resolve(__dirname, '../../dist/react-server-dom-rspack/loader.js');
 const MULTICOMPILER_CHILD_TIMEOUT_MS = 30_000;
 const MULTICOMPILER_JEST_TIMEOUT_MS = MULTICOMPILER_CHILD_TIMEOUT_MS + 5_000;
 
 describe('RSCRspackPlugin', () => {
   beforeAll(() => {
     if (!fs.existsSync(DIST_PLUGIN)) {
-      throw new Error(
-        `Precondition: ${DIST_PLUGIN} does not exist. Run \`yarn build\` first.`,
-      );
+      throw new Error(`Precondition: ${DIST_PLUGIN} does not exist. Run \`yarn build\` first.`);
     }
   });
 
@@ -223,7 +217,7 @@ describe('RSCRspackPlugin', () => {
 
       expect(result.assets).toContain('vendors-app.js');
       const tinyKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
-        p.endsWith('/TinyIsland.js'),
+        p.endsWith('/TinyIsland.js')
       );
       expect(tinyKey).toBeTruthy();
       const tiny = result.manifest.filePathToModuleMetadata[tinyKey!]!;
@@ -252,7 +246,7 @@ describe('RSCRspackPlugin', () => {
       expect(heavyEntry.chunks).toHaveLength(1);
       expect(heavyEntry.chunks[0]!.bytes).toBeGreaterThan(0);
       expect(heavyEntry.totalBytes).toBeGreaterThan(
-        tinyResult.clientReferenceDiagnostics!.clientReferences[0]!.totalBytes,
+        tinyResult.clientReferenceDiagnostics!.clientReferences[0]!.totalBytes
       );
       expect(heavyResult.clientReferenceDiagnostics?.totalChunkBytes).toBe(heavyEntry.totalBytes);
     });
@@ -267,8 +261,8 @@ describe('RSCRspackPlugin', () => {
 
       expect(result.assets).toContain('client0.chunk.css');
 
-      const manifestEntry = Object.entries(result.manifest.filePathToModuleMetadata).find(([file]) =>
-        file.endsWith('/StyledIsland.js'),
+      const manifestEntry = Object.entries(result.manifest.filePathToModuleMetadata).find(
+        ([file]) => file.endsWith('/StyledIsland.js')
       )?.[1];
       expect(manifestEntry?.css).toEqual(['/assets/client0.chunk.css']);
 
@@ -281,7 +275,7 @@ describe('RSCRspackPlugin', () => {
         },
       ]);
       expect(diagnosticEntry.totalBytes).toBe(
-        diagnosticEntry.chunks[0]!.bytes! + diagnosticEntry.css![0]!.bytes!,
+        diagnosticEntry.chunks[0]!.bytes! + diagnosticEntry.css![0]!.bytes!
       );
       expect(result.clientReferenceDiagnostics?.totalChunkBytes).toBe(diagnosticEntry.totalBytes);
     });
@@ -289,7 +283,7 @@ describe('RSCRspackPlugin', () => {
     it("does not attach an importing island's CSS to an imported client reference", () => {
       const result = run('static-islands', {
         clientReferences: staticIslandClientReferences(
-          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/,
+          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/
         ),
         clientReferenceDiagnosticsFilename: diagnosticsFilename,
         publicPath: '/assets',
@@ -307,7 +301,7 @@ describe('RSCRspackPlugin', () => {
     it("scopes manifest CSS to the referenced island's chunk group when diagnostics are disabled", () => {
       const result = run('static-islands', {
         clientReferences: staticIslandClientReferences(
-          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/,
+          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/
         ),
         publicPath: '/assets',
         withCss: true,
@@ -347,9 +341,7 @@ describe('RSCRspackPlugin', () => {
       });
 
       expect(result.assets).toContain('styles.chunk.css');
-      expect(manifestMetadataFor(result, '/Button.js').css).toEqual([
-        '/assets/styles.chunk.css',
-      ]);
+      expect(manifestMetadataFor(result, '/Button.js').css).toEqual(['/assets/styles.chunk.css']);
       expect(readManifestCss(result, '/Button.js')).toContain('.panel');
     });
 
@@ -402,10 +394,10 @@ describe('RSCRspackPlugin', () => {
 
       const cssFiles = manifestMetadataFor(result, '/MixedStyledIsland.js').css ?? [];
       expect(result.assets).toEqual(
-        expect.arrayContaining(['client0.chunk.css', 'styles.chunk.css']),
+        expect.arrayContaining(['client0.chunk.css', 'styles.chunk.css'])
       );
       expect(cssFiles).toEqual(
-        expect.arrayContaining(['/assets/client0.chunk.css', '/assets/styles.chunk.css']),
+        expect.arrayContaining(['/assets/client0.chunk.css', '/assets/styles.chunk.css'])
       );
       expect(cssFiles).toHaveLength(2);
 
@@ -418,7 +410,7 @@ describe('RSCRspackPlugin', () => {
       const result = run('static-islands', {
         isServer: true,
         clientReferences: staticIslandClientReferences(
-          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/,
+          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/
         ),
         clientReferenceDiagnosticsFilename: diagnosticsFilename,
         publicPath: '/assets',
@@ -438,7 +430,7 @@ describe('RSCRspackPlugin', () => {
       const result = run('static-islands', {
         isServer: true,
         clientReferences: staticIslandClientReferences(
-          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/,
+          /^\.\/(?:ParentStyledIsland|StyledIsland)\.js$/
         ),
         clientReferenceDiagnosticsFilename: diagnosticsFilename,
         publicPath: '/assets',
@@ -493,9 +485,7 @@ describe('RSCRspackPlugin', () => {
 
     it("attaches a shared async chunk's CSS to every referencing client reference", () => {
       const result = run('split-shared-css', {
-        clientReferences: staticIslandClientReferences(
-          /^\.\/(?:Button|SettingsPage)\.js$/,
-        ),
+        clientReferences: staticIslandClientReferences(/^\.\/(?:Button|SettingsPage)\.js$/),
         publicPath: '/assets',
         withCss: true,
         configExtra: sharedJsCssSplit,
@@ -520,23 +510,17 @@ describe('RSCRspackPlugin', () => {
       // regression. (Compilation-global, so conservative for a `main`-only
       // page — a documented known limitation, no worse than the old guard.)
       const result = run('split-shared-css', {
-        clientReferences: staticIslandClientReferences(
-          /^\.\/(?:Button|SettingsPage)\.js$/,
-        ),
+        clientReferences: staticIslandClientReferences(/^\.\/(?:Button|SettingsPage)\.js$/),
         publicPath: '/assets',
         withCss: true,
         extraEntries: { vendor: './vendorEntry.js' },
         configExtra: sharedJsCssSplit,
       });
 
-      const sharedCssAsset = result.assets.find(
-        (asset) => /^shared(\.chunk)?\.css$/.test(asset),
-      );
+      const sharedCssAsset = result.assets.find((asset) => /^shared(\.chunk)?\.css$/.test(asset));
       expect(sharedCssAsset).toBeTruthy();
       const sharedCssUrl = `/assets/${sharedCssAsset!}`;
-      const sharedJsAsset = result.assets.find(
-        (asset) => /^shared(\.chunk)?\.js$/.test(asset),
-      );
+      const sharedJsAsset = result.assets.find((asset) => /^shared(\.chunk)?\.js$/.test(asset));
       expect(sharedJsAsset).toBeTruthy();
       const button = manifestMetadataFor(result, '/Button.js');
       const settings = manifestMetadataFor(result, '/SettingsPage.js');
@@ -650,7 +634,7 @@ describe('RSCRspackPlugin', () => {
     it('excludes default initial entry chunks for statically imported client references', () => {
       const result = run('basic-client');
       const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
-        p.endsWith('ClientButton.js'),
+        p.endsWith('ClientButton.js')
       );
       expect(key).toBeTruthy();
 
@@ -675,14 +659,14 @@ describe('RSCRspackPlugin', () => {
         },
       });
       const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
-        p.endsWith('ClientButton.js'),
+        p.endsWith('ClientButton.js')
       );
       expect(key).toBeTruthy();
 
       const entry = result.manifest.filePathToModuleMetadata[key!]!;
       const chunkFiles = manifestChunkFiles(entry.chunks);
       const initialAssets = new Set<string>(
-        result.assets.filter((asset) => asset === 'main.js' || asset === 'runtime.js'),
+        result.assets.filter((asset) => asset === 'main.js' || asset === 'runtime.js')
       );
 
       expect(entry.id).toBe('./ClientButton.js');
@@ -715,7 +699,7 @@ describe('RSCRspackPlugin', () => {
         },
       });
       const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
-        p.endsWith('ClientWidget.js'),
+        p.endsWith('ClientWidget.js')
       );
       expect(key).toBeTruthy();
 
@@ -893,7 +877,7 @@ describe('RSCRspackPlugin', () => {
       injectionLoader: { default?: unknown },
       compiler: object | undefined,
       source = 'runtime();',
-      context: { emitWarning?: (warning: Error) => void } = {},
+      context: { emitWarning?: (warning: Error) => void } = {}
     ): string => {
       const loader = (injectionLoader.default ?? injectionLoader) as (
         this: {
@@ -901,23 +885,25 @@ describe('RSCRspackPlugin', () => {
           _compiler?: object;
           emitWarning?: (warning: Error) => void;
         },
-        source: string,
+        source: string
       ) => string;
 
       return loader.call({ cacheable: jest.fn(), _compiler: compiler, ...context }, source);
     };
 
-    it('keeps client-reference injection scoped in a real rspack MultiCompiler build', () => {
-      const outputRoot = fs.mkdtempSync(
-        path.join(os.tmpdir(), 'ror-rsc-rspack-plugin-multicompiler-'),
-      );
+    it(
+      'keeps client-reference injection scoped in a real rspack MultiCompiler build',
+      () => {
+        const outputRoot = fs.mkdtempSync(
+          path.join(os.tmpdir(), 'ror-rsc-rspack-plugin-multicompiler-')
+        );
 
-      try {
-        const firstOutput = path.join(outputRoot, 'first');
-        const secondOutput = path.join(outputRoot, 'second');
-        const runtimeEntry = path.resolve(__dirname, '../../dist/client.browser.js');
-        const staticIslandsFixture = path.resolve(__dirname, 'fixtures/static-islands');
-        const script = `
+        try {
+          const firstOutput = path.join(outputRoot, 'first');
+          const secondOutput = path.join(outputRoot, 'second');
+          const runtimeEntry = path.resolve(__dirname, '../../dist/client.browser.js');
+          const staticIslandsFixture = path.resolve(__dirname, 'fixtures/static-islands');
+          const script = `
           const fs = require('fs');
           const path = require('path');
           const { rspack } = require('@rspack/core');
@@ -1023,50 +1009,55 @@ describe('RSCRspackPlugin', () => {
           });
         `;
 
-        let raw: string;
-        try {
-          raw = execFileSync(process.execPath, ['-e', script], {
-            encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'pipe'],
-            timeout: MULTICOMPILER_CHILD_TIMEOUT_MS,
-          });
-        } catch (error) {
-          const childError = error as Error & { stdout?: string | Buffer; stderr?: string | Buffer };
-          const stdout = childError.stdout?.toString() ?? '';
-          const stderr = childError.stderr?.toString() ?? '';
-          throw new Error(
-            [
-              `rspack MultiCompiler child process failed: ${childError.message}`,
-              stdout && `stdout:\n${stdout}`,
-              stderr && `stderr:\n${stderr}`,
-            ]
-              .filter(Boolean)
-              .join('\n\n'),
-          );
-        }
-        const result = JSON.parse(raw) as {
-          ok: true;
-          first: { assets: string[]; manifest: CompileResult['manifest'] };
-          second: { assets: string[]; manifest: CompileResult['manifest'] };
-          warnings: string[];
-        };
-        const firstFiles = Object.keys(result.first.manifest.filePathToModuleMetadata);
-        const secondFiles = Object.keys(result.second.manifest.filePathToModuleMetadata);
+          let raw: string;
+          try {
+            raw = execFileSync(process.execPath, ['-e', script], {
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'pipe'],
+              timeout: MULTICOMPILER_CHILD_TIMEOUT_MS,
+            });
+          } catch (error) {
+            const childError = error as Error & {
+              stdout?: string | Buffer;
+              stderr?: string | Buffer;
+            };
+            const stdout = childError.stdout?.toString() ?? '';
+            const stderr = childError.stderr?.toString() ?? '';
+            throw new Error(
+              [
+                `rspack MultiCompiler child process failed: ${childError.message}`,
+                stdout && `stdout:\n${stdout}`,
+                stderr && `stderr:\n${stderr}`,
+              ]
+                .filter(Boolean)
+                .join('\n\n')
+            );
+          }
+          const result = JSON.parse(raw) as {
+            ok: true;
+            first: { assets: string[]; manifest: CompileResult['manifest'] };
+            second: { assets: string[]; manifest: CompileResult['manifest'] };
+            warnings: string[];
+          };
+          const firstFiles = Object.keys(result.first.manifest.filePathToModuleMetadata);
+          const secondFiles = Object.keys(result.second.manifest.filePathToModuleMetadata);
 
-        expect(result.ok).toBe(true);
-        expect(result.warnings.join('\n')).not.toContain('RSCRspackPlugin injection loader');
-        expect(firstFiles.some((file) => file.endsWith('/TinyIsland.js'))).toBe(true);
-        expect(firstFiles.join('\n')).not.toContain('/HeavyIsland.js');
-        expect(secondFiles.some((file) => file.endsWith('/HeavyIsland.js'))).toBe(true);
-        expect(secondFiles.join('\n')).not.toContain('/TinyIsland.js');
-        expect(result.first.assets).toContain('first-0.chunk.js');
-        expect(result.first.assets).not.toContain('second-0.chunk.js');
-        expect(result.second.assets).toContain('second-0.chunk.js');
-        expect(result.second.assets).not.toContain('first-0.chunk.js');
-      } finally {
-        fs.rmSync(outputRoot, { recursive: true, force: true });
-      }
-    }, MULTICOMPILER_JEST_TIMEOUT_MS);
+          expect(result.ok).toBe(true);
+          expect(result.warnings.join('\n')).not.toContain('RSCRspackPlugin injection loader');
+          expect(firstFiles.some((file) => file.endsWith('/TinyIsland.js'))).toBe(true);
+          expect(firstFiles.join('\n')).not.toContain('/HeavyIsland.js');
+          expect(secondFiles.some((file) => file.endsWith('/HeavyIsland.js'))).toBe(true);
+          expect(secondFiles.join('\n')).not.toContain('/TinyIsland.js');
+          expect(result.first.assets).toContain('first-0.chunk.js');
+          expect(result.first.assets).not.toContain('second-0.chunk.js');
+          expect(result.second.assets).toContain('second-0.chunk.js');
+          expect(result.second.assets).not.toContain('first-0.chunk.js');
+        } finally {
+          fs.rmSync(outputRoot, { recursive: true, force: true });
+        }
+      },
+      MULTICOMPILER_JEST_TIMEOUT_MS
+    );
 
     it('scopes injected files and chunk names to the loader compiler context', () => {
       const injectionLoader = require(DIST_INJECTION_LOADER);
@@ -1087,12 +1078,12 @@ describe('RSCRspackPlugin', () => {
       expect(secondSource).toContain('webpackChunkName: "second-0"');
       expect(secondSource).toContain(JSON.stringify(secondFile));
       expect(secondSource).not.toContain(JSON.stringify(firstFile));
-      expect(
-        Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(firstCompiler)),
-      ).toEqual(['first-0']);
-      expect(
-        Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(secondCompiler)),
-      ).toEqual(['second-0']);
+      expect(Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(firstCompiler))).toEqual([
+        'first-0',
+      ]);
+      expect(Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(secondCompiler))).toEqual(
+        ['second-0']
+      );
     });
 
     it('keeps legacy fallback state populated when the loader has no compiler context', () => {
@@ -1121,7 +1112,7 @@ describe('RSCRspackPlugin', () => {
 
         expect(emitWarning).toHaveBeenCalledTimes(1);
         expect((emitWarning.mock.calls[0]![0] as Error).message).toContain(
-          'without a compiler context',
+          'without a compiler context'
         );
       });
     });
@@ -1145,11 +1136,11 @@ describe('RSCRspackPlugin', () => {
 
       expect(firstEmitWarning).toHaveBeenCalledTimes(1);
       expect((firstEmitWarning.mock.calls[0]![0] as Error).message).toContain(
-        'unknown compiler context',
+        'unknown compiler context'
       );
       expect(secondEmitWarning).toHaveBeenCalledTimes(1);
       expect((secondEmitWarning.mock.calls[0]![0] as Error).message).toContain(
-        'unknown compiler context',
+        'unknown compiler context'
       );
     });
 
@@ -1221,14 +1212,14 @@ describe('RSCRspackPlugin', () => {
         name?: string;
         canBeInitial?: () => boolean;
       }) => boolean;
-      expect(chunksCapturedByRspackOptionsApply({ name: 'client0', canBeInitial: () => false })).toBe(
-        false,
-      );
       expect(
-        chunksCapturedByRspackOptionsApply({ name: 'client99', canBeInitial: () => false }),
+        chunksCapturedByRspackOptionsApply({ name: 'client0', canBeInitial: () => false })
+      ).toBe(false);
+      expect(
+        chunksCapturedByRspackOptionsApply({ name: 'client99', canBeInitial: () => false })
       ).toBe(true);
       expect(chunksCapturedByRspackOptionsApply({ name: 'main', canBeInitial: () => true })).toBe(
-        true,
+        true
       );
     });
 
@@ -1241,15 +1232,15 @@ describe('RSCRspackPlugin', () => {
       expect(jsAssets.filter((asset) => /vendors|biglib|clientlib/.test(asset))).toEqual([]);
 
       const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
-        p.endsWith('ClientWidget.js'),
+        p.endsWith('ClientWidget.js')
       );
       expect(clientEntryKey).toBeTruthy();
 
       const clientChunkFiles = manifestChunkFiles(
-        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks
       );
       expect(clientChunkFiles).toEqual(
-        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)]),
+        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)])
       );
       expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
     });
@@ -1284,15 +1275,15 @@ describe('RSCRspackPlugin', () => {
       expect(jsAssets.filter((asset) => /vendors|biglib|clientlib/.test(asset))).toEqual([]);
 
       const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
-        p.endsWith('ClientWidget.js'),
+        p.endsWith('ClientWidget.js')
       );
       expect(clientEntryKey).toBeTruthy();
 
       const clientChunkFiles = manifestChunkFiles(
-        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks
       );
       expect(clientChunkFiles).toEqual(
-        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)]),
+        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)])
       );
       expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
     });
@@ -1323,12 +1314,12 @@ describe('RSCRspackPlugin', () => {
       expect(jsAssets).toContain('vendors-biglib.js');
 
       const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
-        p.endsWith('ClientWidget.js'),
+        p.endsWith('ClientWidget.js')
       );
       expect(clientEntryKey).toBeTruthy();
 
       const clientChunkFiles = manifestChunkFiles(
-        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks,
+        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks
       );
       expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
     });
@@ -1350,7 +1341,7 @@ describe('RSCRspackPlugin', () => {
           compilation: unknown,
           bundler: unknown,
           diagnosticsCssFiles: Map<string, string[]>,
-          resolvedClientFiles: ReadonlySet<string>,
+          resolvedClientFiles: ReadonlySet<string>
         ) => {
           manifest: { moduleLoading: { prefix: string } };
           clientRuntimeFound: boolean;
@@ -1367,13 +1358,13 @@ describe('RSCRspackPlugin', () => {
         },
         { WebpackError: Error },
         new Map(),
-        new Set(),
+        new Set()
       );
 
       expect(clientRuntimeFound).toBe(false);
       expect(manifest.moduleLoading.prefix).toBe('');
       expect(warnings.map((warning) => warning.message).join('\n')).toContain(
-        'output.publicPath is a function',
+        'output.publicPath is a function'
       );
     });
 
@@ -1381,9 +1372,7 @@ describe('RSCRspackPlugin', () => {
       const result = run('basic-client', {
         publicPath: 'https://cdn.example.com/packs/',
       });
-      expect(result.manifest.moduleLoading.prefix).toBe(
-        'https://cdn.example.com/packs/',
-      );
+      expect(result.manifest.moduleLoading.prefix).toBe('https://cdn.example.com/packs/');
     });
 
     it('uses empty string when publicPath is unset (default)', () => {
@@ -1499,13 +1488,11 @@ describe('RSCRspackPlugin', () => {
         },
       });
       const key = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
-        p.endsWith('ClientButton.js'),
+        p.endsWith('ClientButton.js')
       );
       expect(key).toBeTruthy();
 
-      const chunkFiles = manifestChunkFiles(
-        result.manifest.filePathToModuleMetadata[key!]!.chunks,
-      );
+      const chunkFiles = manifestChunkFiles(result.manifest.filePathToModuleMetadata[key!]!.chunks);
       expect(chunkFiles).toEqual(['main.mjs']);
       expect(chunkFiles).not.toContain('runtime.mjs');
     });
@@ -1550,7 +1537,7 @@ describe('RSCRspackPlugin', () => {
           new RSCRspackPlugin({
             isServer: false,
             clientManifestFilename: 'custom.json',
-          }),
+          })
       ).not.toThrow();
     });
 
@@ -1577,11 +1564,9 @@ describe('RSCRspackPlugin', () => {
       const ruleLoaders = rules.flatMap((rule: { use?: unknown }) =>
         Array.isArray(rule.use)
           ? rule.use.map((entry) =>
-              typeof entry === 'string'
-                ? entry
-                : (entry as { loader?: string } | undefined)?.loader,
+              typeof entry === 'string' ? entry : (entry as { loader?: string } | undefined)?.loader
             )
-          : [],
+          : []
       );
 
       expect(ruleLoaders).not.toContain(DIST_RSPACK_LOADER);
@@ -1600,11 +1585,9 @@ describe('RSCRspackPlugin', () => {
       const url = require('url');
       const path = require('path');
       const expected = url.pathToFileURL(
-        path.join(__dirname, 'fixtures/basic-client/ClientButton.js'),
+        path.join(__dirname, 'fixtures/basic-client/ClientButton.js')
       ).href;
-      expect(
-        Object.keys(result.manifest.filePathToModuleMetadata),
-      ).toContain(expected);
+      expect(Object.keys(result.manifest.filePathToModuleMetadata)).toContain(expected);
     });
   });
 });

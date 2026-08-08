@@ -46,9 +46,9 @@ describe('19.2 runtime release policy', () => {
   it('depends on the stock React 19.2 Flight runtime and raises React peers to the runtime floor', () => {
     const pkg = readJson<PackageJson>('package.json');
 
-    expect(pkg.dependencies?.['react-server-dom-webpack']).toBe('~19.2.7');
-    expect(pkg.peerDependencies?.react).toBe('^19.2.7');
-    expect(pkg.peerDependencies?.['react-dom']).toBe('^19.2.7');
+    expect(pkg.dependencies?.['react-server-dom-webpack']).toBe('~19.2.8');
+    expect(pkg.peerDependencies?.react).toBe('^19.2.8');
+    expect(pkg.peerDependencies?.['react-dom']).toBe('^19.2.8');
   });
 
   it('does not publish export targets from the legacy vendored runtime tree', () => {

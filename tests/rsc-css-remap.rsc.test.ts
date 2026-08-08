@@ -55,8 +55,11 @@ afterAll(() => cleanupOutputDirs(created));
 /** Find the webpack (named) module id of a module by scanning the built bundle. */
 function findModuleId(outputPath: string, suffix: string): string {
   const main = fs.readFileSync(path.join(outputPath, 'main.js'), 'utf8');
-  // Named modules are registered as `"<id>": (\n/*...*/ ... )` — the id ends with the file path.
-  const re = new RegExp(`["']([^"']*${suffix.replace(/[.]/g, '\\.')})["']\\s*:`, 'g');
+  // Named modules are registered after webpack's `/***/` marker — the id ends with the file path.
+  const re = new RegExp(
+    `/\\*\\*\\*/\\s+["']([^"']*${suffix.replace(/[.]/g, '\\.')})["']`,
+    'g',
+  );
   const ids = new Set<string>();
   for (const m of main.matchAll(re)) ids.add(m[1]!);
   const arr = [...ids];

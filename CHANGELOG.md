@@ -8,7 +8,7 @@ All notable changes to this package will be documented in this file.
 - Raised the stock Flight runtime, React, and React DOM minimums from 19.2.7 to 19.2.8 so the packaged runtime and peer contract stay aligned. ([#203])
 
 ### Fixed
-- Prevented `RSCRspackPlugin` browser bundles from requesting every discovered client-reference chunk at startup while preserving emitted chunks for Flight's on-demand loading.
+- Prevented `RSCRspackPlugin` browser bundles from requesting every discovered client-reference chunk at startup while preserving emitted chunks for Flight's on-demand loading. ([#207])
 
 ## [19.2.1] - 2026-07-14
 
@@ -81,6 +81,7 @@ All notable changes to this package will be documented in this file.
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
 [#203]: https://github.com/shakacode/react_on_rails_rsc/pull/203
+[#207]: https://github.com/shakacode/react_on_rails_rsc/pull/207
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
 [#140]: https://github.com/shakacode/react_on_rails_rsc/pull/140
 [#143]: https://github.com/shakacode/react_on_rails_rsc/pull/143

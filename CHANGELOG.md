@@ -7,6 +7,9 @@ All notable changes to this package will be documented in this file.
 ### Breaking Changes
 - Raised the stock Flight runtime, React, and React DOM minimums from 19.2.7 to 19.2.8 so the packaged runtime and peer contract stay aligned. ([#203])
 
+### Fixed
+- Prevented `RSCRspackPlugin` browser bundles from requesting every discovered client-reference chunk at startup while preserving emitted chunks for Flight's on-demand loading.
+
 ## [19.2.1] - 2026-07-14
 
 ### Added

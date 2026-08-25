@@ -875,6 +875,21 @@ describe('RSCRspackPlugin', () => {
 
       expect(appendedScripts).toEqual([]);
     });
+
+    it('preserves client-reference chunks when DefinePlugin replaces typeof window', () => {
+      const result = run('dead-code', {
+        defines: { 'typeof window': JSON.stringify('object') },
+        configExtra: { mode: 'production', optimization: { minimize: false } },
+      });
+
+      expect(result.assets.filter((asset) => /^client\d+\.chunk\.js$/.test(asset))).toHaveLength(2);
+      expect(Object.keys(result.manifest.filePathToModuleMetadata)).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/\/Dead\.js$/),
+          expect.stringMatching(/\/Used\.js$/),
+        ])
+      );
+    });
   });
 
   describe('splitChunks integration', () => {
@@ -1133,7 +1148,7 @@ describe('RSCRspackPlugin', () => {
 
       const source = runInjectionLoaderForCompiler(injectionLoader, compiler);
 
-      expect(source).toContain('if (typeof window === "undefined") import(');
+      expect(source).toContain('if (globalThis.window === undefined) import(');
       expect(source).not.toMatch(/^import\(/m);
     });
 

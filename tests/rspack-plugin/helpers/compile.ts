@@ -31,6 +31,8 @@ export interface CompileOptions {
   maxChunks?: number;
   outputFilename?: string;
   outputChunkFilename?: string;
+  /** Values passed to Rspack's DefinePlugin. */
+  defines?: Record<string, string>;
   /** Drops the Flight runtime entry to assert missing-runtime behavior. */
   omitRuntimeEntry?: boolean;
   /** Additional entrypoints (name -> request) besides the default `main`. */
@@ -129,6 +131,7 @@ const compileInto = (
     maxChunks: options.maxChunks,
     outputFilename: options.outputFilename,
     outputChunkFilename: options.outputChunkFilename,
+    defines: options.defines,
     omitRuntimeEntry: options.omitRuntimeEntry,
     extraEntries: options.extraEntries,
     configExtra: serializeForRunner(options.configExtra ?? {}),

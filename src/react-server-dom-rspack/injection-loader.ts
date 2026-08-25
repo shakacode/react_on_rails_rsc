@@ -179,7 +179,7 @@ const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
     // component's CSS <link precedence>) instead of the client file directly.
     const request = cssWrapper ? `!!${RSC_CSS_WRAPPER_LOADER}!${file}` : file;
     // Rspack must see the import to emit the chunk; Flight loads it on demand in browsers.
-    return `if (typeof window === "undefined") import(/* webpackChunkName: ${JSON.stringify(name)} */ ${JSON.stringify(request)});`;
+    return `if (globalThis.window === undefined) import(/* webpackChunkName: ${JSON.stringify(name)} */ ${JSON.stringify(request)});`;
   });
 
   setGeneratedChunkNamesForCompiler(compiler, names);

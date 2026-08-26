@@ -135,6 +135,7 @@ const run = async (origin) => {
     link.getAttribute('href'),
   );
   const nestedLabel = document.querySelector('[data-testid="nested-label"]');
+  const nestedLabelColor = nestedLabel ? window.getComputedStyle(nestedLabel).color : null;
   const serverMessage = document.querySelector('[data-testid="server-message"]');
 
   window.close();
@@ -144,6 +145,7 @@ const run = async (origin) => {
     valueBeforeClick,
     valueAfterClick,
     nestedLabelText: nestedLabel ? nestedLabel.textContent : null,
+    nestedLabelColor,
     serverMessageText: serverMessage ? serverMessage.textContent : null,
     stylesheetLinks,
     devtoolsRenderers,

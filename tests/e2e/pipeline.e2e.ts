@@ -86,6 +86,7 @@ interface HydrateResult {
   valueBeforeClick: string | null;
   valueAfterClick: string | null;
   nestedLabelText: string | null;
+  nestedLabelColor: string | null;
   serverMessageText: string | null;
   stylesheetLinks: string[];
   devtoolsRenderers: { version: string; rendererPackageName: string }[];
@@ -353,21 +354,16 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       // Hydrated from SSR markup, then interactive after a click.
       expect(result.serverMessageText).toBe('rendered-on-server-only');
       expect(result.nestedLabelText).toBe('theme: dark');
+      expect(result.nestedLabelColor).toBe('rgb(120, 30, 90)');
       expect(result.valueBeforeClick).toBe('clicks: 3');
       expect(result.valueAfterClick).toBe('clicks: 4');
 
-      // Stylesheets reach the document head: on webpack via the Flight
-      // CSS hints (preinit), on rspack via the chunk-CSS runtime.
-      const expectedLinks = isWebpack
-        ? [
-            `/assets/${base('Counter.js')}.chunk.css`,
-            `/assets/${base('ThemeSection.js')}.chunk.css`,
-          ]
-        : [
-            `/assets/${base('Counter.js')}.chunk.css`,
-            `/assets/${base('NestedLabel.js')}.chunk.css`,
-            `/assets/${base('ThemeSection.js')}.chunk.css`,
-          ];
+      // Only Flight-referenced boundary stylesheets are requested. ThemeSection's
+      // chunk CSS already contains NestedLabel.css, as the computed-style assertion proves.
+      const expectedLinks = [
+        `/assets/${base('Counter.js')}.chunk.css`,
+        `/assets/${base('ThemeSection.js')}.chunk.css`,
+      ];
       expect([...result.stylesheetLinks].sort()).toEqual([...expectedLinks].sort());
 
       // The runtime's embedded version string (captured from the devtools

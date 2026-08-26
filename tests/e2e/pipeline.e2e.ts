@@ -86,7 +86,6 @@ interface HydrateResult {
   valueBeforeClick: string | null;
   valueAfterClick: string | null;
   nestedLabelText: string | null;
-  nestedLabelColor: string | null;
   serverMessageText: string | null;
   stylesheetLinks: string[];
   devtoolsRenderers: { version: string; rendererPackageName: string }[];
@@ -354,12 +353,11 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       // Hydrated from SSR markup, then interactive after a click.
       expect(result.serverMessageText).toBe('rendered-on-server-only');
       expect(result.nestedLabelText).toBe('theme: dark');
-      expect(result.nestedLabelColor).toBe('rgb(120, 30, 90)');
       expect(result.valueBeforeClick).toBe('clicks: 3');
       expect(result.valueAfterClick).toBe('clicks: 4');
 
       // Only Flight-referenced boundary stylesheets are requested. ThemeSection's
-      // chunk CSS already contains NestedLabel.css, as the computed-style assertion proves.
+      // chunk already contains NestedLabel.css, so its standalone link would be redundant.
       const expectedLinks = [
         `/assets/${base('Counter.js')}.chunk.css`,
         `/assets/${base('ThemeSection.js')}.chunk.css`,

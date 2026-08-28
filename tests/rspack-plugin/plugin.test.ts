@@ -22,7 +22,7 @@ const run = (fixture: string, options?: Parameters<typeof compile>[1]): CompileR
   return r;
 };
 
-const evaluateBrowserStartup = (result: CompileResult): unknown[] => {
+const evaluateBrowserStartup = (result: CompileResult, withWindow = true): unknown[] => {
   const appendedScripts: unknown[] = [];
   const sandbox: Record<string, unknown> = {
     TextEncoder: global.TextEncoder,
@@ -45,7 +45,7 @@ const evaluateBrowserStartup = (result: CompileResult): unknown[] => {
   };
   sandbox.globalThis = sandbox;
   sandbox.self = sandbox;
-  sandbox.window = sandbox;
+  if (withWindow) sandbox.window = sandbox;
 
   const mainSource = fs.readFileSync(path.join(result.outputPath, 'main.js'), 'utf8');
   vm.runInNewContext(mainSource, sandbox, { filename: 'main.js' });
@@ -878,6 +878,7 @@ describe('RSCRspackPlugin', () => {
       expect(clientChunks).not.toHaveLength(0);
 
       expect(evaluateBrowserStartup(result)).toEqual([]);
+      expect(evaluateBrowserStartup(result, false)).toHaveLength(clientChunks.length);
     });
 
     it('preserves lazy client-reference chunks when DefinePlugin replaces typeof window', () => {

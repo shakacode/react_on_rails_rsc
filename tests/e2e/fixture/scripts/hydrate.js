@@ -135,7 +135,14 @@ const run = async (origin) => {
     link.getAttribute('href'),
   );
   const nestedLabel = document.querySelector('[data-testid="nested-label"]');
-  const nestedLabelColor = nestedLabel ? window.getComputedStyle(nestedLabel).color : null;
+  // Flight inserts stylesheet links asynchronously during hydration.
+  const expectedNestedLabelColor = 'rgb(120, 30, 90)';
+  const cssDeadline = Date.now() + 2000;
+  let nestedLabelColor = nestedLabel ? window.getComputedStyle(nestedLabel).color : null;
+  while (nestedLabel && nestedLabelColor !== expectedNestedLabelColor && Date.now() < cssDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    nestedLabelColor = nestedLabel ? window.getComputedStyle(nestedLabel).color : null;
+  }
   const serverMessage = document.querySelector('[data-testid="server-message"]');
 
   window.close();

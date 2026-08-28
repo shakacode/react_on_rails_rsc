@@ -22,6 +22,37 @@ const run = (fixture: string, options?: Parameters<typeof compile>[1]): CompileR
   return r;
 };
 
+const evaluateBrowserStartup = (result: CompileResult): unknown[] => {
+  const appendedScripts: unknown[] = [];
+  const sandbox: Record<string, unknown> = {
+    TextEncoder: global.TextEncoder,
+    TextDecoder: global.TextDecoder,
+    ReadableStream: global.ReadableStream,
+    Response: global.Response,
+    console,
+    Promise,
+    Error,
+    setTimeout: () => 0,
+    clearTimeout: () => undefined,
+    document: {
+      getElementsByTagName: () => [],
+      createElement: () => ({
+        setAttribute: () => undefined,
+        getAttribute: () => null,
+      }),
+      head: { appendChild: (script: unknown) => appendedScripts.push(script) },
+    },
+  };
+  sandbox.globalThis = sandbox;
+  sandbox.self = sandbox;
+  sandbox.window = sandbox;
+
+  const mainSource = fs.readFileSync(path.join(result.outputPath, 'main.js'), 'utf8');
+  vm.runInNewContext(mainSource, sandbox, { filename: 'main.js' });
+
+  return appendedScripts;
+};
+
 type ManifestChunks = CompileResult['manifest']['filePathToModuleMetadata'][string]['chunks'];
 
 // Manifest chunks are encoded as [id, file, id, file, ...].
@@ -841,45 +872,18 @@ describe('RSCRspackPlugin', () => {
 
     it('does not request emitted client-reference chunks during browser startup', () => {
       const result = run('dead-code', {
-        configExtra: { mode: 'production', optimization: { minimize: false } },
+        configExtra: { mode: 'production', optimization: { minimize: true } },
       });
       const clientChunks = result.assets.filter((asset) => /^client\d+\.chunk\.js$/.test(asset));
       expect(clientChunks).not.toHaveLength(0);
 
-      const appendedScripts: unknown[] = [];
-      const sandbox: Record<string, unknown> = {
-        TextEncoder: global.TextEncoder,
-        TextDecoder: global.TextDecoder,
-        ReadableStream: global.ReadableStream,
-        Response: global.Response,
-        console,
-        Promise,
-        Error,
-        setTimeout: () => 0,
-        clearTimeout: () => undefined,
-        document: {
-          getElementsByTagName: () => [],
-          createElement: () => ({
-            setAttribute: () => undefined,
-            getAttribute: () => null,
-          }),
-          head: { appendChild: (script: unknown) => appendedScripts.push(script) },
-        },
-      };
-      sandbox.globalThis = sandbox;
-      sandbox.self = sandbox;
-      sandbox.window = sandbox;
-
-      const mainSource = fs.readFileSync(path.join(result.outputPath, 'main.js'), 'utf8');
-      vm.runInNewContext(mainSource, sandbox, { filename: 'main.js' });
-
-      expect(appendedScripts).toEqual([]);
+      expect(evaluateBrowserStartup(result)).toEqual([]);
     });
 
-    it('preserves client-reference chunks when DefinePlugin replaces typeof window', () => {
+    it('preserves lazy client-reference chunks when DefinePlugin replaces typeof window', () => {
       const result = run('dead-code', {
         defines: { 'typeof window': JSON.stringify('object') },
-        configExtra: { mode: 'production', optimization: { minimize: false } },
+        configExtra: { mode: 'production', optimization: { minimize: true } },
       });
 
       expect(result.assets.filter((asset) => /^client\d+\.chunk\.js$/.test(asset))).toHaveLength(2);
@@ -889,6 +893,7 @@ describe('RSCRspackPlugin', () => {
           expect.stringMatching(/\/Used\.js$/),
         ])
       );
+      expect(evaluateBrowserStartup(result)).toEqual([]);
     });
   });
 

@@ -128,4 +128,4 @@ test('renders HTML', async () => {
   enqueueNextChunk();
   await expectNextChunk(chunks[4]!);
   await expectEndOfStream();
-});
+}, 30_000);

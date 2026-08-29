@@ -86,6 +86,8 @@ if (missingRuntimeEntries.length > 0) {
 const runtimeEntry = isServer ? runtimeEntries.server : runtimeEntries.client;
 const clientReferences = reviveFromRunner(rawClientReferences);
 const revivedConfigExtra = reviveFromRunner(configExtra);
+const { output: outputExtra, exposeClientRuntime, ...remainingConfigExtra } =
+  revivedConfigExtra || {};
 const plugins = [
   new RSCRspackPlugin({
     isServer: isServer,
@@ -114,7 +116,11 @@ const config = {
   target: isServer ? 'node' : 'web',
   context,
   entry: {
-    main: omitRuntimeEntry ? ['./index.js'] : [runtimeEntry, './index.js'],
+    main: omitRuntimeEntry
+      ? ['./index.js']
+      : isServer && exposeClientRuntime
+        ? ['./index.js', runtimeEntry]
+        : [runtimeEntry, './index.js'],
     ...(extraEntries || {}),
   },
   output: {
@@ -123,6 +129,7 @@ const config = {
     chunkFilename: outputChunkFilename ?? '[name].chunk.js',
     publicPath: publicPath ?? '',
     crossOriginLoading: crossOriginLoading ?? false,
+    ...(outputExtra || {}),
   },
   optimization: {
     chunkIds: 'named',
@@ -138,7 +145,7 @@ const config = {
       }
     : {}),
   plugins,
-  ...(revivedConfigExtra || {}),
+  ...remainingConfigExtra,
 };
 
 rspack(config, (err, stats) => {

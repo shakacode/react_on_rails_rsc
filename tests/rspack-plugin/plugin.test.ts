@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import { execFileSync } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
+import * as vm from 'vm';
 import { compile, cleanupOutputDirs, type CompileResult } from './helpers/compile';
 
 const created: CompileResult[] = [];
@@ -19,6 +20,37 @@ const run = (fixture: string, options?: Parameters<typeof compile>[1]): CompileR
   const r = compile(fixture, options);
   created.push(r);
   return r;
+};
+
+const evaluateBrowserStartup = (result: CompileResult, withWindow = true): unknown[] => {
+  const appendedScripts: unknown[] = [];
+  const sandbox: Record<string, unknown> = {
+    TextEncoder: global.TextEncoder,
+    TextDecoder: global.TextDecoder,
+    ReadableStream: global.ReadableStream,
+    Response: global.Response,
+    console,
+    Promise,
+    Error,
+    setTimeout: () => 0,
+    clearTimeout: () => undefined,
+    document: {
+      getElementsByTagName: () => [],
+      createElement: () => ({
+        setAttribute: () => undefined,
+        getAttribute: () => null,
+      }),
+      head: { appendChild: (script: unknown) => appendedScripts.push(script) },
+    },
+  };
+  sandbox.globalThis = sandbox;
+  sandbox.self = sandbox;
+  if (withWindow) sandbox.window = sandbox;
+
+  const mainSource = fs.readFileSync(path.join(result.outputPath, 'main.js'), 'utf8');
+  vm.runInNewContext(mainSource, sandbox, { filename: 'main.js' });
+
+  return appendedScripts;
 };
 
 type ManifestChunks = CompileResult['manifest']['filePathToModuleMetadata'][string]['chunks'];
@@ -837,6 +869,33 @@ describe('RSCRspackPlugin', () => {
       const paths = Object.keys(result.manifest.filePathToModuleMetadata);
       expect(paths.some((p) => p.endsWith('ClientButton.js'))).toBe(true);
     });
+
+    it('does not request emitted client-reference chunks during browser startup', () => {
+      const result = run('dead-code', {
+        configExtra: { mode: 'production', optimization: { minimize: true } },
+      });
+      const clientChunks = result.assets.filter((asset) => /^client\d+\.chunk\.js$/.test(asset));
+      expect(clientChunks).not.toHaveLength(0);
+
+      expect(evaluateBrowserStartup(result)).toEqual([]);
+      expect(evaluateBrowserStartup(result, false)).toHaveLength(clientChunks.length);
+    });
+
+    it('preserves lazy client-reference chunks when DefinePlugin replaces typeof window', () => {
+      const result = run('dead-code', {
+        defines: { 'typeof window': JSON.stringify('object') },
+        configExtra: { mode: 'production', optimization: { minimize: true } },
+      });
+
+      expect(result.assets.filter((asset) => /^client\d+\.chunk\.js$/.test(asset))).toHaveLength(2);
+      expect(Object.keys(result.manifest.filePathToModuleMetadata)).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/\/Dead\.js$/),
+          expect.stringMatching(/\/Used\.js$/),
+        ])
+      );
+      expect(evaluateBrowserStartup(result)).toEqual([]);
+    });
   });
 
   describe('splitChunks integration', () => {
@@ -1084,6 +1143,19 @@ describe('RSCRspackPlugin', () => {
       expect(Array.from(injectionLoader.getGeneratedChunkNamesForCompiler(secondCompiler))).toEqual(
         ['second-0']
       );
+    });
+
+    it('guards injected client-reference imports from browser evaluation', () => {
+      const injectionLoader = require(DIST_INJECTION_LOADER);
+      const compiler = {};
+      const clientFile = path.join(__dirname, 'fixtures/basic-client/ClientButton.js');
+
+      injectionLoader.setInjectionStateForCompiler(compiler, [clientFile], 'client-[index]');
+
+      const source = runInjectionLoaderForCompiler(injectionLoader, compiler);
+
+      expect(source).toContain('if (globalThis.window === undefined) import(');
+      expect(source).not.toMatch(/^import\(/m);
     });
 
     it('keeps legacy fallback state populated when the loader has no compiler context', () => {

@@ -18,6 +18,7 @@
  *     crossOriginLoading?: false|'anonymous'|'use-credentials',
  *     withCss?: boolean,
  *     maxChunks?: number,
+ *     defines?: object,             // values passed to Rspack's DefinePlugin
  *     extraEntries?: object,        // additional entrypoints: name -> request
  *     omitRuntimeEntry?: boolean,   // omit Flight runtime for negative tests
  *     configExtra?: object,
@@ -58,6 +59,7 @@ const {
   maxChunks,
   outputFilename,
   outputChunkFilename,
+  defines,
   omitRuntimeEntry,
   extraEntries,
   configExtra,
@@ -87,6 +89,7 @@ const runtimeEntry = isServer ? runtimeEntries.server : runtimeEntries.client;
 const clientReferences = reviveFromRunner(rawClientReferences);
 const revivedConfigExtra = reviveFromRunner(configExtra);
 const plugins = [
+  ...(defines ? [new rspack.DefinePlugin(defines)] : []),
   new RSCRspackPlugin({
     isServer: isServer,
     clientManifestFilename: clientManifestFilename,

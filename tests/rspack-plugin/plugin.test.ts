@@ -59,6 +59,16 @@ type ManifestChunks = CompileResult['manifest']['filePathToModuleMetadata'][stri
 const manifestChunkFiles = (chunks: ManifestChunks): string[] =>
   chunks.filter((_chunk, index) => index % 2 === 1).map(String);
 
+const manifestChunkIds = (chunks: ManifestChunks): string[] =>
+  chunks.filter((_chunk, index) => index % 2 === 0).map(String);
+
+const supportsCompactHashedIds = (() => {
+  const [major = 0, minor = 0, patch = 0] = require('@rspack/core/package.json').version
+    .split('.')
+    .map(Number);
+  return major > 2 || (major === 2 && (minor > 2 || (minor === 2 && patch >= 1)));
+})();
+
 const readDiagnosticCss = (result: CompileResult, entryFileSuffix: string): string => {
   const entry = result.clientReferenceDiagnostics?.clientReferences.find((reference) =>
     reference.file.endsWith(entryFileSuffix)
@@ -1568,6 +1578,100 @@ describe('RSCRspackPlugin', () => {
       expect(chunkFiles).toEqual(['main.mjs']);
       expect(chunkFiles).not.toContain('runtime.mjs');
     });
+
+    // compact-hashed was added in Rspack 2.2.1. Keep older supported Rspack
+    // installations green while exercising this identifier strategy when available.
+    (supportsCompactHashedIds ? it : it.skip)(
+      'loads a compact-hashed client reference through the generated manifest',
+      () => {
+        const clientReferences = staticIslandClientReferences(/^\.\/TinyIsland\.js$/);
+        const compactHashedOptimization = {
+          chunkIds: 'compact-hashed',
+          moduleIds: 'compact-hashed',
+          minimize: false,
+        };
+        const client = run('static-islands', {
+          clientReferences,
+          configExtra: { optimization: compactHashedOptimization },
+        });
+        const server = run('static-islands', {
+          isServer: true,
+          clientReferences,
+          configExtra: {
+            exposeClientRuntime: true,
+            output: { library: { type: 'commonjs2' } },
+            optimization: compactHashedOptimization,
+          },
+        });
+        const clientEntry = manifestMetadataFor(client, '/TinyIsland.js');
+        const serverEntry = manifestMetadataFor(server, '/TinyIsland.js');
+        const clientChunkIds = manifestChunkIds(clientEntry.chunks);
+
+        expect(clientEntry.id).toMatch(/^[A-Za-z0-9_-]+$/);
+        expect(clientEntry.id).not.toContain('TinyIsland');
+        expect(clientChunkIds).toHaveLength(1);
+        expect(clientChunkIds[0]).toMatch(/^[A-Za-z0-9_-]+$/);
+        expect(clientChunkIds[0]).not.toBe('client0');
+        expect(manifestChunkFiles(clientEntry.chunks)).toEqual(['client0.chunk.js']);
+        expect(serverEntry.chunks).toEqual(clientEntry.chunks);
+
+        const encodeScript = `
+          const fs = require('fs');
+          const { PassThrough } = require('stream');
+          const { text } = require('stream/consumers');
+          const React = require(${JSON.stringify(require.resolve('react'))});
+          const { renderToPipeableStream, registerClientReference } = require(${JSON.stringify(
+            require.resolve('react-server-dom-webpack/server.node')
+          )});
+          const manifest = JSON.parse(fs.readFileSync(${JSON.stringify(client.manifestPath)}, 'utf8'));
+          const clientReferencePath = Object.keys(manifest.filePathToModuleMetadata).find((entry) =>
+            entry.endsWith('/TinyIsland.js')
+          );
+          const TinyIsland = registerClientReference(
+            () => { throw new Error('client reference must not render on the server'); },
+            clientReferencePath,
+            'default'
+          );
+          (async () => {
+            const stream = renderToPipeableStream(
+              React.createElement(TinyIsland),
+              manifest.filePathToModuleMetadata
+            );
+            const sink = new PassThrough();
+            stream.pipe(sink);
+            process.stdout.write(await text(sink));
+          })().catch((error) => {
+            process.stderr.write(String(error.stack || error));
+            process.exit(1);
+          });
+        `;
+        const nodeOptions = [process.env.NODE_OPTIONS, '--conditions=react-server']
+          .filter(Boolean)
+          .join(' ');
+        const payload = execFileSync(process.execPath, ['-e', encodeScript], {
+          encoding: 'utf8',
+          env: { ...process.env, NODE_OPTIONS: nodeOptions },
+          timeout: MULTICOMPILER_CHILD_TIMEOUT_MS,
+        });
+
+        fs.writeFileSync(path.join(server.outputPath, 'payload.txt'), payload);
+        fs.writeFileSync(path.join(server.outputPath, 'client-manifest.json'), client.manifestSource);
+        fs.writeFileSync(path.join(server.outputPath, 'server-manifest.json'), server.manifestSource);
+        fs.writeFileSync(path.join(server.outputPath, 'decode.js'), COMPACT_HASHED_DECODE_SCRIPT);
+
+        const decoded = JSON.parse(
+          execFileSync(process.execPath, ['decode.js'], {
+            cwd: server.outputPath,
+            encoding: 'utf8',
+            timeout: MULTICOMPILER_CHILD_TIMEOUT_MS,
+          })
+        ) as { ok: boolean; text?: string; error?: string };
+        expect(decoded.error).toBeUndefined();
+        expect(decoded.ok).toBe(true);
+        expect(decoded.text).toBe('tiny interactive island');
+      },
+      MULTICOMPILER_JEST_TIMEOUT_MS
+    );
   });
 
   describe('plugin option validation', () => {
@@ -1663,3 +1767,24 @@ describe('RSCRspackPlugin', () => {
     });
   });
 });
+
+const COMPACT_HASHED_DECODE_SCRIPT = `
+'use strict';
+const fs = require('fs');
+const { Readable } = require('stream');
+const { buildClientRenderer } = require('./main.js');
+const clientManifest = JSON.parse(fs.readFileSync('./client-manifest.json', 'utf8'));
+const serverManifest = JSON.parse(fs.readFileSync('./server-manifest.json', 'utf8'));
+const { createFromNodeStream } = buildClientRenderer(clientManifest, serverManifest);
+const resolveLazy = async (value) =>
+  value && value.$$typeof === Symbol.for('react.lazy') ? await value._payload : value;
+(async () => {
+  try {
+    const root = await createFromNodeStream(Readable.from([fs.readFileSync('./payload.txt')]));
+    const type = await resolveLazy(root.type);
+    process.stdout.write(JSON.stringify({ ok: true, text: type(root.props) }));
+  } catch (error) {
+    process.stdout.write(JSON.stringify({ ok: false, error: String(error.stack || error) }));
+  }
+})();
+`;

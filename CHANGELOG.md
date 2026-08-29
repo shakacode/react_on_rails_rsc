@@ -2,13 +2,16 @@
 
 All notable changes to this package will be documented in this file.
 
-## [Unreleased]
+## [19.3.0-rc.0] - 2026-08-29
 
 ### Breaking Changes
 - Raised the stock Flight runtime, React, and React DOM minimums from 19.2.7 to 19.2.8 so the packaged runtime and peer contract stay aligned. ([#203])
 
+### Added
+- Added an opt-in `cssWrapper` option to `RSCWebpackPlugin` and `RSCRspackPlugin` that prevents client-component CSS flash-of-unstyled-content by resolving each `"use client"` module to a generated wrapper which renders a native React 19 `<link rel="stylesheet" precedence>`, so the stylesheet blocks paint instead of arriving as a non-blocking `ReactDOM.preinit()` hint. Off by default. ([#196])
+
 ### Fixed
-- Prevented `RSCRspackPlugin` browser bundles from requesting every discovered client-reference chunk at startup while preserving emitted chunks for Flight's on-demand loading. ([#207])
+- Prevented `RSCRspackPlugin` browser bundles from requesting every discovered client-reference chunk at startup while preserving emitted chunks for Flight's on-demand loading. ([#207]) ([#210])
 
 ## [19.2.1] - 2026-07-14
 
@@ -119,3 +122,5 @@ All notable changes to this package will be documented in this file.
 [#86]: https://github.com/shakacode/react_on_rails_rsc/pull/86
 [#110]: https://github.com/shakacode/react_on_rails_rsc/pull/110
 [#113]: https://github.com/shakacode/react_on_rails_rsc/pull/113
+[#196]: https://github.com/shakacode/react_on_rails_rsc/pull/196
+[#210]: https://github.com/shakacode/react_on_rails_rsc/pull/210

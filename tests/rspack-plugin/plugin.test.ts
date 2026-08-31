@@ -960,6 +960,55 @@ describe('RSCRspackPlugin', () => {
       return loader.call({ cacheable: jest.fn(), _compiler: compiler, ...context }, source);
     };
 
+    it('extracts one shared chunk for dependencies used by multiple client references', () => {
+      const result = run('split-shared-js', {
+        clientReferences: staticIslandClientReferences(/^\.\/(?:Button|SettingsPage)\.js$/),
+        chunkName: 'client-[request]',
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              chunks: 'all',
+              minSize: 0,
+              cacheGroups: {
+                default: false,
+                defaultVendors: false,
+                sharedClientDependency: {
+                  test: /shared\.js$/,
+                  name: 'shared-client-dependency',
+                  minChunks: 2,
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      expect(result.assets).toContain('shared-client-dependency.chunk.js');
+
+      const buttonChunks = manifestChunkFiles(
+        manifestMetadataFor(result, '/Button.js').chunks
+      );
+      const settingsChunks = manifestChunkFiles(
+        manifestMetadataFor(result, '/SettingsPage.js').chunks
+      );
+      expect(buttonChunks).toEqual(
+        expect.arrayContaining([
+          'shared-client-dependency.chunk.js',
+          expect.stringMatching(/^client-.*Button_js\.chunk\.js$/),
+        ])
+      );
+      expect(settingsChunks).toEqual(
+        expect.arrayContaining([
+          'shared-client-dependency.chunk.js',
+          expect.stringMatching(/^client-.*SettingsPage_js\.chunk\.js$/),
+        ])
+      );
+    });
+
     it(
       'keeps client-reference injection scoped in a real rspack MultiCompiler build',
       () => {

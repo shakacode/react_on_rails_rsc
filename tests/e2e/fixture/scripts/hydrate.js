@@ -24,12 +24,36 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const { MessageChannel, MessagePort } = require('worker_threads');
 
 const bundlerName = process.argv[2];
+const scenario = process.argv[3] || 'delay-shared';
+if (!['delay-shared', 'delay-boundaries', 'omit-shared-from-flight'].includes(scenario)) {
+  process.stderr.write(`Unknown hydration scenario: ${scenario}\n`);
+  process.exit(2);
+}
 const projectRoot = path.resolve(__dirname, '..');
 const buildDir = path.join(projectRoot, 'build', bundlerName);
 const clientDir = path.join(buildDir, 'client');
 
 const ssrHtml = fs.readFileSync(path.join(buildDir, 'ssr.html'), 'utf8');
-const payload = fs.readFileSync(path.join(buildDir, 'flight-payload.rsc'), 'utf8');
+const originalPayload = fs.readFileSync(path.join(buildDir, 'flight-payload.rsc'), 'utf8');
+
+let omittedSharedChunkPairs = 0;
+const payload =
+  scenario === 'omit-shared-from-flight'
+    ? originalPayload.replace(/^([0-9a-f]+:I)(\[.*\])$/gm, (_match, prefix, json) => {
+        const row = JSON.parse(json);
+        const chunks = row[1];
+        const filtered = [];
+        for (let index = 0; index < chunks.length; index += 2) {
+          if (chunks[index + 1] === 'shared-format.chunk.js') {
+            omittedSharedChunkPairs += 1;
+          } else {
+            filtered.push(chunks[index], chunks[index + 1]);
+          }
+        }
+        row[1] = filtered;
+        return `${prefix}${JSON.stringify(row)}`;
+      })
+    : originalPayload;
 
 const CONTENT_TYPES = {
   '.js': 'text/javascript',
@@ -52,6 +76,8 @@ const fail = (message) => {
 
 const consoleMessages = [];
 const devtoolsRenderers = [];
+const assetRequests = [];
+const assetResponses = [];
 
 const run = async (origin) => {
   const virtualConsole = new VirtualConsole();
@@ -116,7 +142,36 @@ const run = async (origin) => {
 
   const { document } = window;
   const container = document.getElementById('root');
-  await window.__E2E__.hydrate(payload, container);
+  try {
+    await Promise.race([
+      window.__E2E__.hydrate(payload, container),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('hydration timed out')),
+          scenario === 'omit-shared-from-flight' ? 2_000 : 10_000,
+        ),
+      ),
+    ]);
+  } catch (error) {
+    const result = {
+      ok: false,
+      error: String((error && error.stack) || error),
+      valueBeforeClick: null,
+      valueAfterClick: null,
+      nestedLabelText: null,
+      nestedLabelColor: null,
+      serverMessageText: null,
+      stylesheetLinks: [],
+      devtoolsRenderers,
+      recoverableErrors: window.__E2E__ ? window.__E2E__.recoverableErrors : [],
+      consoleMessages,
+      assetRequests,
+      assetResponses,
+      omittedSharedChunkPairs,
+    };
+    window.close();
+    return result;
+  }
 
   const counterValue = () => {
     const el = document.querySelector('[data-testid="counter-value"]');
@@ -158,6 +213,9 @@ const run = async (origin) => {
     devtoolsRenderers,
     recoverableErrors: window.__E2E__ ? window.__E2E__.recoverableErrors : null,
     consoleMessages,
+    assetRequests,
+    assetResponses,
+    omittedSharedChunkPairs,
   };
 };
 
@@ -171,12 +229,24 @@ const server = http.createServer((req, res) => {
   if (urlPath.startsWith('/assets/')) {
     const rel = urlPath.slice('/assets/'.length);
     const file = path.join(clientDir, rel);
+    assetRequests.push(rel);
     // Keep file access inside the client build dir.
     if (file.startsWith(clientDir + path.sep) && fs.existsSync(file)) {
-      res.writeHead(200, {
-        'content-type': CONTENT_TYPES[path.extname(file)] || 'application/octet-stream',
-      });
-      res.end(fs.readFileSync(file));
+      const respond = () => {
+        assetResponses.push(rel);
+        res.writeHead(200, {
+          'content-type': CONTENT_TYPES[path.extname(file)] || 'application/octet-stream',
+        });
+        res.end(fs.readFileSync(file));
+      };
+      const shouldDelay =
+        (scenario === 'delay-shared' && rel === 'shared-format.chunk.js') ||
+        (scenario === 'delay-boundaries' && rel.startsWith('client-') && rel.endsWith('.chunk.js'));
+      if (shouldDelay) {
+        setTimeout(respond, 250);
+      } else {
+        respond();
+      }
       return;
     }
   }

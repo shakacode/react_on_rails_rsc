@@ -1,1 +1,1 @@
-export const sharedLabel = 'shared-client-dependency';
+export const sharedLabel = 'shared-runtime-sentinel';

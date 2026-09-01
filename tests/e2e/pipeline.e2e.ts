@@ -31,12 +31,8 @@
  *      Flight runtime version (the rc.4 "runtime still reports 19.0.3" class
  *      of incident).
  *
- * Known divergences of the rspack leg (current main behavior, asserted
- * below so any change is caught):
- *   - the rspack plugin excludes generated client-reference chunks from
- *     splitChunks, so the shared module is duplicated per chunk instead of
- *     being split into a shared chunk.
- *   - rspack chunk names embed the sanitized absolute module path.
+ * Known divergence of the rspack leg: chunk names embed the sanitized
+ * absolute module path.
  */
 
 import { execFileSync } from 'child_process';
@@ -83,6 +79,7 @@ interface BuildResult {
 }
 interface HydrateResult {
   ok: boolean;
+  error?: string;
   valueBeforeClick: string | null;
   valueAfterClick: string | null;
   nestedLabelText: string | null;
@@ -92,6 +89,9 @@ interface HydrateResult {
   devtoolsRenderers: { version: string; rendererPackageName: string }[];
   recoverableErrors: string[];
   consoleMessages: { level: string; message: string }[];
+  assetRequests: string[];
+  assetResponses: string[];
+  omittedSharedChunkPairs: number;
 }
 
 type LinkHintRow = [string, string] | [string, string, Record<string, string>];
@@ -169,28 +169,29 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
   // its own dependency chunk group ([id, file, ...] pairs), minus initial
   // and runtime chunks. NestedLabel is reachable through two groups (its
   // own injected block and ThemeSection's chunk), so its entry is the
-  // union. Only webpack splits the shared module into its own chunk.
-  const sharedPrefix = isWebpack ? chunkPair('shared-format') : [];
+  // union. Both bundlers split the shared module into its own chunk.
+  const sharedPrefix = chunkPair('shared-format');
+  const withSharedChunk = (chunks: string[]): string[] =>
+    isWebpack ? [...sharedPrefix, ...chunks] : [...chunks, ...sharedPrefix];
   const expectedClientMetadata: Record<string, ModuleMetadata> = {
     [componentUrl('Counter.js')]: {
       id: './src/components/Counter.js',
-      chunks: [...sharedPrefix, ...chunkPair(base('Counter.js'))],
+      chunks: withSharedChunk(chunkPair(base('Counter.js'))),
       css: [`/assets/${base('Counter.js')}.chunk.css`],
       name: '*',
     },
     [componentUrl('NestedLabel.js')]: {
       id: './src/components/NestedLabel.js',
-      chunks: [
-        ...sharedPrefix,
+      chunks: withSharedChunk([
         ...chunkPair(base('NestedLabel.js')),
         ...(isWebpack ? [] : chunkPair(base('ThemeSection.js'))),
-      ],
+      ]),
       css: [`/assets/${base('NestedLabel.js')}.chunk.css`],
       name: '*',
     },
     [componentUrl('ThemeSection.js')]: {
       id: './src/components/ThemeSection.js',
-      chunks: [...sharedPrefix, ...chunkPair(base('ThemeSection.js'))],
+      chunks: withSharedChunk(chunkPair(base('ThemeSection.js'))),
       css: [`/assets/${base('ThemeSection.js')}.chunk.css`],
       name: '*',
     },
@@ -358,6 +359,17 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       expect(result.valueBeforeClick).toBe('clicks: 3');
       expect(result.valueAfterClick).toBe('clicks: 4');
 
+      // The server delays the shared sibling while serving the generated
+      // boundary chunks immediately. React must await every manifest chunk
+      // before synchronously requiring the client module.
+      expect(result.assetRequests).toContain('shared-format.chunk.js');
+      const sharedResponse = result.assetResponses.indexOf('shared-format.chunk.js');
+      const firstBoundaryResponse = result.assetResponses.findIndex((asset) =>
+        asset.startsWith('client-')
+      );
+      expect(firstBoundaryResponse).toBeGreaterThanOrEqual(0);
+      expect(sharedResponse).toBeGreaterThan(firstBoundaryResponse);
+
       // Only Flight-referenced boundary stylesheets are requested. ThemeSection's chunk CSS
       // already contains NestedLabel.css, as the computed-style assertion proves.
       const expectedLinks = [
@@ -387,6 +399,45 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       );
       expect(domRenderer).toBeDefined();
       expect(domRenderer!.version).toBe(reactDomVersion);
+    });
+
+    it('hydrates when the shared sibling loads before the boundary chunks', () => {
+      const result = runNode<HydrateResult>([
+        'scripts/hydrate.js',
+        bundler,
+        'delay-boundaries',
+      ]);
+
+      expect(result.consoleMessages).toEqual([]);
+      expect(result.recoverableErrors).toEqual([]);
+      expect(result.ok).toBe(true);
+      const sharedResponse = result.assetResponses.indexOf('shared-format.chunk.js');
+      const firstBoundaryResponse = result.assetResponses.findIndex(
+        (asset) => asset.startsWith('client-') && asset.endsWith('.chunk.js')
+      );
+      expect(sharedResponse).toBeGreaterThanOrEqual(0);
+      expect(firstBoundaryResponse).toBeGreaterThan(sharedResponse);
+    });
+
+    it('fails hydration when an extracted sibling is omitted from the Flight metadata', () => {
+      const result = runNode<HydrateResult>([
+        'scripts/hydrate.js',
+        bundler,
+        'omit-shared-from-flight',
+      ]);
+
+      expect(result.omittedSharedChunkPairs).toBeGreaterThan(0);
+      expect(result.assetRequests).not.toContain('shared-format.chunk.js');
+      expect(result.ok).toBe(false);
+      const runtimeErrors = result.consoleMessages
+        .filter(({ level }) => level === 'error')
+        .map(({ message }) => message)
+        .join('\n');
+      expect(runtimeErrors).toMatch(
+        isWebpack
+          ? /Cannot find module ['"]\.\/src\/components\/shared\/format\.js['"]/
+          : /__webpack_modules__\[moduleId\] is not a function/
+      );
     });
   });
 });

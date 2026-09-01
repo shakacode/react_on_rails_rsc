@@ -89,8 +89,6 @@ const fail = (message) => {
 const consoleMessages = [];
 const devtoolsRenderers = [];
 const assetRequests = [];
-const assetResponses = [];
-const assetLoads = [];
 const assetEvents = [];
 
 const run = async (origin) => {
@@ -161,7 +159,6 @@ const run = async (origin) => {
       const script = document.createElement('script');
       script.src = `/assets/${file}`;
       script.addEventListener('load', () => {
-        assetLoads.push(file);
         assetEvents.push(`load:${file}`);
         resolve();
       });
@@ -199,8 +196,6 @@ const run = async (origin) => {
       recoverableErrors: window.__E2E__ ? window.__E2E__.recoverableErrors : [],
       consoleMessages,
       assetRequests,
-      assetResponses,
-      assetLoads,
       assetEvents,
       omittedSharedChunkPairs,
     };
@@ -249,8 +244,6 @@ const run = async (origin) => {
     recoverableErrors: window.__E2E__ ? window.__E2E__.recoverableErrors : null,
     consoleMessages,
     assetRequests,
-    assetResponses,
-    assetLoads,
     assetEvents,
     omittedSharedChunkPairs,
   };
@@ -270,7 +263,6 @@ const server = http.createServer((req, res) => {
     assetEvents.push(`request:${rel}`);
     // Keep file access inside the client build dir.
     if (file.startsWith(clientDir + path.sep) && fs.existsSync(file)) {
-      assetResponses.push(rel);
       assetEvents.push(`response:${rel}`);
       res.writeHead(200, {
         'content-type': CONTENT_TYPES[path.extname(file)] || 'application/octet-stream',

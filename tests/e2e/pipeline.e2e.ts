@@ -90,8 +90,6 @@ interface HydrateResult {
   recoverableErrors: string[];
   consoleMessages: { level: string; message: string }[];
   assetRequests: string[];
-  assetResponses: string[];
-  assetLoads: string[];
   assetEvents: string[];
   omittedSharedChunkPairs: number;
 }

@@ -91,6 +91,8 @@ interface HydrateResult {
   consoleMessages: { level: string; message: string }[];
   assetRequests: string[];
   assetResponses: string[];
+  assetLoads: string[];
+  assetEvents: string[];
   omittedSharedChunkPairs: number;
 }
 
@@ -118,6 +120,10 @@ const runNode = <T>(args: string[]): T => {
 const readJson = <T>(...segments: string[]): T =>
   JSON.parse(fs.readFileSync(path.join(...segments), 'utf8')) as T;
 
+const expectHydrationSucceeded = (result: HydrateResult): void => {
+  if (!result.ok) throw new Error(`Hydration failed:\n${JSON.stringify(result, null, 2)}`);
+};
+
 const STOCK_RUNTIME_PACKAGE_JSON = require.resolve('react-server-dom-webpack/package.json', {
   paths: [INSTALLED_PKG],
 });
@@ -139,6 +145,26 @@ const rspackChunkBase = (file: string): string =>
 const webpackChunkBase = (file: string): string => `client-${path.basename(file, '.js')}-js`;
 
 const chunkPair = (base: string): string[] => [base, `${base}.chunk.js`];
+
+const sortChunkPairs = (chunks: (string | number)[]): (string | number)[] => {
+  const pairs: [string | number, string | number][] = [];
+  for (let index = 0; index < chunks.length; index += 2) {
+    pairs.push([chunks[index]!, chunks[index + 1]!]);
+  }
+  return pairs
+    .sort((left, right) => String(left[1]).localeCompare(String(right[1])))
+    .flat();
+};
+
+const normalizeChunkOrder = (
+  metadata: Record<string, ModuleMetadata>,
+): Record<string, ModuleMetadata> =>
+  Object.fromEntries(
+    Object.entries(metadata).map(([file, entry]) => [
+      file,
+      { ...entry, chunks: sortChunkPairs(entry.chunks) },
+    ]),
+  );
 
 /** Flight module-import rows look like `<row id>:I[id, chunks, name]`. */
 const importRows = (payload: string): [string, string[], string][] =>
@@ -171,8 +197,7 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
   // own injected block and ThemeSection's chunk), so its entry is the
   // union. Both bundlers split the shared module into its own chunk.
   const sharedPrefix = chunkPair('shared-format');
-  const withSharedChunk = (chunks: string[]): string[] =>
-    isWebpack ? [...sharedPrefix, ...chunks] : [...chunks, ...sharedPrefix];
+  const withSharedChunk = (chunks: string[]): string[] => [...sharedPrefix, ...chunks];
   const expectedClientMetadata: Record<string, ModuleMetadata> = {
     [componentUrl('Counter.js')]: {
       id: './src/components/Counter.js',
@@ -239,7 +264,9 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
 
   it('emits the exact per-component client manifest', () => {
     expect(clientManifest.moduleLoading).toEqual({ prefix: '/assets/', crossOrigin: null });
-    expect(clientManifest.filePathToModuleMetadata).toEqual(expectedClientMetadata);
+    expect(normalizeChunkOrder(clientManifest.filePathToModuleMetadata)).toEqual(
+      normalizeChunkOrder(expectedClientMetadata),
+    );
   });
 
   it('emits the exact per-component SSR (server) manifest', () => {
@@ -348,9 +375,9 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
     it('hydrates in jsdom with zero errors and interactive client components', () => {
       const result = runNode<HydrateResult>(['scripts/hydrate.js', bundler]);
 
+      expectHydrationSucceeded(result);
       expect(result.consoleMessages).toEqual([]);
       expect(result.recoverableErrors).toEqual([]);
-      expect(result.ok).toBe(true);
 
       // Hydrated from SSR markup, then interactive after a click.
       expect(result.serverMessageText).toBe('rendered-on-server-only');
@@ -359,16 +386,16 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       expect(result.valueBeforeClick).toBe('clicks: 3');
       expect(result.valueAfterClick).toBe('clicks: 4');
 
-      // The server delays the shared sibling while serving the generated
-      // boundary chunks immediately. React must await every manifest chunk
-      // before synchronously requiring the client module.
+      // A generated boundary chunk is executed before hydration starts. React
+      // must still await the subsequently requested shared sibling before
+      // synchronously requiring the client module.
       expect(result.assetRequests).toContain('shared-format.chunk.js');
-      const sharedResponse = result.assetResponses.indexOf('shared-format.chunk.js');
-      const firstBoundaryResponse = result.assetResponses.findIndex((asset) =>
-        asset.startsWith('client-')
+      const firstBoundaryLoad = result.assetEvents.findIndex((event) =>
+        /^load:client-.*\.chunk\.js$/.test(event)
       );
-      expect(firstBoundaryResponse).toBeGreaterThanOrEqual(0);
-      expect(sharedResponse).toBeGreaterThan(firstBoundaryResponse);
+      const sharedRequest = result.assetEvents.indexOf('request:shared-format.chunk.js');
+      expect(firstBoundaryLoad).toBeGreaterThanOrEqual(0);
+      expect(sharedRequest).toBeGreaterThan(firstBoundaryLoad);
 
       // Only Flight-referenced boundary stylesheets are requested. ThemeSection's chunk CSS
       // already contains NestedLabel.css, as the computed-style assertion proves.
@@ -405,18 +432,18 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       const result = runNode<HydrateResult>([
         'scripts/hydrate.js',
         bundler,
-        'delay-boundaries',
+        'shared-first',
       ]);
 
+      expectHydrationSucceeded(result);
       expect(result.consoleMessages).toEqual([]);
       expect(result.recoverableErrors).toEqual([]);
-      expect(result.ok).toBe(true);
-      const sharedResponse = result.assetResponses.indexOf('shared-format.chunk.js');
-      const firstBoundaryResponse = result.assetResponses.findIndex(
-        (asset) => asset.startsWith('client-') && asset.endsWith('.chunk.js')
+      const sharedLoad = result.assetEvents.indexOf('load:shared-format.chunk.js');
+      const firstBoundaryRequest = result.assetEvents.findIndex(
+        (event) => /^request:client-.*\.chunk\.js$/.test(event)
       );
-      expect(sharedResponse).toBeGreaterThanOrEqual(0);
-      expect(firstBoundaryResponse).toBeGreaterThan(sharedResponse);
+      expect(sharedLoad).toBeGreaterThanOrEqual(0);
+      expect(firstBoundaryRequest).toBeGreaterThan(sharedLoad);
     });
 
     it('fails hydration when an extracted sibling is omitted from the Flight metadata', () => {

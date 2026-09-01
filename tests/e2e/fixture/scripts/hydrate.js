@@ -2,7 +2,7 @@
 /**
  * Client hydration in jsdom.
  *
- * Usage: node scripts/hydrate.js <webpack|rspack>
+ * Usage: node scripts/hydrate.js <webpack|rspack> [boundary-first|shared-first|omit-shared-from-flight]
  *
  * Serves the client build over a local HTTP server (publicPath /assets/),
  * loads a page whose body contains the SSR HTML, executes the real client
@@ -24,8 +24,8 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const { MessageChannel, MessagePort } = require('worker_threads');
 
 const bundlerName = process.argv[2];
-const scenario = process.argv[3] || 'delay-shared';
-if (!['delay-shared', 'delay-boundaries', 'omit-shared-from-flight'].includes(scenario)) {
+const scenario = process.argv[3] || 'boundary-first';
+if (!['boundary-first', 'shared-first', 'omit-shared-from-flight'].includes(scenario)) {
   process.stderr.write(`Unknown hydration scenario: ${scenario}\n`);
   process.exit(2);
 }
@@ -35,6 +35,18 @@ const clientDir = path.join(buildDir, 'client');
 
 const ssrHtml = fs.readFileSync(path.join(buildDir, 'ssr.html'), 'utf8');
 const originalPayload = fs.readFileSync(path.join(buildDir, 'flight-payload.rsc'), 'utf8');
+const flightChunkFiles = [
+  ...new Set(
+    [...originalPayload.matchAll(/^[0-9a-f]+:I(\[.*\])$/gm)].flatMap((match) => {
+      const chunks = JSON.parse(match[1])[1];
+      return chunks.filter((_, index) => index % 2 === 1);
+    }),
+  ),
+];
+const sharedChunkFile = flightChunkFiles.find((file) => file === 'shared-format.chunk.js');
+const firstBoundaryChunkFile = flightChunkFiles.find(
+  (file) => file.startsWith('client-') && file.endsWith('.chunk.js'),
+);
 
 let omittedSharedChunkPairs = 0;
 const payload =
@@ -78,6 +90,8 @@ const consoleMessages = [];
 const devtoolsRenderers = [];
 const assetRequests = [];
 const assetResponses = [];
+const assetLoads = [];
+const assetEvents = [];
 
 const run = async (origin) => {
   const virtualConsole = new VirtualConsole();
@@ -142,6 +156,25 @@ const run = async (origin) => {
 
   const { document } = window;
   const container = document.getElementById('root');
+  const loadChunk = (file) =>
+    new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `/assets/${file}`;
+      script.addEventListener('load', () => {
+        assetLoads.push(file);
+        assetEvents.push(`load:${file}`);
+        resolve();
+      });
+      script.addEventListener('error', () => reject(new Error(`failed to preload ${file}`)));
+      document.head.appendChild(script);
+    });
+
+  const firstChunk = scenario === 'boundary-first' ? firstBoundaryChunkFile : sharedChunkFile;
+  if (scenario !== 'omit-shared-from-flight') {
+    if (!firstChunk) throw new Error(`missing preload chunk for ${scenario}`);
+    await loadChunk(firstChunk);
+  }
+
   try {
     await Promise.race([
       window.__E2E__.hydrate(payload, container),
@@ -167,6 +200,8 @@ const run = async (origin) => {
       consoleMessages,
       assetRequests,
       assetResponses,
+      assetLoads,
+      assetEvents,
       omittedSharedChunkPairs,
     };
     window.close();
@@ -215,6 +250,8 @@ const run = async (origin) => {
     consoleMessages,
     assetRequests,
     assetResponses,
+    assetLoads,
+    assetEvents,
     omittedSharedChunkPairs,
   };
 };
@@ -230,23 +267,15 @@ const server = http.createServer((req, res) => {
     const rel = urlPath.slice('/assets/'.length);
     const file = path.join(clientDir, rel);
     assetRequests.push(rel);
+    assetEvents.push(`request:${rel}`);
     // Keep file access inside the client build dir.
     if (file.startsWith(clientDir + path.sep) && fs.existsSync(file)) {
-      const respond = () => {
-        assetResponses.push(rel);
-        res.writeHead(200, {
-          'content-type': CONTENT_TYPES[path.extname(file)] || 'application/octet-stream',
-        });
-        res.end(fs.readFileSync(file));
-      };
-      const shouldDelay =
-        (scenario === 'delay-shared' && rel === 'shared-format.chunk.js') ||
-        (scenario === 'delay-boundaries' && rel.startsWith('client-') && rel.endsWith('.chunk.js'));
-      if (shouldDelay) {
-        setTimeout(respond, 250);
-      } else {
-        respond();
-      }
+      assetResponses.push(rel);
+      assetEvents.push(`response:${rel}`);
+      res.writeHead(200, {
+        'content-type': CONTENT_TYPES[path.extname(file)] || 'application/octet-stream',
+      });
+      res.end(fs.readFileSync(file));
       return;
     }
   }

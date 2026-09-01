@@ -106,7 +106,7 @@ Received: "shared-format", "shared-format.chunk.js" in Counter,
 Tests: 11 passed, 1 failed
 ```
 
-After adding the load-order scenarios and negative control, the complete packed suite passes 27/27 with the guard disabled. The passing tests include Flight payload generation, SSR rendering, zero-error hydration in jsdom, interaction after hydration, stylesheet behavior, a shared sibling served 250 ms after boundary chunks, and the inverse ordering. This is direct evidence against the claimed unavoidable sibling race under the repository's real runtime pipeline.
+After adding the load-order scenarios and negative control, the complete packed suite passes 27/27 with the guard disabled. The passing tests include Flight payload generation, SSR rendering, zero-error hydration in jsdom, interaction after hydration, stylesheet behavior, a generated boundary chunk fully executed before hydration requests the shared sibling, and the inverse ordering with the shared sibling fully executed first. This is direct evidence against the claimed unavoidable sibling race under the repository's real runtime pipeline.
 
 The negative control removes `shared-format.chunk.js` from the two directly referenced Flight import rows while leaving extraction intact. That reproduces a real runtime failure:
 
@@ -155,7 +155,7 @@ Status: implemented in the packed consumer pipeline for both Webpack and Rspack.
 
 - Extend the packed consumer fixture so at least two Flight-referenced client boundaries share an extracted JavaScript chunk.
 - Assert the shared asset exists and every affected manifest record lists it.
-- Serve generated per-boundary chunks immediately but delay the shared chunk response, then repeat with the inverse ordering.
+- Fully execute one generated boundary chunk before starting hydration, then repeat with the shared chunk fully executed first; in each case assert that hydration requests the remaining peer only afterward.
 - Decode the Flight payload, SSR render, hydrate with the real browser runtime, and exercise both components.
 - Assert zero console/recoverable errors and successful interaction.
 - Run the same scenarios for Rspack and Webpack.

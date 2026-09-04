@@ -236,6 +236,20 @@ describe('RSCWebpackLoader star re-exports', () => {
     expect(context.addDependency).toHaveBeenCalledWith(fixturePath('barrel-target.jsx'));
   });
 
+  it('accepts a path whose literal `#` webpack escaped as `\\0#`', async () => {
+    const context = createLoaderContext(fixturePath('barrel-client-module.jsx'), {
+      getResolve: () => async (dir: string, request: string) =>
+        // webpack escapes a literal `?`/`#` inside a path; it is not a delimiter.
+        `${path.resolve(dir, `${request}.jsx`)}`.replace('barrel-target', '\0#barrel-target'),
+    });
+
+    // The escape is stripped before the read, so this fails on the missing file
+    // rather than on the resource-query guard.
+    await expect(runLoader(context, readFixture('barrel-client-module.jsx'))).rejects.toThrow(
+      /ENOENT/
+    );
+  });
+
   it('refuses a star target selected by a resource query', async () => {
     // `./target?variant` routes the module through query-specific loaders that
     // can change its export surface, so reading the backing file would

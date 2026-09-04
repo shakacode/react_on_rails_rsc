@@ -59,16 +59,19 @@ const createExportAllResolver = (
     // A resolved request keeps its `?query` / `#fragment`, which select loaders
     // that can change the target's export surface. Reading the backing file
     // would enumerate the wrong module, so refuse instead of guessing.
-    if (/[?#]/.test(resolved)) {
+    // A literal `?` or `#` inside a path is escaped by webpack as `\0?` / `\0#`
+    // and is not a delimiter.
+    if (/(^|[^\0])[?#]/.test(resolved)) {
       throw new Error(
         `the resolved request "${resolved}" carries a resource query, so its exports depend on ` +
           'loaders this pass cannot run. Replace the `export * from` with explicit named exports.'
       );
     }
+    const resourcePath = resolved.replace(/\0(.)/g, '$1');
     // Star re-export targets are read directly, so register them as build
     // dependencies to keep watch rebuilds correct.
-    loaderContext.addDependency(resolved);
-    return { path: resolved, source: await fs.promises.readFile(resolved, 'utf8') };
+    loaderContext.addDependency(resourcePath);
+    return { path: resourcePath, source: await fs.promises.readFile(resourcePath, 'utf8') };
   };
 };
 

@@ -56,6 +56,15 @@ const createExportAllResolver = (
     if (typeof resolved !== 'string') {
       throw new Error(`the bundler resolver returned no path for "${specifier}"`);
     }
+    // A resolved request keeps its `?query` / `#fragment`, which select loaders
+    // that can change the target's export surface. Reading the backing file
+    // would enumerate the wrong module, so refuse instead of guessing.
+    if (/[?#]/.test(resolved)) {
+      throw new Error(
+        `the resolved request "${resolved}" carries a resource query, so its exports depend on ` +
+          'loaders this pass cannot run. Replace the `export * from` with explicit named exports.'
+      );
+    }
     // Star re-export targets are read directly, so register them as build
     // dependencies to keep watch rebuilds correct.
     loaderContext.addDependency(resolved);

@@ -86,11 +86,14 @@ export interface ClientModuleTransformOptions {
 const MAX_EXPORT_ALL_DEPTH = 16;
 
 /**
- * Reserved words plus `default`. Any of these as `export const <name>` would be
- * a syntax error, so they are emitted through the aliased
- * `export { local as name }` form instead.
+ * Names that cannot be a binding identifier in an ES module: reserved words,
+ * `default`, and the strict-mode-restricted `arguments` / `eval`. Module code
+ * is always strict, so `export const arguments = ...` is a syntax error. All of
+ * these are legal *export names* (`export { x as arguments }`), so they are
+ * emitted through the aliased `export { local as name }` form instead.
  */
 const RESERVED_WORDS = new Set([
+  'arguments',
   'await',
   'break',
   'case',
@@ -104,6 +107,7 @@ const RESERVED_WORDS = new Set([
   'do',
   'else',
   'enum',
+  'eval',
   'export',
   'extends',
   'false',
@@ -152,29 +156,46 @@ const isPlainIdentifier = (name: string): boolean =>
  * enabled it parses as a JSX element. So `.ts` leads with TypeScript only.
  * `.js`/`.jsx` lead with plain JSX and fall back to Flow and TypeScript for
  * projects that put annotated syntax in `.js` files.
+ *
+ * Each type dialect is expanded across both decorator dialects, since they are
+ * independent: `decorators-legacy` rejects the TypeScript 5 position
+ * `export @sealed class C {}`, while the stage-3 `decorators` plugin rejects
+ * some legacy positions, and either can combine with Flow or TypeScript.
  */
+const DECORATOR_DIALECTS: (ParserPlugin | null)[] = [null, 'decorators', 'decorators-legacy'];
+
+/**
+ * Enabled for every attempt. `with { type: 'json' }` parses by default, but the
+ * superseded `assert { type: 'json' }` spelling is still in shipped code and is
+ * an error without this plugin.
+ */
+const ALWAYS_ON_PLUGINS: ParserPlugin[] = ['deprecatedImportAssert'];
+
+/** Expand `base` into one plugin set per decorator dialect, plain form first. */
+const withDecoratorDialects = (...bases: ParserPlugin[][]): ParserPlugin[][] =>
+  bases.flatMap((base) =>
+    DECORATOR_DIALECTS.map((dialect) => [
+      ...base,
+      ...(dialect ? [dialect] : []),
+      ...ALWAYS_ON_PLUGINS,
+    ])
+  );
+
 const parserPluginSets = (filename: string): ParserPlugin[][] => {
   switch (path.extname(filename).toLowerCase()) {
     case '.tsx':
-      return [
-        ['jsx', 'typescript'],
-        ['jsx', 'typescript', 'decorators-legacy'],
-      ];
+      return withDecoratorDialects(['jsx', 'typescript']);
     case '.ts':
     case '.mts':
     case '.cts':
-      return [['typescript'], ['typescript', 'decorators-legacy'], ['jsx', 'typescript']];
+      return withDecoratorDialects(['typescript'], ['jsx', 'typescript']);
     case '.js':
     case '.jsx':
     case '.mjs':
     case '.cjs':
-      return [['jsx'], ['jsx', 'flow'], ['jsx', 'typescript'], ['jsx', 'decorators-legacy']];
+      return withDecoratorDialects(['jsx'], ['jsx', 'flow'], ['jsx', 'typescript']);
     default:
-      return [
-        ['jsx', 'typescript'],
-        ['typescript'],
-        ['jsx', 'flow'],
-      ];
+      return withDecoratorDialects(['jsx', 'typescript'], ['typescript'], ['jsx', 'flow']);
   }
 };
 
@@ -277,28 +298,124 @@ function isTypeOnlyDeclaration(declaration: BabelNode | undefined): boolean {
   return declaration.declare === true;
 }
 
+const isTypeImportKind = (kind: unknown): boolean => kind === 'type' || kind === 'typeof';
+
+/**
+ * Top-level binding names that TypeScript and Flow erase at compile time.
+ *
+ * `interface Props {}` followed by `export { Props }`, or
+ * `import type { Props } from './types'` followed by `export { Props }`, are
+ * marked as value exports by Babel even though nothing survives compilation.
+ * Emitting a client reference for those names would advertise exports the
+ * client module does not have. Names that are also bound by a value
+ * declaration (TypeScript declaration merging, e.g. an `interface` plus a
+ * `const` of the same name) are kept.
+ */
+function collectErasedLocalBindings(body: BabelNode[]): Set<string> {
+  const erased = new Set<string>();
+  const values = new Set<string>();
+
+  const add = (target: Set<string>, node: unknown) => {
+    const collected: string[] = [];
+    addExportNames(collected, node);
+    for (const name of collected) target.add(name);
+  };
+
+  for (const statement of body) {
+    // Look through `export <decl>` to the declaration itself.
+    const node =
+      statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration'
+        ? ((statement.declaration as BabelNode | undefined) ?? statement)
+        : statement;
+
+    switch (node.type) {
+      case 'TSInterfaceDeclaration':
+      case 'TSTypeAliasDeclaration':
+      case 'TSDeclareFunction':
+      case 'InterfaceDeclaration':
+      case 'TypeAlias':
+      case 'OpaqueType':
+        add(erased, node.id);
+        break;
+      case 'ImportDeclaration':
+        for (const specifier of (node.specifiers as BabelNode[]) ?? []) {
+          const isType =
+            isTypeImportKind(node.importKind) || isTypeImportKind(specifier.importKind);
+          add(isType ? erased : values, specifier.local);
+        }
+        break;
+      case 'VariableDeclaration':
+        for (const declarator of (node.declarations as BabelNode[]) ?? []) {
+          add(node.declare === true ? erased : values, declarator.id);
+        }
+        break;
+      case 'FunctionDeclaration':
+      case 'ClassDeclaration':
+      case 'TSEnumDeclaration':
+      case 'TSModuleDeclaration':
+        add(node.declare === true ? erased : values, node.id);
+        break;
+      default:
+    }
+  }
+
+  for (const name of values) erased.delete(name);
+  return erased;
+}
+
 interface CollectContext {
   /** The `"use client"` entry module, used for error messages. */
   rootFilename: string;
   resolveExportAll?: ExportAllResolver;
-  visited: Set<string>;
+  /** Resolved export sets, keyed by module path, so a shared barrel is read once. */
+  memo: Map<string, ModuleExports>;
+  /** Modules currently being resolved, so `export *` cycles terminate. */
+  inProgress: Set<string>;
 }
 
-/** Collect the runtime export names of a parsed module body, in source order. */
-async function collectExportNames(
+interface ModuleExports {
+  /** The module these exports belong to. */
+  path: string;
+  /** Runtime export names in source order, de-duplicated. */
+  names: string[];
+}
+
+/**
+ * Resolve one module's runtime export names, following `export * from '...'`.
+ *
+ * A star re-export never forwards the target's `default`. Names are
+ * de-duplicated because a repeated name would make the generated module a
+ * syntax error — the stock loader pushed duplicates and emitted
+ * `export const X` twice.
+ *
+ * A name that two `export *` targets supply from genuinely different bindings
+ * is ambiguous in ECMAScript and is not an export of this module. It is kept
+ * anyway: distinguishing "ambiguous" from the common diamond re-export (two
+ * barrels re-exporting the *same* binding) would mean resolving every named
+ * re-export's source module, and getting that wrong drops a real component —
+ * the exact #206 failure mode. An extra client reference for an input that is
+ * already broken is the safer error, and it matches what the stock loader did.
+ */
+async function collectModuleExports(
   body: BabelNode[],
-  names: string[],
   filename: string,
   depth: number,
   context: CollectContext
-): Promise<void> {
+): Promise<ModuleExports> {
+  const names: string[] = [];
+  const erasedLocals = collectErasedLocalBindings(body);
+
   for (const node of body) {
     switch (node.type) {
       case 'ExportAllDeclaration': {
         if (node.exportKind === 'type') continue;
         const specifier = (node.source as BabelNode | undefined)?.value;
         if (typeof specifier !== 'string') continue;
-        await collectExportAllNames(specifier, names, filename, depth, context);
+
+        const child = await loadStarExports(specifier, filename, depth, context);
+        for (const childName of child.names) {
+          if (childName !== 'default') names.push(childName);
+        }
         continue;
       }
       case 'ExportDefaultDeclaration': {
@@ -320,8 +437,13 @@ async function collectExportNames(
           }
         }
 
+        // With a `from` clause the specifier's local name belongs to the other
+        // module, so the erased-binding check does not apply.
+        const isLocalReExport = !node.source;
         for (const specifier of (node.specifiers as BabelNode[]) ?? []) {
           if (specifier.exportKind === 'type') continue;
+          const local = (specifier.local as BabelNode | undefined)?.name;
+          if (isLocalReExport && typeof local === 'string' && erasedLocals.has(local)) continue;
           addExportNames(names, specifier.exported);
         }
         continue;
@@ -330,16 +452,17 @@ async function collectExportNames(
         continue;
     }
   }
+
+  return { path: filename, names: [...new Set(names)] };
 }
 
 /** Resolve, read, and recurse into an `export * from '...'` target. */
-async function collectExportAllNames(
+async function loadStarExports(
   specifier: string,
-  names: string[],
   filename: string,
   depth: number,
   context: CollectContext
-): Promise<void> {
+): Promise<ModuleExports> {
   if (!context.resolveExportAll) {
     throw new Error(
       `react-on-rails-rsc: cannot enumerate the exports of "${specifier}" re-exported by the ` +
@@ -367,18 +490,24 @@ async function collectExportAllNames(
     );
   }
 
-  if (context.visited.has(resolved.path)) return;
-  context.visited.add(resolved.path);
+  const memoized = context.memo.get(resolved.path);
+  if (memoized) return memoized;
+  // A circular `export *` contributes nothing beyond what the outer visit
+  // already collected.
+  if (context.inProgress.has(resolved.path)) {
+    return { path: resolved.path, names: [] };
+  }
 
-  const parsed = parseModule(resolved.source, resolved.path);
-  assertExportStatementsWereParsed(parsed, resolved.path);
+  context.inProgress.add(resolved.path);
+  try {
+    const parsed = parseModule(resolved.source, resolved.path);
+    assertExportStatementsWereParsed(parsed, resolved.path);
 
-  const childNames: string[] = [];
-  await collectExportNames(parsed.body, childNames, resolved.path, depth + 1, context);
-
-  // `export * from` never forwards the child module's default export.
-  for (const childName of childNames) {
-    if (childName !== 'default') names.push(childName);
+    const exports = await collectModuleExports(parsed.body, resolved.path, depth + 1, context);
+    context.memo.set(resolved.path, exports);
+    return exports;
+  } finally {
+    context.inProgress.delete(resolved.path);
   }
 }
 
@@ -388,22 +517,36 @@ async function collectExportAllNames(
  *
  * This is the guard that would have caught issue #206: a parser that silently
  * drops an export statement leaves an `export` token with no matching AST
- * node. Property accesses (`foo.export`), object keys (`{ export: 1 }`), and
- * method names (`{ export() {} }`) are excluded — they are the only places the
- * tokenizer emits the `export` keyword outside a real export statement.
+ * node. Only program-level `export` keywords count, so the places the
+ * tokenizer emits `export` outside a top-level export statement are excluded:
+ * TypeScript `namespace`/`module` members (`namespace N { export const x = 1 }`
+ * — brace depth > 0), object keys and method names (`{ export: 1 }`,
+ * `{ export() {} }` — also nested), and property accesses (`foo.export`).
  */
 function assertExportStatementsWereParsed(parsed: ParsedModule, filename: string): void {
   const significant = parsed.tokens.filter((token) => typeof token.type === 'object');
 
   let lexicalExports = 0;
+  let braceDepth = 0;
+
   for (let i = 0; i < significant.length; i += 1) {
-    if ((significant[i]?.type as BabelTokenType | undefined)?.keyword !== 'export') continue;
+    const tokenType = significant[i]?.type as BabelTokenType | undefined;
+
+    // `${` opens a template substitution that closes with a plain `}`, so it
+    // has to increment the depth alongside `{` or the depth would drift.
+    if (tokenType?.label === '{' || tokenType?.label === '${') {
+      braceDepth += 1;
+      continue;
+    }
+    if (tokenType?.label === '}') {
+      braceDepth = Math.max(0, braceDepth - 1);
+      continue;
+    }
+
+    if (tokenType?.keyword !== 'export' || braceDepth > 0) continue;
 
     const previousLabel = (significant[i - 1]?.type as BabelTokenType | undefined)?.label;
     if (previousLabel === '.' || previousLabel === '?.') continue;
-
-    const nextLabel = (significant[i + 1]?.type as BabelTokenType | undefined)?.label;
-    if (nextLabel === ':' || nextLabel === '(') continue;
 
     lexicalExports += 1;
   }
@@ -442,16 +585,14 @@ export async function collectClientExportNames(
   assertSingleDirective(parsed.directives, options.filename);
   assertExportStatementsWereParsed(parsed, options.filename);
 
-  const names: string[] = [];
-  await collectExportNames(parsed.body, names, options.filename, 0, {
+  const exports = await collectModuleExports(parsed.body, options.filename, 0, {
     rootFilename: options.filename,
     resolveExportAll: options.resolveExportAll,
-    visited: new Set([options.filename]),
+    memo: new Map(),
+    inProgress: new Set([options.filename]),
   });
 
-  // `export * from` chains and duplicate re-exports can repeat a name; emitting
-  // it twice would make the generated module a syntax error.
-  return [...new Set(names)];
+  return exports.names;
 }
 
 const defaultExportThrowMessage = (url: string) =>
@@ -487,6 +628,10 @@ export async function transformClientModule(
   }
 
   let newSrc = 'import {registerClientReference} from "react-server-dom-webpack/server";\n';
+  // `export const __rscClientReference0 = ...` from the module's own exports
+  // would collide with a generated alias binding, so pick a free prefix.
+  let aliasPrefix = '__rscClientReference';
+  while (names.some((name) => name.startsWith(aliasPrefix))) aliasPrefix = `_${aliasPrefix}`;
   let aliasIndex = 0;
 
   for (const name of names) {
@@ -506,7 +651,7 @@ export async function transformClientModule(
     } else {
       // Reserved words and ES2022 arbitrary module namespace names cannot be
       // declared with `export const`; bind locally and re-export under an alias.
-      const local = `__rscClientReference${aliasIndex}`;
+      const local = `${aliasPrefix}${aliasIndex}`;
       aliasIndex += 1;
       newSrc += `const ${local} = ${reference}`;
       newSrc += `export {${local} as ${JSON.stringify(name)}};\n`;

@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import * as acornLoose from 'acorn-loose';
+import { parse as babelParse } from '@babel/parser';
 import type { LoaderContext } from 'webpack';
 import RSCWebpackLoader from '../src/WebpackLoader';
 import {
@@ -36,6 +37,7 @@ interface FakeLoaderContext {
   resourcePath: string;
   addDependency: jest.Mock;
   getResolve?: () => (context: string, request: string) => Promise<string>;
+  fs?: { readFile: jest.Mock };
 }
 
 const createLoaderContext = (
@@ -556,5 +558,102 @@ describe('RSCWebpackLoader pass-through', () => {
 
     expect(error).not.toBeNull();
     expect(error?.message).not.toMatch(/react-on-rails-rsc:/);
+  });
+});
+
+describe('independent-review fixes on PR #216', () => {
+  const tsOptions = (name: string) => ({ filename: `/app/${name}`, url: `file:///app/${name}` });
+
+  it('accepts a path whose literal `#` rspack escaped as U+200B', async () => {
+    const context = createLoaderContext(fixturePath('barrel-client-module.jsx'), {
+      getResolve: () => async (dir: string, request: string) =>
+        // rspack uses a zero width space instead of webpack's NUL as the escape sentinel.
+        `${path.resolve(dir, `${request}.jsx`)}`.replace('barrel-target', '\u200B#barrel-target'),
+    });
+
+    await expect(runLoader(context, readFixture('barrel-client-module.jsx'))).rejects.toThrow(
+      /ENOENT/
+    );
+  });
+
+  it('reads star re-export targets through the bundler input filesystem when present', async () => {
+    const readFile = jest.fn((file: string, callback: (error: unknown, data?: Buffer) => void) =>
+      callback(null, Buffer.from(fs.readFileSync(file, 'utf8')))
+    );
+    const context = createLoaderContext(fixturePath('barrel-client-module.jsx'), {
+      getResolve: jsxResolver,
+      fs: { readFile },
+    });
+
+    const output = await runLoader(context, readFixture('barrel-client-module.jsx'));
+
+    expect(output).toContain('export const Card = registerClientReference');
+    expect(readFile).toHaveBeenCalledWith(fixturePath('barrel-target.jsx'), expect.any(Function));
+  });
+
+  it('treats `export import A = N.B` as a runtime export', async () => {
+    const output = await transformClientModule(
+      "'use client';\nimport * as N from './n';\nexport import A = N.B;\nexport const Button = () => null;\n",
+      tsOptions('ImportEquals.ts')
+    );
+
+    expect(output).toContain('export const A = registerClientReference');
+    expect(output).toContain('export const Button = registerClientReference');
+  });
+
+  it('parses the TypeScript 5 `accessor` class field', async () => {
+    for (const name of ['Accessor.ts', 'Accessor.jsx']) {
+      // eslint-disable-next-line no-await-in-loop
+      const output = await transformClientModule(
+        "'use client';\nexport class Counter { accessor count = 0; }\n",
+        tsOptions(name)
+      );
+      expect(output).toContain('export const Counter = registerClientReference');
+    }
+  });
+
+  it('imports the helper under a free name when the module exports registerClientReference', async () => {
+    const output = await transformClientModule(
+      "'use client';\nexport function registerClientReference() {}\nexport const Button = () => null;\n",
+      tsOptions('Collide.js')
+    );
+
+    expect(output.split('\n')[0]).toBe(
+      'import {registerClientReference as __rscRegisterClientReference} from "react-server-dom-webpack/server";'
+    );
+    expect(output).toContain('export const registerClientReference = __rscRegisterClientReference(function()');
+    expect(output).toContain('export const Button = __rscRegisterClientReference(function()');
+    // The generated module must itself be valid ESM.
+    expect(() => babelParse(output, { sourceType: 'module' })).not.toThrow();
+  });
+
+  it('keeps the stock import line for every module that does not collide', async () => {
+    const output = await transformClientModule(
+      "'use client';\nexport const Button = () => null;\n",
+      tsOptions('Plain.js')
+    );
+    expect(output.split('\n')[0]).toBe(
+      'import {registerClientReference} from "react-server-dom-webpack/server";'
+    );
+  });
+
+  it('rejects `export = X` with a message that names the construct', async () => {
+    await expect(
+      transformClientModule("'use client';\nconst Foo = () => null;\nexport = Foo;\n", tsOptions('Legacy.ts'))
+    ).rejects.toThrow(/export = /);
+    await expect(
+      transformClientModule(
+        "'use client';\nexport const Bar = 1;\nconst Foo = () => null;\nexport = Foo;\n",
+        tsOptions('Mixed.ts')
+      )
+    ).rejects.toThrow(/export = /);
+  });
+
+  it('does not trip the export-token cross-check on `export as namespace`', async () => {
+    const output = await transformClientModule(
+      "'use client';\nexport as namespace Lib;\nexport const Button = () => null;\n",
+      tsOptions('Namespace.ts')
+    );
+    expect(output).toContain('export const Button = registerClientReference');
   });
 });

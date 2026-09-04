@@ -10,6 +10,9 @@ All notable changes to this package will be documented in this file.
 - Fixed `RSCRspackPlugin` to honor application `splitChunks` configuration for generated client-reference chunks, allowing shared JavaScript to be extracted once while preserving the complete sibling chunk metadata Flight needs for hydration. ([#213])
 - Fixed `"use client"` modules silently compiling to an empty client-reference module when the loader could not parse them. The loader runs first in the React on Rails loader chain, so it sees raw JSX/TSX, and the stock `react-server-dom-webpack` node-loader enumerated exports with `acorn-loose`, which supports neither JSX nor TypeScript and never fails: on some JSX shapes it dropped the trailing `export default` and the component then vanished from the RSC payload with no build error. Export names are now collected with a JSX- and TypeScript-aware parser, TypeScript type-only exports are excluded, `export * from` targets are resolved through the bundler's own resolver, and a `"use client"` module with no runtime exports fails the build with an error naming the file instead of emitting an empty module. ([#216])
 
+### Changed
+- A `"use client"` module with no runtime exports (type-only declarations, a CommonJS-style `exports.x = ...` body, or a TypeScript `export = X` assignment) now fails the build with an error naming the file, where the stock loader previously emitted an empty client-reference module and the component silently disappeared at render time. Give the module an ES module export or remove the directive. ([#216])
+
 ## [19.3.0-rc.0] - 2026-08-29
 
 ### Breaking Changes

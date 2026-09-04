@@ -159,9 +159,11 @@ const DECORATOR_DIALECTS: (ParserPlugin | null)[] = [null, 'decorators', 'decora
 /**
  * Enabled for every attempt. `with { type: 'json' }` parses by default, but the
  * superseded `assert { type: 'json' }` spelling is still in shipped code and is
- * an error without this plugin.
+ * an error without `deprecatedImportAssert`. `decoratorAutoAccessors` accepts
+ * the stable TypeScript 5 `accessor` class-field keyword, which is otherwise a
+ * parse error regardless of decorator dialect.
  */
-const ALWAYS_ON_PLUGINS: ParserPlugin[] = ['deprecatedImportAssert'];
+const ALWAYS_ON_PLUGINS: ParserPlugin[] = ['deprecatedImportAssert', 'decoratorAutoAccessors'];
 
 /** Expand each base plugin set across the decorator dialects, plain form first. */
 const withDecoratorDialects = (...bases: ParserPlugin[][]): ParserPlugin[][] =>
@@ -425,6 +427,20 @@ async function collectModuleExports(
         names.push('default');
         continue;
       }
+      case 'TSImportEqualsDeclaration': {
+        // `export import A = N.B;` is a runtime export of `A` unless it is
+        // `import type`.
+        if (node.isExport !== true || node.importKind === 'type') continue;
+        addExportNames(names, node.id);
+        continue;
+      }
+      case 'TSExportAssignment': {
+        throw new Error(
+          `react-on-rails-rsc: the "use client" module ${filename} uses \`export = ...\`, the ` +
+            'TypeScript CommonJS-style export assignment, which cannot become a client ' +
+            'reference. Use ES module exports (`export default` / `export const`) instead.'
+        );
+      }
       case 'ExportNamedDeclaration': {
         if (node.exportKind === 'type') continue;
 
@@ -514,6 +530,24 @@ async function loadStarExports(
 }
 
 /**
+ * Every statement type that legitimately begins with the `export` keyword.
+ * Listed explicitly so a node type the collector does not understand can never
+ * be counted as "parsed" by accident.
+ */
+const EXPORT_STATEMENT_TYPES = new Set([
+  'ExportAllDeclaration',
+  'ExportDefaultDeclaration',
+  'ExportNamedDeclaration',
+  // TypeScript-only forms; the collector decides whether they are runtime exports.
+  'TSExportAssignment', // export = X;
+  'TSNamespaceExportDeclaration', // export as namespace X;
+]);
+
+const isExportStatement = (node: BabelNode): boolean =>
+  EXPORT_STATEMENT_TYPES.has(node.type) ||
+  (node.type === 'TSImportEqualsDeclaration' && node.isExport === true);
+
+/**
  * Cross-check the parsed export statements against the raw `export` keyword
  * tokens.
  *
@@ -553,7 +587,7 @@ function assertExportStatementsWereParsed(parsed: ParsedModule, filename: string
     lexicalExports += 1;
   }
 
-  const parsedExports = parsed.body.filter((node) => node.type.includes('Export')).length;
+  const parsedExports = parsed.body.filter(isExportStatement).length;
 
   if (lexicalExports > parsedExports) {
     throw new Error(
@@ -629,7 +663,18 @@ export async function transformClientModule(
     );
   }
 
-  let newSrc = 'import {registerClientReference} from "react-server-dom-webpack/server";\n';
+  // A module that itself exports `registerClientReference` would collide with
+  // the imported helper, so import it under a free local name in that one case.
+  // Every other module keeps the stock loader's byte-identical output.
+  let helper = 'registerClientReference';
+  if (names.includes(helper)) {
+    helper = '__rscRegisterClientReference';
+    while (names.includes(helper)) helper = `_${helper}`;
+  }
+  let newSrc =
+    helper === 'registerClientReference'
+      ? 'import {registerClientReference} from "react-server-dom-webpack/server";\n'
+      : `import {registerClientReference as ${helper}} from "react-server-dom-webpack/server";\n`;
   // `export const __rscClientReference0 = ...` from the module's own exports
   // would collide with a generated alias binding, so pick a free prefix.
   let aliasPrefix = '__rscClientReference';
@@ -640,7 +685,7 @@ export async function transformClientModule(
     const throwMessage =
       name === 'default' ? defaultExportThrowMessage(options.url) : namedExportThrowMessage(name);
     const reference =
-      'registerClientReference(function() {' +
+      `${helper}(function() {` +
       `throw new Error(${JSON.stringify(throwMessage)});` +
       '},' +
       `${JSON.stringify(options.url)},` +

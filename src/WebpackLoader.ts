@@ -45,6 +45,41 @@ const rewriteStockServerImport = (source: string | Buffer) => {
  * throws `Expected resolve to have been called before transformSource` in a
  * webpack/rspack loader because only `load()` is ever invoked.
  */
+/**
+ * Read a star re-export target through the bundler's input filesystem when one
+ * is available (virtual and cached filesystems included), falling back to the
+ * real filesystem otherwise.
+ */
+const readResolvedSource = (
+  loaderContext: LoaderContext<unknown>,
+  resourcePath: string
+): Promise<string> => {
+  const inputFs = (loaderContext as { fs?: unknown }).fs as
+    | { readFile?: (file: string, callback: (error: unknown, data?: unknown) => void) => void }
+    | undefined;
+  if (inputFs && typeof inputFs.readFile === 'function') {
+    return new Promise((resolvePromise, reject) => {
+      inputFs.readFile!(resourcePath, (error, data) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolvePromise(data == null ? '' : String(data));
+      });
+    });
+  }
+  return fs.promises.readFile(resourcePath, 'utf8');
+};
+
+/**
+ * webpack escapes a literal `?` or `#` inside a resolved path as `\0?` / `\0#`;
+ * rspack uses U+200B (zero width space) as the same sentinel. Neither form is
+ * a delimiter.
+ */
+const PATH_ESCAPE = '\0\u200B';
+const RESOURCE_QUERY_PATTERN = new RegExp(`(^|[^${PATH_ESCAPE}])[?#]`);
+const PATH_ESCAPE_PATTERN = new RegExp(`[${PATH_ESCAPE}](.)`, 'g');
+
 const createExportAllResolver = (
   loaderContext: LoaderContext<unknown>
 ): ExportAllResolver | undefined => {
@@ -59,19 +94,17 @@ const createExportAllResolver = (
     // A resolved request keeps its `?query` / `#fragment`, which select loaders
     // that can change the target's export surface. Reading the backing file
     // would enumerate the wrong module, so refuse instead of guessing.
-    // A literal `?` or `#` inside a path is escaped by webpack as `\0?` / `\0#`
-    // and is not a delimiter.
-    if (/(^|[^\0])[?#]/.test(resolved)) {
+    if (RESOURCE_QUERY_PATTERN.test(resolved)) {
       throw new Error(
         `the resolved request "${resolved}" carries a resource query, so its exports depend on ` +
           'loaders this pass cannot run. Replace the `export * from` with explicit named exports.'
       );
     }
-    const resourcePath = resolved.replace(/\0(.)/g, '$1');
+    const resourcePath = resolved.replace(PATH_ESCAPE_PATTERN, '$1');
     // Star re-export targets are read directly, so register them as build
     // dependencies to keep watch rebuilds correct.
     loaderContext.addDependency(resourcePath);
-    return { path: resourcePath, source: await fs.promises.readFile(resourcePath, 'utf8') };
+    return { path: resourcePath, source: await readResolvedSource(loaderContext, resourcePath) };
   };
 };
 

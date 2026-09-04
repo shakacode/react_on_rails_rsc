@@ -80,6 +80,12 @@ export interface ClientModuleTransformOptions {
   url: string;
   /** Resolver used for `export * from '...'`; omit to fail loudly on star re-exports. */
   resolveExportAll?: ExportAllResolver;
+  /**
+   * Extra `@babel/parser` plugins appended to every parse attempt, for proposal
+   * syntax the application's own Babel or SWC configuration accepts (for
+   * example `['pipelineOperator', { proposal: 'hack', topicToken: '%' }]`).
+   */
+  parserPlugins?: ParserPlugin[];
 }
 
 /** Guard against a pathological `export * from` chain; cycles are tracked separately. */
@@ -185,7 +191,17 @@ const withDecoratorDialects = (...bases: ParserPlugin[][]): ParserPlugin[][] =>
  * projects that put annotated syntax in `.js` files. Type and decorator
  * dialects are independent, so every combination is reachable.
  */
-const parserPluginSets = (filename: string): ParserPlugin[][] => {
+const parserPluginSets = (filename: string, extraPlugins: ParserPlugin[]): ParserPlugin[][] =>
+  basePluginSets(filename).map((plugins) => [
+    ...plugins,
+    // Skip extras that name a plugin the rung already enables.
+    ...extraPlugins.filter((extra) => !plugins.some((p) => pluginName(p) === pluginName(extra))),
+  ]);
+
+const pluginName = (plugin: ParserPlugin): string =>
+  Array.isArray(plugin) ? plugin[0] : plugin;
+
+const basePluginSets = (filename: string): ParserPlugin[][] => {
   switch (path.extname(filename).toLowerCase()) {
     case '.tsx':
       return withDecoratorDialects(['jsx', 'typescript']);
@@ -208,10 +224,14 @@ const parserPluginSets = (filename: string): ParserPlugin[][] => {
  * extension. Reports the FIRST plugin set's error when every attempt fails,
  * because that set describes the syntax the extension implies.
  */
-function parseModule(source: string, filename: string): ParsedModule {
+function parseModule(
+  source: string,
+  filename: string,
+  extraPlugins: ParserPlugin[] = []
+): ParsedModule {
   let firstError: unknown;
 
-  for (const plugins of parserPluginSets(filename)) {
+  for (const plugins of parserPluginSets(filename, extraPlugins)) {
     try {
       const ast = parse(source, {
         sourceType: 'module',
@@ -236,6 +256,8 @@ function parseModule(source: string, filename: string): ParsedModule {
   const message = firstError instanceof Error ? firstError.message : String(firstError);
   throw new Error(
     `react-on-rails-rsc: failed to parse the "use client" module ${filename}: ${message}\n` +
+      'If this file relies on a Babel proposal plugin enabled in your application build, pass ' +
+      "it to the loader's `parserPlugins` option so the export scan accepts the same syntax.\n" +
       'The RSC loader must enumerate this file\'s exports before any other loader runs, so the ' +
       'file has to be parseable as JSX/TypeScript source.'
   );
@@ -652,7 +674,7 @@ export async function collectClientExportNames(
   source: string,
   options: ClientModuleTransformOptions
 ): Promise<string[]> {
-  const parsed = parseModule(source, options.filename);
+  const parsed = parseModule(source, options.filename, options.parserPlugins ?? []);
   assertSingleDirective(parsed.directives, options.filename);
   assertExportStatementsWereParsed(parsed, options.filename);
 

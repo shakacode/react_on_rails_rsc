@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import type { LoaderContext, LoaderDefinition } from 'webpack';
+import type { ParserPlugin } from '@babel/parser';
 import { hasUseClientDirective } from './clientReferences';
 import { ExportAllResolver, transformClientModule } from './clientModuleTransform';
 import { recordDiscoveredClientReferenceIfNeeded } from './RSCReferenceDiscoveryPlugin';
@@ -108,6 +109,34 @@ const createExportAllResolver = (
   };
 };
 
+/**
+ * Read the optional `parserPlugins` loader option: extra `@babel/parser`
+ * plugins for proposal syntax the application's own Babel or SWC config
+ * accepts. Anything else is rejected so a typo cannot silently do nothing.
+ */
+const loaderParserPlugins = (loaderContext: LoaderContext<unknown>): ParserPlugin[] => {
+  const options =
+    typeof loaderContext.getOptions === 'function'
+      ? (loaderContext.getOptions() as { parserPlugins?: unknown })
+      : {};
+  const plugins = options?.parserPlugins;
+  if (plugins === undefined) return [];
+  if (
+    !Array.isArray(plugins) ||
+    !plugins.every(
+      (plugin) =>
+        typeof plugin === 'string' ||
+        (Array.isArray(plugin) && typeof plugin[0] === 'string' && plugin.length <= 2)
+    )
+  ) {
+    throw new Error(
+      'react-on-rails-rsc/WebpackLoader: the `parserPlugins` option must be an array of ' +
+        '@babel/parser plugin names or [name, options] tuples.'
+    );
+  }
+  return plugins as ParserPlugin[];
+};
+
 const RSCWebpackLoader: LoaderDefinition = async function RSCWebpackLoader(source) {
   recordDiscoveredClientReferenceIfNeeded(this, source);
 
@@ -124,6 +153,7 @@ const RSCWebpackLoader: LoaderDefinition = async function RSCWebpackLoader(sourc
       filename: this.resourcePath,
       url: fileUrl,
       resolveExportAll: createExportAllResolver(this),
+      parserPlugins: loaderParserPlugins(this),
     });
     return rewriteStockServerImport(transformed);
   }

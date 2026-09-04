@@ -38,6 +38,7 @@ interface FakeLoaderContext {
   addDependency: jest.Mock;
   getResolve?: () => (context: string, request: string) => Promise<string>;
   fs?: { readFile: jest.Mock };
+  getOptions?: () => unknown;
 }
 
 const createLoaderContext = (
@@ -682,6 +683,33 @@ describe('independent-review fixes on PR #216', () => {
     expect(output).not.toContain('Model');
     expect(output).toContain('export const Impl = registerClientReference');
     expect(output).toContain('export const Button = registerClientReference');
+  });
+
+  it('accepts proposal syntax through the parserPlugins option', async () => {
+    const source =
+      "'use client';\nexport function render(value) { return value |> String(%); }\n";
+    await expect(transformClientModule(source, tsOptions('Pipeline.js'))).rejects.toThrow(
+      /pipelineOperator|parserPlugins/
+    );
+
+    const output = await transformClientModule(source, {
+      ...tsOptions('Pipeline.js'),
+      parserPlugins: [['pipelineOperator', { proposal: 'hack', topicToken: '%' }]],
+    });
+    expect(output).toContain('export const render = registerClientReference');
+  });
+
+  it('reads parserPlugins from the loader options', async () => {
+    const source =
+      "'use client';\nexport function render(value) { return value |> String(%); }\n";
+    const context = createLoaderContext('/app/Pipeline.js', {
+      getOptions: () => ({ parserPlugins: [['pipelineOperator', { proposal: 'hack', topicToken: '%' }]] }),
+    });
+    const output = await runLoader(context, source);
+    expect(output).toContain('export const render = registerClientReference');
+
+    const bad = createLoaderContext('/app/Pipeline.js', { getOptions: () => ({ parserPlugins: 'jsx' }) });
+    await expect(runLoader(bad, source)).rejects.toThrow(/parserPlugins/);
   });
 
   it('does not trip the export-token cross-check on `export as namespace`', async () => {

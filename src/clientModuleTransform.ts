@@ -83,7 +83,9 @@ export interface ClientModuleTransformOptions {
   /**
    * Extra `@babel/parser` plugins appended to every parse attempt, for proposal
    * syntax the application's own Babel or SWC configuration accepts (for
-   * example `['pipelineOperator', { proposal: 'hack', topicToken: '%' }]`).
+   * example `['pipelineOperator', { proposal: 'hack', topicToken: '%' }]`). Dialect
+   * plugins (`jsx`, `flow`, `typescript`) are selected from the file extension
+   * and are ignored here.
    */
   parserPlugins?: ParserPlugin[];
 }
@@ -191,11 +193,22 @@ const withDecoratorDialects = (...bases: ParserPlugin[][]): ParserPlugin[][] =>
  * projects that put annotated syntax in `.js` files. Type and decorator
  * dialects are independent, so every combination is reachable.
  */
+/**
+ * Dialect plugins are chosen per rung from the file extension; an extra that
+ * names one is ignored because `flow` + `typescript` (or `estree`) cannot be
+ * combined and a `.ts` star re-export target must still parse when the root
+ * module's configuration mentions `flow`.
+ */
+const DIALECT_PLUGINS = new Set(['jsx', 'flow', 'typescript', 'estree']);
+
 const parserPluginSets = (filename: string, extraPlugins: ParserPlugin[]): ParserPlugin[][] =>
   basePluginSets(filename).map((plugins) => [
     ...plugins,
-    // Skip extras that name a plugin the rung already enables.
-    ...extraPlugins.filter((extra) => !plugins.some((p) => pluginName(p) === pluginName(extra))),
+    ...extraPlugins.filter(
+      (extra) =>
+        !DIALECT_PLUGINS.has(pluginName(extra)) &&
+        !plugins.some((p) => pluginName(p) === pluginName(extra))
+    ),
   ]);
 
 const pluginName = (plugin: ParserPlugin): string =>

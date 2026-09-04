@@ -717,6 +717,17 @@ describe('independent-review fixes on PR #216', () => {
     expect(output).toContain('export const Button = registerClientReference');
   });
 
+  it('ignores dialect plugins in parserPlugins so TypeScript star targets still parse', async () => {
+    const target = 'export const size: number = 1;\n';
+    const resolveExportAll = async () => ({ path: '/app/target.ts', source: target });
+    const output = await transformClientModule(
+      "'use client';\nexport * from './target';\nexport const Button = (): null => null;\n",
+      { ...tsOptions('Barrel.ts'), resolveExportAll, parserPlugins: ['flow', 'jsx'] }
+    );
+    expect(output).toContain('export const size = registerClientReference');
+    expect(output).toContain('export const Button = registerClientReference');
+  });
+
   it('reads parserPlugins from the loader options', async () => {
     const source =
       "'use client';\nexport function render(value) { return value |> String(%); }\n";

@@ -38,15 +38,6 @@ const rewriteStockServerImport = (source: string | Buffer) => {
 };
 
 /**
- * Resolve `export * from '...'` targets through the bundler's own resolver so
- * extensions, aliases, and `exports` maps behave exactly as they do for the
- * application's other imports.
- *
- * The stock node-loader resolves these through Node's ESM resolver, which
- * throws `Expected resolve to have been called before transformSource` in a
- * webpack/rspack loader because only `load()` is ever invoked.
- */
-/**
  * Read a star re-export target through the bundler's input filesystem when one
  * is available (virtual and cached filesystems included), falling back to the
  * real filesystem otherwise.
@@ -81,6 +72,15 @@ const PATH_ESCAPE = '\0\u200B';
 const RESOURCE_QUERY_PATTERN = new RegExp(`(^|[^${PATH_ESCAPE}])[?#]`);
 const PATH_ESCAPE_PATTERN = new RegExp(`[${PATH_ESCAPE}](.)`, 'g');
 
+/**
+ * Resolve `export * from '...'` targets through the bundler's own resolver so
+ * extensions, aliases, and `exports` maps behave exactly as they do for the
+ * application's other imports.
+ *
+ * The stock node-loader resolves these through Node's ESM resolver, which
+ * throws `Expected resolve to have been called before transformSource` in a
+ * webpack/rspack loader because only `load()` is ever invoked.
+ */
 const createExportAllResolver = (
   loaderContext: LoaderContext<unknown>
 ): ExportAllResolver | undefined => {
@@ -138,7 +138,10 @@ const loaderParserPlugins = (loaderContext: LoaderContext<unknown>): ParserPlugi
 };
 
 const RSCWebpackLoader: LoaderDefinition = async function RSCWebpackLoader(source) {
-  recordDiscoveredClientReferenceIfNeeded(this, source);
+  // Detect the directive once; discovery reuses the result instead of
+  // re-parsing the same source.
+  const isClientModule = hasUseClientDirective(source);
+  recordDiscoveredClientReferenceIfNeeded(this, source, isClientModule);
 
   // Convert file path to URL format
   const fileUrl = pathToFileURL(this.resourcePath).href;
@@ -147,7 +150,7 @@ const RSCWebpackLoader: LoaderDefinition = async function RSCWebpackLoader(sourc
   // node-loader: React on Rails runs this loader first, on raw JSX/TSX, and the
   // stock loader's `acorn-loose` export enumeration silently drops exports it
   // cannot parse (issue #206).
-  if (hasUseClientDirective(source)) {
+  if (isClientModule) {
     const text = typeof source === 'string' ? source : (source as Buffer).toString('utf8');
     const transformed = await transformClientModule(text, {
       filename: this.resourcePath,

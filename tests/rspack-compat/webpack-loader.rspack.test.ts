@@ -274,3 +274,98 @@ describe('RSCWebpackLoader runs under rspack', () => {
     },
   );
 });
+
+/**
+ * Issue #206: the stock node-loader parsed raw JSX with `acorn-loose`, which
+ * silently dropped exports it could not recover and then emitted an EMPTY
+ * module. These cases drive the shared fixtures through a real bundler build.
+ */
+describe('RSCWebpackLoader export enumeration under rspack (issue #206)', () => {
+  const FIXTURES = path.resolve(__dirname, '../fixtures/client-modules');
+
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+
+  afterEach(() => {
+    cleanupTmpDir(tmpDir);
+  });
+
+  const compileFixture = (fixture: string): RspackResult =>
+    runRspack(
+      {
+        mode: 'development',
+        target: 'node',
+        entry: path.join(FIXTURES, fixture),
+        output: {
+          path: tmpDir,
+          filename: 'bundle.js',
+          library: { type: 'commonjs2' },
+        },
+        devtool: false,
+        resolve: { extensions: ['.js', '.jsx', '.ts', '.tsx'] },
+        module: {
+          rules: [{ test: /\.[jt]sx?$/, use: [{ loader: DIST_LOADER }] }],
+        },
+        externals: {
+          react: 'commonjs2 react',
+          'react-on-rails-rsc/server': 'commonjs2 react-on-rails-rsc/server',
+          'react-server-dom-webpack/server': 'commonjs2 react-server-dom-webpack/server',
+        },
+      },
+      tmpDir,
+    );
+
+  const readBundle = (result: RspackResult): string => {
+    if (!result.ok) {
+      throw new Error(`rspack build failed:\n${(result.errors || []).join('\n')}`);
+    }
+    return fs.readFileSync(path.join(tmpDir, 'bundle.js'), 'utf8');
+  };
+
+  it('keeps the default export of the JSX shape that acorn-loose swallowed', () => {
+    const bundle = readBundle(compileFixture('issue-206-spike-server-function-form.jsx'));
+
+    expect(bundle).toContain('registerClientReference');
+    expect(bundle).toContain('"default"');
+    // The component body must not survive into the server bundle.
+    expect(bundle).not.toContain('spike-call-greet');
+  });
+
+  it('emits runtime exports but not type-only exports for a TSX module', () => {
+    const bundle = readBundle(compileFixture('typed-client-component.tsx'));
+
+    for (const name of ['Badge', 'useBadge', 'Panel', 'BADGE_LIMIT', 'first', 'rest']) {
+      expect(bundle).toContain(`"${name}"`);
+    }
+    expect(bundle).not.toContain('BadgeProps');
+    expect(bundle).not.toContain('PanelHandle');
+  });
+
+  it('resolves `export * from` through the bundler resolver', () => {
+    const bundle = readBundle(compileFixture('barrel-client-module.jsx'));
+
+    expect(bundle).toContain('"Card"');
+    expect(bundle).toContain('"CardBody"');
+    expect(bundle).toContain('"widgets"');
+    expect(bundle).not.toContain('NotForwarded');
+  });
+
+  it('fails the build instead of emitting an empty module', () => {
+    const result = compileFixture('no-runtime-exports.tsx');
+
+    expect(result.ok).toBe(false);
+    expect((result.errors || []).join('\n')).toMatch(/has no runtime exports/);
+  });
+
+  it('leaves "use server" modules on the stock node-loader path', () => {
+    const bundle = readBundle(compileFixture('server-actions.js'));
+
+    expect(bundle).toContain('registerServerReference');
+    expect(bundle).not.toContain('registerClientReference');
+    // The stock server transform keeps the original implementation.
+    expect(bundle).toContain('Hello, ');
+  });
+});

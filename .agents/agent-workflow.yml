@@ -11,3 +11,4 @@ merge_ledger: n/a
 ci_parity_environment: "n/a — reproduce CI-only failures from the matching job in .github/workflows/**"
 hosted_ci_trigger: "n/a — the unit-tests workflow runs on every PR; no +ci-* commands"
 ci_change_detector: n/a
+repo_prefix: RSC

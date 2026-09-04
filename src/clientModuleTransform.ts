@@ -429,6 +429,8 @@ interface CollectContext {
   memo: Map<string, ModuleExports>;
   /** Modules currently being resolved, so `export *` cycles terminate. */
   inProgress: Set<string>;
+  /** Extra parser plugins, applied to star re-export targets as well as the root module. */
+  parserPlugins: ParserPlugin[];
 }
 
 interface ModuleExports {
@@ -572,7 +574,7 @@ async function loadStarExports(
 
   context.inProgress.add(resolved.path);
   try {
-    const parsed = parseModule(resolved.source, resolved.path);
+    const parsed = parseModule(resolved.source, resolved.path, context.parserPlugins);
     assertExportStatementsWereParsed(parsed, resolved.path);
 
     const exports = await collectModuleExports(parsed.body, resolved.path, depth + 1, context);
@@ -683,6 +685,7 @@ export async function collectClientExportNames(
     resolveExportAll: options.resolveExportAll,
     memo: new Map(),
     inProgress: new Set([options.filename]),
+    parserPlugins: options.parserPlugins ?? [],
   });
 
   return exports.names;

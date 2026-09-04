@@ -699,6 +699,24 @@ describe('independent-review fixes on PR #216', () => {
     expect(output).toContain('export const render = registerClientReference');
   });
 
+  it('forwards parserPlugins into star re-export targets', async () => {
+    const target = "export function render(value) { return value |> String(%); }\n";
+    const resolveExportAll = async () => ({ path: '/app/target.js', source: target });
+    const barrel = "'use client';\nexport * from './target';\nexport const Button = () => null;\n";
+
+    await expect(
+      transformClientModule(barrel, { ...tsOptions('Barrel.js'), resolveExportAll })
+    ).rejects.toThrow(/pipelineOperator|parserPlugins/);
+
+    const output = await transformClientModule(barrel, {
+      ...tsOptions('Barrel.js'),
+      resolveExportAll,
+      parserPlugins: [['pipelineOperator', { proposal: 'hack', topicToken: '%' }]],
+    });
+    expect(output).toContain('export const render = registerClientReference');
+    expect(output).toContain('export const Button = registerClientReference');
+  });
+
   it('reads parserPlugins from the loader options', async () => {
     const source =
       "'use client';\nexport function render(value) { return value |> String(%); }\n";

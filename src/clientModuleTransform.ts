@@ -149,18 +149,10 @@ const isPlainIdentifier = (name: string): boolean =>
   IDENTIFIER_PATTERN.test(name) && !RESERVED_WORDS.has(name);
 
 /**
- * Parser plugin sets to try, in order, for a given file extension.
- *
- * `jsx` and `typescript` conflict on non-TSX TypeScript: in a `.ts` file
- * `const f = <T>(x: T) => x` is a generic arrow function, but with `jsx`
- * enabled it parses as a JSX element. So `.ts` leads with TypeScript only.
- * `.js`/`.jsx` lead with plain JSX and fall back to Flow and TypeScript for
- * projects that put annotated syntax in `.js` files.
- *
- * Each type dialect is expanded across both decorator dialects, since they are
- * independent: `decorators-legacy` rejects the TypeScript 5 position
+ * The two mutually exclusive decorator proposals, plus "no decorators".
+ * `decorators-legacy` rejects the TypeScript 5 position
  * `export @sealed class C {}`, while the stage-3 `decorators` plugin rejects
- * some legacy positions, and either can combine with Flow or TypeScript.
+ * some legacy positions, so both have to be reachable.
  */
 const DECORATOR_DIALECTS: (ParserPlugin | null)[] = [null, 'decorators', 'decorators-legacy'];
 
@@ -171,7 +163,7 @@ const DECORATOR_DIALECTS: (ParserPlugin | null)[] = [null, 'decorators', 'decora
  */
 const ALWAYS_ON_PLUGINS: ParserPlugin[] = ['deprecatedImportAssert'];
 
-/** Expand `base` into one plugin set per decorator dialect, plain form first. */
+/** Expand each base plugin set across the decorator dialects, plain form first. */
 const withDecoratorDialects = (...bases: ParserPlugin[][]): ParserPlugin[][] =>
   bases.flatMap((base) =>
     DECORATOR_DIALECTS.map((dialect) => [
@@ -181,6 +173,16 @@ const withDecoratorDialects = (...bases: ParserPlugin[][]): ParserPlugin[][] =>
     ])
   );
 
+/**
+ * Parser plugin sets to try, in order, for a given file extension.
+ *
+ * `jsx` and `typescript` conflict on non-TSX TypeScript: in a `.ts` file
+ * `const f = <T>(x: T) => x` is a generic arrow function, but with `jsx`
+ * enabled it parses as a JSX element. So `.ts` leads with TypeScript only.
+ * `.js`/`.jsx` lead with plain JSX and fall back to Flow and TypeScript for
+ * projects that put annotated syntax in `.js` files. Type and decorator
+ * dialects are independent, so every combination is reachable.
+ */
 const parserPluginSets = (filename: string): ParserPlugin[][] => {
   switch (path.extname(filename).toLowerCase()) {
     case '.tsx':

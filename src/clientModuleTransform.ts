@@ -298,8 +298,34 @@ const TYPE_ONLY_DECLARATIONS = new Set([
 function isTypeOnlyDeclaration(declaration: BabelNode | undefined): boolean {
   if (!declaration) return false;
   if (TYPE_ONLY_DECLARATIONS.has(declaration.type)) return true;
+  if (declaration.type === 'TSModuleDeclaration' && isTypeOnlyNamespace(declaration)) return true;
   // `export declare const x` / `export declare function f()` are ambient.
   return declaration.declare === true;
+}
+
+/**
+ * A TypeScript namespace whose members are all erased (interfaces, type
+ * aliases, type-only imports/exports, nested type-only namespaces, or nothing
+ * at all) is itself erased: TypeScript emits no runtime binding for it, so it
+ * must not become a client reference.
+ */
+function isTypeOnlyNamespace(namespace: BabelNode): boolean {
+  if (namespace.declare === true) return true;
+  const body = namespace.body as BabelNode | undefined;
+  if (!body) return true;
+  // `namespace A.B {}` nests a TSModuleDeclaration as the body.
+  if (body.type === 'TSModuleDeclaration') return isTypeOnlyNamespace(body);
+  const statements = (body.body as BabelNode[] | undefined) ?? [];
+  return statements.every((statement) => {
+    if (statement.type === 'ExportNamedDeclaration') {
+      if (statement.exportKind === 'type') return true;
+      const declaration = statement.declaration as BabelNode | undefined;
+      return declaration ? isTypeOnlyDeclaration(declaration) : false;
+    }
+    if (statement.type === 'TSImportEqualsDeclaration') return statement.importKind === 'type';
+    if (statement.type === 'TSModuleDeclaration') return isTypeOnlyNamespace(statement);
+    return TYPE_ONLY_DECLARATIONS.has(statement.type) || statement.declare === true;
+  });
 }
 
 const isTypeImportKind = (kind: unknown): boolean => kind === 'type' || kind === 'typeof';
@@ -356,8 +382,14 @@ function collectErasedLocalBindings(body: BabelNode[]): Set<string> {
       case 'FunctionDeclaration':
       case 'ClassDeclaration':
       case 'TSEnumDeclaration':
-      case 'TSModuleDeclaration':
         add(node.declare === true ? erased : values, node.id);
+        break;
+      case 'TSModuleDeclaration':
+        add(isTypeOnlyNamespace(node) ? erased : values, node.id);
+        break;
+      case 'TSImportEqualsDeclaration':
+        // `import type X = require('./x')` is erased; `import X = require('./x')` is a value.
+        add(node.importKind === 'type' ? erased : values, node.id);
         break;
       default:
     }
@@ -541,6 +573,9 @@ const EXPORT_STATEMENT_TYPES = new Set([
   // TypeScript-only forms; the collector decides whether they are runtime exports.
   'TSExportAssignment', // export = X;
   'TSNamespaceExportDeclaration', // export as namespace X;
+  // Flow declaration exports (`declare export ...`); never runtime exports.
+  'DeclareExportDeclaration',
+  'DeclareExportAllDeclaration',
 ]);
 
 const isExportStatement = (node: BabelNode): boolean =>

@@ -649,6 +649,41 @@ describe('independent-review fixes on PR #216', () => {
     ).rejects.toThrow(/export = /);
   });
 
+  it('counts Flow `declare export` statements so the cross-check does not fire', async () => {
+    const output = await transformClientModule(
+      "'use client';\ndeclare export var version: number;\ndeclare export * from './types';\nexport const Button = () => null;\n",
+      tsOptions('FlowDeclare.js')
+    );
+    expect(output).toContain('export const Button = registerClientReference');
+    expect(output).not.toContain('version');
+  });
+
+  it('erases namespaces that contain only types', async () => {
+    const output = await transformClientModule(
+      "'use client';\nnamespace Types { export interface Props {} export type Id = string; }\n" +
+        'export { Types };\n' +
+        'export namespace Shapes { export interface Box {} }\n' +
+        'export namespace Impl { export const size = 1; }\n' +
+        'export const Button = () => null;\n',
+      tsOptions('Namespaces.ts')
+    );
+    expect(output).not.toContain('Types');
+    expect(output).not.toContain('Shapes');
+    expect(output).toContain('export const Impl = registerClientReference');
+    expect(output).toContain('export const Button = registerClientReference');
+  });
+
+  it('erases `import type X = require()` bindings but keeps value import-equals', async () => {
+    const output = await transformClientModule(
+      "'use client';\nimport type Model = require('./model');\nimport Impl = require('./impl');\n" +
+        'export { Model, Impl };\nexport const Button = () => null;\n',
+      tsOptions('ImportEqualsRequire.ts')
+    );
+    expect(output).not.toContain('Model');
+    expect(output).toContain('export const Impl = registerClientReference');
+    expect(output).toContain('export const Button = registerClientReference');
+  });
+
   it('does not trip the export-token cross-check on `export as namespace`', async () => {
     const output = await transformClientModule(
       "'use client';\nexport as namespace Lib;\nexport const Button = () => null;\n",

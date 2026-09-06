@@ -77,6 +77,8 @@ function resolveBundler(compiler: AnyCompiler) {
 export function recordDiscoveredClientReferenceIfNeeded(
   loaderContext: LoaderContextWithCompilation,
   source: string | Buffer,
+  /** Precomputed `hasUseClientDirective(source)`, so callers that already parsed need not parse twice. */
+  hasDirective?: boolean
 ): boolean {
   // Webpack/Rspack do not expose a public loader API for the active compilation.
   // `_compilation` is the only available bridge for recording loader side effects;
@@ -94,7 +96,7 @@ export function recordDiscoveredClientReferenceIfNeeded(
   loaderContext.cacheable?.(false);
 
   const resourcePath = loaderContext.resourcePath;
-  if (!resourcePath || !hasUseClientDirective(source)) return false;
+  if (!resourcePath || !(hasDirective ?? hasUseClientDirective(source))) return false;
 
   refs.add(resourcePath);
   return true;

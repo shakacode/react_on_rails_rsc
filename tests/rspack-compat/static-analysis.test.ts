@@ -1,5 +1,5 @@
 /**
- * Static analysis: verify the 4 target source files do not import any
+ * Static analysis: verify the target source files do not import any
  * webpack-specific internals that would break them under rspack.
  *
  * These tests inspect the source code as text — they do not execute it.
@@ -13,6 +13,7 @@ const SRC_DIR = path.resolve(__dirname, '../../src');
 
 const COMPONENT_FILES = [
   'WebpackLoader.ts',
+  'clientModuleTransform.ts',
   'server.node.ts',
   'client.node.ts',
   'client.browser.ts',
@@ -66,8 +67,10 @@ describe('Static analysis: no webpack-specific runtime imports', () => {
     const raw = readSource('WebpackLoader.ts');
     // Should have a webpack import at the SOURCE level (it's a TS type)
     expect(raw).toMatch(/from\s+['"]webpack['"]/);
-    // But it should be type-only (for LoaderDefinition)
-    expect(raw).toMatch(/import\s+\{\s*LoaderDefinition\s*\}\s+from\s+['"]webpack['"]/);
+    // But it should be type-only (for LoaderDefinition / LoaderContext)
+    expect(raw).toMatch(
+      /import\s+type\s+\{[^}]*\bLoaderDefinition\b[^}]*\}\s+from\s+['"]webpack['"]/,
+    );
     // No value-level `require('webpack')` or `import webpack from 'webpack'`
     expect(raw).not.toMatch(/require\(['"]webpack['"]\)/);
     expect(raw).not.toMatch(/import\s+webpack\s+from\s+['"]webpack['"]/);

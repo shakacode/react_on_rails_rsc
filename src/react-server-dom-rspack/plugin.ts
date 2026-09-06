@@ -47,10 +47,7 @@ import {
   toRelativePosixPath,
   type EntryClientReferencesCompilation,
 } from '../entryClientReferences';
-import {
-  getGeneratedChunkNamesForCompiler,
-  setInjectionStateForCompiler,
-} from './injection-loader';
+import { setInjectionStateForCompiler } from './injection-loader';
 import { getGeneratedChunkName, hasUseClientDirective } from './shared';
 
 const STYLE_SOURCE_RE = /\.(css|scss|sass|less|styl|pcss)$/i;
@@ -69,7 +66,6 @@ type TapName = string | { name: string; stage?: number };
 type AnyCompiler = {
   options: {
     module?: { rules?: unknown[] };
-    optimization?: { splitChunks?: { chunks?: unknown } | false };
     context?: string;
   };
   context: string;
@@ -79,10 +75,6 @@ type AnyCompiler = {
         name: string,
         fn: (params: unknown, cb: (err?: Error | null) => void) => void
       ) => void;
-    };
-    environment?: { tap: (name: TapName, fn: () => void) => void };
-    afterEnvironment?: {
-      tap: (name: TapName, fn: () => void) => void;
     };
     thisCompilation: {
       tap: (name: TapName, fn: (compilation: unknown) => void) => void;
@@ -406,60 +398,6 @@ export class RSCRspackPlugin {
           enforce: 'pre' as const,
           use: [{ loader: injectionLoaderPath }],
         });
-      }
-
-      // Prevent splitChunks from extracting modules out of the async
-      // chunks created by the injection-loader. The RSC streaming HTML
-      // injects <script async> tags for each chunk in the client manifest.
-      // If splitChunks extracts shared modules into sibling chunks, those
-      // siblings race with hydration — React calls requireModule
-      // synchronously, and the sibling may not have loaded yet. Keeping
-      // each client component's async chunk self-contained matches
-      // webpack's AsyncDependenciesBlock behavior where splitChunks does
-      // not extract from block-created async chunks.
-      if (!this.options.isServer) {
-        const guardedSplitChunks = new WeakMap<{ chunks?: unknown }, unknown>();
-        const installSplitChunksGuard = () => {
-          const splitChunks = compiler.options.optimization?.splitChunks;
-          if (!splitChunks) return;
-          if (
-            guardedSplitChunks.has(splitChunks) &&
-            guardedSplitChunks.get(splitChunks) === splitChunks.chunks
-          ) {
-            return;
-          }
-
-          const origChunks = splitChunks.chunks ?? 'async';
-          const guardedChunks = (chunk: { name?: string }) => {
-            if (chunk.name != null && getGeneratedChunkNamesForCompiler(compiler).has(chunk.name)) {
-              return false;
-            }
-            if (typeof origChunks === 'function') return origChunks(chunk);
-            // Rspack/Webpack chunks expose canBeInitial(); keep the historical
-            // fallback for non-standard chunk shapes explicit.
-            const canBeInitial = (chunk as { canBeInitial?: () => boolean }).canBeInitial?.();
-            if (origChunks === 'initial') return !!canBeInitial;
-            if (origChunks === 'async') return !canBeInitial;
-            return true; // origChunks === 'all': include every non-generated chunk.
-          };
-          guardedSplitChunks.set(splitChunks, guardedChunks);
-          splitChunks.chunks = guardedChunks;
-        };
-
-        // Rspack attaches optimization defaults after user plugin apply() and
-        // before RspackOptionsApply constructs the native SplitChunksPlugin.
-        // Install late in those pre-options hooks so SplitChunksPlugin snapshots
-        // the guarded selector, and reinstall if an earlier hook overwrote it.
-        const splitChunksGuardTap = {
-          name: 'RSCRspackPlugin.splitChunksGuard',
-          stage: Number.MAX_SAFE_INTEGER,
-        };
-        if (compiler.hooks.environment) {
-          compiler.hooks.environment.tap(splitChunksGuardTap, installSplitChunksGuard);
-        }
-        if (compiler.hooks.afterEnvironment) {
-          compiler.hooks.afterEnvironment.tap(splitChunksGuardTap, installSplitChunksGuard);
-        }
       }
     }
 

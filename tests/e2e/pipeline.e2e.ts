@@ -31,12 +31,8 @@
  *      Flight runtime version (the rc.4 "runtime still reports 19.0.3" class
  *      of incident).
  *
- * Known divergences of the rspack leg (current main behavior, asserted
- * below so any change is caught):
- *   - the rspack plugin excludes generated client-reference chunks from
- *     splitChunks, so the shared module is duplicated per chunk instead of
- *     being split into a shared chunk.
- *   - rspack chunk names embed the sanitized absolute module path.
+ * Known divergence of the rspack leg: chunk names embed the sanitized
+ * absolute module path.
  */
 
 import { execFileSync } from 'child_process';
@@ -83,6 +79,7 @@ interface BuildResult {
 }
 interface HydrateResult {
   ok: boolean;
+  error?: string;
   valueBeforeClick: string | null;
   valueAfterClick: string | null;
   nestedLabelText: string | null;
@@ -92,6 +89,9 @@ interface HydrateResult {
   devtoolsRenderers: { version: string; rendererPackageName: string }[];
   recoverableErrors: string[];
   consoleMessages: { level: string; message: string }[];
+  assetRequests: string[];
+  assetEvents: string[];
+  omittedSharedChunkPairs: number;
 }
 
 type LinkHintRow = [string, string] | [string, string, Record<string, string>];
@@ -118,6 +118,10 @@ const runNode = <T>(args: string[]): T => {
 const readJson = <T>(...segments: string[]): T =>
   JSON.parse(fs.readFileSync(path.join(...segments), 'utf8')) as T;
 
+const expectHydrationSucceeded = (result: HydrateResult): void => {
+  if (!result.ok) throw new Error(`Hydration failed:\n${JSON.stringify(result, null, 2)}`);
+};
+
 const STOCK_RUNTIME_PACKAGE_JSON = require.resolve('react-server-dom-webpack/package.json', {
   paths: [INSTALLED_PKG],
 });
@@ -139,6 +143,26 @@ const rspackChunkBase = (file: string): string =>
 const webpackChunkBase = (file: string): string => `client-${path.basename(file, '.js')}-js`;
 
 const chunkPair = (base: string): string[] => [base, `${base}.chunk.js`];
+
+const sortChunkPairs = (chunks: (string | number)[]): (string | number)[] => {
+  const pairs: [string | number, string | number][] = [];
+  for (let index = 0; index < chunks.length; index += 2) {
+    pairs.push([chunks[index]!, chunks[index + 1]!]);
+  }
+  return pairs
+    .sort((left, right) => String(left[1]).localeCompare(String(right[1])))
+    .flat();
+};
+
+const normalizeChunkOrder = (
+  metadata: Record<string, ModuleMetadata>,
+): Record<string, ModuleMetadata> =>
+  Object.fromEntries(
+    Object.entries(metadata).map(([file, entry]) => [
+      file,
+      { ...entry, chunks: sortChunkPairs(entry.chunks) },
+    ]),
+  );
 
 /** Flight module-import rows look like `<row id>:I[id, chunks, name]`. */
 const importRows = (payload: string): [string, string[], string][] =>
@@ -169,28 +193,28 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
   // its own dependency chunk group ([id, file, ...] pairs), minus initial
   // and runtime chunks. NestedLabel is reachable through two groups (its
   // own injected block and ThemeSection's chunk), so its entry is the
-  // union. Only webpack splits the shared module into its own chunk.
-  const sharedPrefix = isWebpack ? chunkPair('shared-format') : [];
+  // union. Both bundlers split the shared module into its own chunk.
+  const sharedPrefix = chunkPair('shared-format');
+  const withSharedChunk = (chunks: string[]): string[] => [...sharedPrefix, ...chunks];
   const expectedClientMetadata: Record<string, ModuleMetadata> = {
     [componentUrl('Counter.js')]: {
       id: './src/components/Counter.js',
-      chunks: [...sharedPrefix, ...chunkPair(base('Counter.js'))],
+      chunks: withSharedChunk(chunkPair(base('Counter.js'))),
       css: [`/assets/${base('Counter.js')}.chunk.css`],
       name: '*',
     },
     [componentUrl('NestedLabel.js')]: {
       id: './src/components/NestedLabel.js',
-      chunks: [
-        ...sharedPrefix,
+      chunks: withSharedChunk([
         ...chunkPair(base('NestedLabel.js')),
         ...(isWebpack ? [] : chunkPair(base('ThemeSection.js'))),
-      ],
+      ]),
       css: [`/assets/${base('NestedLabel.js')}.chunk.css`],
       name: '*',
     },
     [componentUrl('ThemeSection.js')]: {
       id: './src/components/ThemeSection.js',
-      chunks: [...sharedPrefix, ...chunkPair(base('ThemeSection.js'))],
+      chunks: withSharedChunk(chunkPair(base('ThemeSection.js'))),
       css: [`/assets/${base('ThemeSection.js')}.chunk.css`],
       name: '*',
     },
@@ -238,7 +262,9 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
 
   it('emits the exact per-component client manifest', () => {
     expect(clientManifest.moduleLoading).toEqual({ prefix: '/assets/', crossOrigin: null });
-    expect(clientManifest.filePathToModuleMetadata).toEqual(expectedClientMetadata);
+    expect(normalizeChunkOrder(clientManifest.filePathToModuleMetadata)).toEqual(
+      normalizeChunkOrder(expectedClientMetadata),
+    );
   });
 
   it('emits the exact per-component SSR (server) manifest', () => {
@@ -347,9 +373,9 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
     it('hydrates in jsdom with zero errors and interactive client components', () => {
       const result = runNode<HydrateResult>(['scripts/hydrate.js', bundler]);
 
+      expectHydrationSucceeded(result);
       expect(result.consoleMessages).toEqual([]);
       expect(result.recoverableErrors).toEqual([]);
-      expect(result.ok).toBe(true);
 
       // Hydrated from SSR markup, then interactive after a click.
       expect(result.serverMessageText).toBe('rendered-on-server-only');
@@ -357,6 +383,17 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       expect(result.nestedLabelColor).toBe('rgb(120, 30, 90)');
       expect(result.valueBeforeClick).toBe('clicks: 3');
       expect(result.valueAfterClick).toBe('clicks: 4');
+
+      // A generated boundary chunk is executed before hydration starts. React
+      // must still await the subsequently requested shared sibling before
+      // synchronously requiring the client module.
+      expect(result.assetRequests).toContain('shared-format.chunk.js');
+      const firstBoundaryLoad = result.assetEvents.findIndex((event) =>
+        /^load:client-.*\.chunk\.js$/.test(event)
+      );
+      const sharedRequest = result.assetEvents.indexOf('request:shared-format.chunk.js');
+      expect(firstBoundaryLoad).toBeGreaterThanOrEqual(0);
+      expect(sharedRequest).toBeGreaterThan(firstBoundaryLoad);
 
       // Only Flight-referenced boundary stylesheets are requested. ThemeSection's chunk CSS
       // already contains NestedLabel.css, as the computed-style assertion proves.
@@ -387,6 +424,45 @@ describe.each(BUNDLERS)('%s leg (packed tarball pipeline)', (bundler) => {
       );
       expect(domRenderer).toBeDefined();
       expect(domRenderer!.version).toBe(reactDomVersion);
+    });
+
+    it('hydrates when the shared sibling loads before the boundary chunks', () => {
+      const result = runNode<HydrateResult>([
+        'scripts/hydrate.js',
+        bundler,
+        'shared-first',
+      ]);
+
+      expectHydrationSucceeded(result);
+      expect(result.consoleMessages).toEqual([]);
+      expect(result.recoverableErrors).toEqual([]);
+      const sharedLoad = result.assetEvents.indexOf('load:shared-format.chunk.js');
+      const firstBoundaryRequest = result.assetEvents.findIndex(
+        (event) => /^request:client-.*\.chunk\.js$/.test(event)
+      );
+      expect(sharedLoad).toBeGreaterThanOrEqual(0);
+      expect(firstBoundaryRequest).toBeGreaterThan(sharedLoad);
+    });
+
+    it('fails hydration when an extracted sibling is omitted from the Flight metadata', () => {
+      const result = runNode<HydrateResult>([
+        'scripts/hydrate.js',
+        bundler,
+        'omit-shared-from-flight',
+      ]);
+
+      expect(result.omittedSharedChunkPairs).toBeGreaterThan(0);
+      expect(result.assetRequests).not.toContain('shared-format.chunk.js');
+      expect(result.ok).toBe(false);
+      const runtimeErrors = result.consoleMessages
+        .filter(({ level }) => level === 'error')
+        .map(({ message }) => message)
+        .join('\n');
+      expect(runtimeErrors).toMatch(
+        isWebpack
+          ? /Cannot find module ['"]\.\/src\/components\/shared\/format\.js['"]/
+          : /__webpack_modules__\[moduleId\] is not a function/
+      );
     });
   });
 });

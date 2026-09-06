@@ -499,11 +499,10 @@ Verified behavior on this branch:
   The old guard excluded those chunks too (`useCount ≥ 2`), so this is
   strictly no worse — but a per-entry notion of "already delivered" would be
   more precise.
-- **rspack topology note.** On rspack *client* builds the plugin rewrites
-  `splitChunks.chunks` to shield its generated client chunks from extraction,
-  so the #188 topology arises there only when a cacheGroup carries its own
-  `chunks: 'all'` override (the standard pattern for styles cache groups) or
-  on server builds. The fix covers both.
+- **rspack topology note.** Generated client-reference chunks participate in
+  the application's normal `splitChunks` selection. Any cache group that
+  extracts a shared sibling can therefore produce the #188 topology on client
+  builds; the fix covers that topology as well as server builds.
 
 ---
 

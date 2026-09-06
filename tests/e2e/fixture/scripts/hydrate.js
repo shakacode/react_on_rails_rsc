@@ -2,7 +2,7 @@
 /**
  * Client hydration in jsdom.
  *
- * Usage: node scripts/hydrate.js <webpack|rspack>
+ * Usage: node scripts/hydrate.js <webpack|rspack> [boundary-first|shared-first|omit-shared-from-flight]
  *
  * Serves the client build over a local HTTP server (publicPath /assets/),
  * loads a page whose body contains the SSR HTML, executes the real client
@@ -24,12 +24,48 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const { MessageChannel, MessagePort } = require('worker_threads');
 
 const bundlerName = process.argv[2];
+const scenario = process.argv[3] || 'boundary-first';
+if (!['boundary-first', 'shared-first', 'omit-shared-from-flight'].includes(scenario)) {
+  process.stderr.write(`Unknown hydration scenario: ${scenario}\n`);
+  process.exit(2);
+}
 const projectRoot = path.resolve(__dirname, '..');
 const buildDir = path.join(projectRoot, 'build', bundlerName);
 const clientDir = path.join(buildDir, 'client');
 
 const ssrHtml = fs.readFileSync(path.join(buildDir, 'ssr.html'), 'utf8');
-const payload = fs.readFileSync(path.join(buildDir, 'flight-payload.rsc'), 'utf8');
+const originalPayload = fs.readFileSync(path.join(buildDir, 'flight-payload.rsc'), 'utf8');
+const flightChunkFiles = [
+  ...new Set(
+    [...originalPayload.matchAll(/^[0-9a-f]+:I(\[.*\])$/gm)].flatMap((match) => {
+      const chunks = JSON.parse(match[1])[1];
+      return chunks.filter((_, index) => index % 2 === 1);
+    }),
+  ),
+];
+const sharedChunkFile = flightChunkFiles.find((file) => file === 'shared-format.chunk.js');
+const firstBoundaryChunkFile = flightChunkFiles.find(
+  (file) => file.startsWith('client-') && file.endsWith('.chunk.js'),
+);
+
+let omittedSharedChunkPairs = 0;
+const payload =
+  scenario === 'omit-shared-from-flight'
+    ? originalPayload.replace(/^([0-9a-f]+:I)(\[.*\])$/gm, (_match, prefix, json) => {
+        const row = JSON.parse(json);
+        const chunks = row[1];
+        const filtered = [];
+        for (let index = 0; index < chunks.length; index += 2) {
+          if (chunks[index + 1] === 'shared-format.chunk.js') {
+            omittedSharedChunkPairs += 1;
+          } else {
+            filtered.push(chunks[index], chunks[index + 1]);
+          }
+        }
+        row[1] = filtered;
+        return `${prefix}${JSON.stringify(row)}`;
+      })
+    : originalPayload;
 
 const CONTENT_TYPES = {
   '.js': 'text/javascript',
@@ -52,6 +88,8 @@ const fail = (message) => {
 
 const consoleMessages = [];
 const devtoolsRenderers = [];
+const assetRequests = [];
+const assetEvents = [];
 
 const run = async (origin) => {
   const virtualConsole = new VirtualConsole();
@@ -116,7 +154,54 @@ const run = async (origin) => {
 
   const { document } = window;
   const container = document.getElementById('root');
-  await window.__E2E__.hydrate(payload, container);
+  const loadChunk = (file) =>
+    new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `/assets/${file}`;
+      script.addEventListener('load', () => {
+        assetEvents.push(`load:${file}`);
+        resolve();
+      });
+      script.addEventListener('error', () => reject(new Error(`failed to preload ${file}`)));
+      document.head.appendChild(script);
+    });
+
+  const firstChunk = scenario === 'boundary-first' ? firstBoundaryChunkFile : sharedChunkFile;
+  if (scenario !== 'omit-shared-from-flight') {
+    if (!firstChunk) throw new Error(`missing preload chunk for ${scenario}`);
+    await loadChunk(firstChunk);
+  }
+
+  try {
+    await Promise.race([
+      window.__E2E__.hydrate(payload, container),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('hydration timed out')),
+          scenario === 'omit-shared-from-flight' ? 2_000 : 10_000,
+        ),
+      ),
+    ]);
+  } catch (error) {
+    const result = {
+      ok: false,
+      error: String((error && error.stack) || error),
+      valueBeforeClick: null,
+      valueAfterClick: null,
+      nestedLabelText: null,
+      nestedLabelColor: null,
+      serverMessageText: null,
+      stylesheetLinks: [],
+      devtoolsRenderers,
+      recoverableErrors: window.__E2E__ ? window.__E2E__.recoverableErrors : [],
+      consoleMessages,
+      assetRequests,
+      assetEvents,
+      omittedSharedChunkPairs,
+    };
+    window.close();
+    return result;
+  }
 
   const counterValue = () => {
     const el = document.querySelector('[data-testid="counter-value"]');
@@ -158,6 +243,9 @@ const run = async (origin) => {
     devtoolsRenderers,
     recoverableErrors: window.__E2E__ ? window.__E2E__.recoverableErrors : null,
     consoleMessages,
+    assetRequests,
+    assetEvents,
+    omittedSharedChunkPairs,
   };
 };
 
@@ -171,8 +259,11 @@ const server = http.createServer((req, res) => {
   if (urlPath.startsWith('/assets/')) {
     const rel = urlPath.slice('/assets/'.length);
     const file = path.join(clientDir, rel);
+    assetRequests.push(rel);
+    assetEvents.push(`request:${rel}`);
     // Keep file access inside the client build dir.
     if (file.startsWith(clientDir + path.sep) && fs.existsSync(file)) {
+      assetEvents.push(`response:${rel}`);
       res.writeHead(200, {
         'content-type': CONTENT_TYPES[path.extname(file)] || 'application/octet-stream',
       });

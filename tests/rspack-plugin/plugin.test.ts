@@ -285,8 +285,15 @@ describe('RSCRspackPlugin', () => {
 
       const heavyEntry = heavyResult.clientReferenceDiagnostics?.clientReferences[0]!;
       expect(heavyEntry.file).toContain('/HeavyIsland.js');
-      expect(heavyEntry.chunks).toHaveLength(1);
-      expect(heavyEntry.chunks[0]!.bytes).toBeGreaterThan(0);
+      expect(heavyEntry.chunks.map(({ file }) => file)).toEqual(
+        expect.arrayContaining(['client0.chunk.js', 'vendors-heavy.chunk.js'])
+      );
+      expect(
+        heavyEntry.chunks.every(({ bytes }) => typeof bytes === 'number' && bytes > 0)
+      ).toBe(true);
+      expect(heavyEntry.totalBytes).toBe(
+        heavyEntry.chunks.reduce((total, { bytes }) => total + (bytes ?? 0), 0)
+      );
       expect(heavyEntry.totalBytes).toBeGreaterThan(
         tinyResult.clientReferenceDiagnostics!.clientReferences[0]!.totalBytes
       );
@@ -500,11 +507,9 @@ describe('RSCRspackPlugin', () => {
     // only arrives with the shared JS chunk during hydration and the shared
     // component paints unstyled first (FOUC). Mirrors the webpack
     // plugin-integration split-shared-css coverage.
-    // The cacheGroup sets its own `chunks: 'all'`, overriding the plugin's
-    // guarded root selector (which shields generated client chunks from
-    // extraction) — the same per-cacheGroup override users write for styles
-    // cache groups, and the configuration that produces the #188 topology in
-    // rspack client builds.
+    // The cacheGroup uses `chunks: 'all'`, matching the per-cacheGroup
+    // override users write for style cache groups and the configuration that
+    // produces the #188 topology in rspack client builds.
     const sharedJsCssSplit = {
       optimization: {
         splitChunks: {
@@ -909,39 +914,6 @@ describe('RSCRspackPlugin', () => {
   });
 
   describe('splitChunks integration', () => {
-    type CapturedTap = {
-      name: string | { name: string; stage?: number };
-      callback: () => void;
-    };
-
-    const createSplitChunksCompiler = (initialSplitChunks?: { chunks?: unknown }) => {
-      const environmentTaps: CapturedTap[] = [];
-      const afterEnvironmentTaps: CapturedTap[] = [];
-      const optimization = {} as { splitChunks?: { chunks?: unknown } };
-      if (initialSplitChunks) optimization.splitChunks = initialSplitChunks;
-
-      return {
-        compiler: {
-          context: path.resolve(__dirname, 'fixtures/default-splitchunks'),
-          options: { module: {}, optimization },
-          hooks: {
-            beforeCompile: { tapAsync: jest.fn() },
-            environment: {
-              tap: (name: CapturedTap['name'], callback: () => void) =>
-                environmentTaps.push({ name, callback }),
-            },
-            afterEnvironment: {
-              tap: (name: CapturedTap['name'], callback: () => void) =>
-                afterEnvironmentTaps.push({ name, callback }),
-            },
-            thisCompilation: { tap: jest.fn() },
-          },
-        },
-        environmentTaps,
-        afterEnvironmentTaps,
-      };
-    };
-
     const runInjectionLoaderForCompiler = (
       injectionLoader: { default?: unknown },
       compiler: object | undefined,
@@ -959,6 +931,108 @@ describe('RSCRspackPlugin', () => {
 
       return loader.call({ cacheable: jest.fn(), _compiler: compiler, ...context }, source);
     };
+
+    it('extracts one shared chunk for dependencies used by multiple client references', () => {
+      const result = run('split-shared-js', {
+        clientReferences: staticIslandClientReferences(/^\.\/(?:Button|SettingsPage)\.js$/),
+        chunkName: 'client-[request]',
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              chunks: 'all',
+              minSize: 0,
+              cacheGroups: {
+                default: false,
+                defaultVendors: false,
+                sharedClientDependency: {
+                  test: /shared\.js$/,
+                  name: 'shared-client-dependency',
+                  minChunks: 2,
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      expect(result.assets).toContain('shared-client-dependency.chunk.js');
+
+      const buttonChunks = manifestChunkFiles(
+        manifestMetadataFor(result, '/Button.js').chunks
+      );
+      const settingsChunks = manifestChunkFiles(
+        manifestMetadataFor(result, '/SettingsPage.js').chunks
+      );
+      expect(buttonChunks).toEqual(
+        expect.arrayContaining([
+          'shared-client-dependency.chunk.js',
+          expect.stringMatching(/^client-.*Button_js\.chunk\.js$/),
+        ])
+      );
+      expect(settingsChunks).toEqual(
+        expect.arrayContaining([
+          'shared-client-dependency.chunk.js',
+          expect.stringMatching(/^client-.*SettingsPage_js\.chunk\.js$/),
+        ])
+      );
+
+      const emittedJavaScript = result.assets
+        .filter((asset) => asset.endsWith('.js'))
+        .map((asset) => fs.readFileSync(path.join(result.outputPath, asset), 'utf8'))
+        .join('\n');
+      expect(emittedJavaScript.match(/shared-runtime-sentinel/g)).toHaveLength(1);
+    });
+
+    it('uses the native async default after Rspack applies its defaults (#40, #165)', () => {
+      const result = run('split-shared-js', {
+        clientReferences: staticIslandClientReferences(/^\.\/(?:Button|SettingsPage)\.js$/),
+        chunkName: 'client-[request]',
+        configExtra: {
+          optimization: {
+            chunkIds: 'named',
+            moduleIds: 'named',
+            minimize: false,
+            splitChunks: {
+              minSize: 0,
+              cacheGroups: {
+                default: false,
+                defaultVendors: false,
+                entryOnly: {
+                  test: /entryOnly\.js$/,
+                  name: 'entry-only-dependency',
+                  minChunks: 1,
+                  enforce: true,
+                },
+                sharedClientDependency: {
+                  test: /shared\.js$/,
+                  name: 'shared-client-dependency',
+                  minChunks: 2,
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      expect(result.assets).not.toEqual(
+        expect.arrayContaining([
+          'entry-only-dependency.js',
+          'entry-only-dependency.chunk.js',
+        ])
+      );
+      expect(result.assets).toContain('shared-client-dependency.chunk.js');
+      expect(manifestChunkFiles(manifestMetadataFor(result, '/Button.js').chunks)).toContain(
+        'shared-client-dependency.chunk.js'
+      );
+      expect(manifestChunkFiles(manifestMetadataFor(result, '/SettingsPage.js').chunks)).toContain(
+        'shared-client-dependency.chunk.js'
+      );
+    });
 
     it(
       'keeps client-reference injection scoped in a real rspack MultiCompiler build',
@@ -1226,86 +1300,7 @@ describe('RSCRspackPlugin', () => {
       );
     });
 
-    it('keeps splitChunks generated chunk filters scoped by compiler', () => {
-      const { RSCRspackPlugin } = require(DIST_PLUGIN);
-      const injectionLoader = require(DIST_INJECTION_LOADER);
-      const firstSplitChunks: { chunks?: unknown } = { chunks: 'async' };
-      const secondSplitChunks: { chunks?: unknown } = { chunks: 'async' };
-      const first = createSplitChunksCompiler(firstSplitChunks);
-      const second = createSplitChunksCompiler(secondSplitChunks);
-
-      new RSCRspackPlugin({ isServer: false }).apply(first.compiler);
-      new RSCRspackPlugin({ isServer: false }).apply(second.compiler);
-
-      for (const { callback } of first.environmentTaps) callback();
-      for (const { callback } of second.environmentTaps) callback();
-
-      injectionLoader.setGeneratedChunkNamesForCompiler(first.compiler, ['first-client']);
-      injectionLoader.setGeneratedChunkNamesForCompiler(second.compiler, ['second-client']);
-
-      const firstGuard = firstSplitChunks.chunks as (chunk: {
-        name?: string;
-        canBeInitial?: () => boolean;
-      }) => boolean;
-      const secondGuard = secondSplitChunks.chunks as (chunk: {
-        name?: string;
-        canBeInitial?: () => boolean;
-      }) => boolean;
-
-      expect(firstGuard({ name: 'first-client', canBeInitial: () => false })).toBe(false);
-      expect(firstGuard({ name: 'second-client', canBeInitial: () => false })).toBe(true);
-      expect(secondGuard({ name: 'second-client', canBeInitial: () => false })).toBe(false);
-      expect(secondGuard({ name: 'first-client', canBeInitial: () => false })).toBe(true);
-    });
-
-    it('installs the default splitChunks guard before RspackOptionsApply snapshots options', () => {
-      const { RSCRspackPlugin } = require(DIST_PLUGIN);
-      const injectionLoader = require(DIST_INJECTION_LOADER);
-      const splitChunks: { chunks?: unknown } = {};
-      const { compiler, environmentTaps, afterEnvironmentTaps } = createSplitChunksCompiler();
-
-      injectionLoader.setGeneratedChunkNamesForCompiler(compiler, ['client0']);
-
-      new RSCRspackPlugin({ isServer: false }).apply(compiler);
-      compiler.options.optimization.splitChunks = splitChunks;
-      splitChunks.chunks = 'async';
-
-      for (const { callback } of environmentTaps) callback();
-      expect(typeof splitChunks.chunks).toBe('function');
-
-      // A later environment-stage tap can still replace the selector; the
-      // afterEnvironment tap runs late enough to reinstall before
-      // RspackOptionsApply snapshots splitChunks for the native plugin.
-      splitChunks.chunks = 'all';
-      for (const { callback } of afterEnvironmentTaps) callback();
-
-      expect(environmentTaps).toHaveLength(1);
-      expect(afterEnvironmentTaps).toHaveLength(1);
-      expect(environmentTaps[0]!.name).toEqual({
-        name: 'RSCRspackPlugin.splitChunksGuard',
-        stage: Number.MAX_SAFE_INTEGER,
-      });
-      expect(afterEnvironmentTaps[0]!.name).toEqual({
-        name: 'RSCRspackPlugin.splitChunksGuard',
-        stage: Number.MAX_SAFE_INTEGER,
-      });
-
-      const chunksCapturedByRspackOptionsApply = splitChunks.chunks as (chunk: {
-        name?: string;
-        canBeInitial?: () => boolean;
-      }) => boolean;
-      expect(
-        chunksCapturedByRspackOptionsApply({ name: 'client0', canBeInitial: () => false })
-      ).toBe(false);
-      expect(
-        chunksCapturedByRspackOptionsApply({ name: 'client99', canBeInitial: () => false })
-      ).toBe(true);
-      expect(chunksCapturedByRspackOptionsApply({ name: 'main', canBeInitial: () => true })).toBe(
-        true
-      );
-    });
-
-    it('keeps generated client chunks isolated with rspack default optimization config', () => {
+    it('emits generated client chunks with rspack default optimization config', () => {
       const result = run('default-splitchunks');
       const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
 
@@ -1327,50 +1322,7 @@ describe('RSCRspackPlugin', () => {
       expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
     });
 
-    it('preserves default async chunk selection while excluding generated client-reference chunks', () => {
-      const result = run('default-splitchunks', {
-        configExtra: {
-          optimization: {
-            chunkIds: 'named',
-            moduleIds: 'named',
-            minimize: false,
-            splitChunks: {
-              minSize: 0,
-              cacheGroups: {
-                forcedVendor: {
-                  // No `test` filter: match all eligible modules so the old
-                  // undefined-as-all bug extracts biglib from the initial chunk.
-                  name: 'vendors-biglib',
-                  minChunks: 1,
-                  enforce: true,
-                },
-              },
-            },
-          },
-        },
-      });
-      const jsAssets = result.assets.filter((asset) => asset.endsWith('.js')).sort();
-
-      expect(jsAssets).toContain('main.js');
-      // Generated client-reference chunks use the default `client[index]` chunkName.
-      expect(jsAssets.some((asset) => /^client\d+\.chunk\.js$/.test(asset))).toBe(true);
-      expect(jsAssets.filter((asset) => /vendors|biglib|clientlib/.test(asset))).toEqual([]);
-
-      const clientEntryKey = Object.keys(result.manifest.filePathToModuleMetadata).find((p) =>
-        p.endsWith('ClientWidget.js')
-      );
-      expect(clientEntryKey).toBeTruthy();
-
-      const clientChunkFiles = manifestChunkFiles(
-        result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks
-      );
-      expect(clientChunkFiles).toEqual(
-        expect.arrayContaining([expect.stringMatching(/^client\d+\.chunk\.js$/)])
-      );
-      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
-    });
-
-    it('preserves explicit all chunk selection for non-generated chunks', () => {
+    it('preserves explicit all chunk selection and complete client metadata', () => {
       const result = run('default-splitchunks', {
         configExtra: {
           optimization: {
@@ -1403,7 +1355,7 @@ describe('RSCRspackPlugin', () => {
       const clientChunkFiles = manifestChunkFiles(
         result.manifest.filePathToModuleMetadata[clientEntryKey!]!.chunks
       );
-      expect(clientChunkFiles.filter((file) => /vendors|clientlib/.test(file))).toEqual([]);
+      expect(clientChunkFiles).toContain('vendors-biglib.js');
     });
   });
 

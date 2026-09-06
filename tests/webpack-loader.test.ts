@@ -741,6 +741,14 @@ describe('independent-review fixes on PR #216', () => {
     await expect(runLoader(bad, source)).rejects.toThrow(/parserPlugins/);
   });
 
+  it('does not count an `export` key inside a Flow exact object type', async () => {
+    const output = await transformClientModule(
+      "'use client';\ntype T = {| export: string |};\nexport const Button = (props: T) => null;\n",
+      tsOptions('FlowExact.js')
+    );
+    expect(output).toContain('export const Button = registerClientReference');
+  });
+
   it('does not trip the export-token cross-check on `export as namespace`', async () => {
     const output = await transformClientModule(
       "'use client';\nexport as namespace Lib;\nexport const Button = () => null;\n",

@@ -642,11 +642,12 @@ function assertExportStatementsWereParsed(parsed: ParsedModule, filename: string
 
     // `${` opens a template substitution that closes with a plain `}`, so it
     // has to increment the depth alongside `{` or the depth would drift.
-    if (tokenType?.label === '{' || tokenType?.label === '${') {
+    // Flow exact object types use `{|` / `|}` as distinct delimiters.
+    if (tokenType?.label === '{' || tokenType?.label === '${' || tokenType?.label === '{|') {
       braceDepth += 1;
       continue;
     }
-    if (tokenType?.label === '}') {
+    if (tokenType?.label === '}' || tokenType?.label === '|}') {
       braceDepth = Math.max(0, braceDepth - 1);
       continue;
     }

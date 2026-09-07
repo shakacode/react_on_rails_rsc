@@ -145,3 +145,4 @@ All notable changes to this package will be documented in this file.
 [#210]: https://github.com/shakacode/react_on_rails_rsc/pull/210
 [#213]: https://github.com/shakacode/react_on_rails_rsc/pull/213
 [#216]: https://github.com/shakacode/react_on_rails_rsc/pull/216
+[#219]: https://github.com/shakacode/react_on_rails_rsc/pull/219

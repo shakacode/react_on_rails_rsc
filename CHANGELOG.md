@@ -4,9 +4,6 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
-### Changed
-- Continuous integration no longer exercises Node.js 20, which reached end of life in April 2026; the unit, E2E, and artifact checks run on Node.js 22 and the compatibility matrix covers Node.js 22 and 24 with React 19.2.x. The two React 19.0.4 matrix lanes, which had been no-ops since the `^19.2.8` peer floor, are removed. The published package contract is unchanged. ([#219])
-
 ## [19.3.0-rc.1] - 2026-09-06
 
 ### Added
@@ -145,4 +142,3 @@ All notable changes to this package will be documented in this file.
 [#210]: https://github.com/shakacode/react_on_rails_rsc/pull/210
 [#213]: https://github.com/shakacode/react_on_rails_rsc/pull/213
 [#216]: https://github.com/shakacode/react_on_rails_rsc/pull/216
-[#219]: https://github.com/shakacode/react_on_rails_rsc/pull/219

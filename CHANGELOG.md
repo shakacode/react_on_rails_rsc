@@ -4,6 +4,9 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Fixed the opt-in `cssWrapper` option dropping the stylesheet hint for a plain child component shared by two or more client references, so enabling the flash-of-unstyled-content fix no longer caused a flash of unstyled content on the shared component. With `cssWrapper` on, the client manifest records a generated wrapper module as the client reference; the shared-child CSS recovery walked one dependency hop from that wrapper, which reached only the original client module and never its shared child, so the child's extracted stylesheet was emitted but never hinted. Both the webpack and Rspack plugins now start that walk from the original client module. Initial (entry-loaded) chunks stay excluded as before. ([#222])
+
 ## [19.3.0-rc.1] - 2026-09-06
 
 ### Added
@@ -142,3 +145,4 @@ All notable changes to this package will be documented in this file.
 [#210]: https://github.com/shakacode/react_on_rails_rsc/pull/210
 [#213]: https://github.com/shakacode/react_on_rails_rsc/pull/213
 [#216]: https://github.com/shakacode/react_on_rails_rsc/pull/216
+[#222]: https://github.com/shakacode/react_on_rails_rsc/pull/222

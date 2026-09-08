@@ -757,3 +757,179 @@ describe('independent-review fixes on PR #216', () => {
     expect(output).toContain('export const Button = registerClientReference');
   });
 });
+
+describe('follow-up polish from the #216 review pass (issue #218)', () => {
+  const moduleOptions = (name: string) => ({
+    filename: `/app/${name}`,
+    url: `file:///app/${name}`,
+  });
+
+  // Flow's ambient `declare` forms are erased at compile time, so a later
+  // `export { ... }` of those names must not advertise a client reference.
+  // The file has to be `.js`/`.jsx` for the Flow parser rung to be tried, and
+  // `declare opaque type` is Flow-only so the TypeScript rung cannot claim it.
+  const flowAmbientSource =
+    "'use client';\n" +
+    'declare class Widget {}\n' +
+    'declare var version: number;\n' +
+    'declare function helper(): void;\n' +
+    'declare type Id = string;\n' +
+    'declare interface Props {}\n' +
+    'declare opaque type Secret: string;\n' +
+    'export { Widget, version, helper, Id, Props, Secret };\n' +
+    'export const Button = () => null;\n';
+
+  it('erases Flow `declare` bindings that are re-exported by name', async () => {
+    await expect(
+      collectClientExportNames(flowAmbientSource, moduleOptions('FlowAmbient.js'))
+    ).resolves.toEqual(['Button']);
+  });
+
+  it('emits no client-reference stub for an erased Flow `declare` binding', async () => {
+    const output = await transformClientModule(flowAmbientSource, moduleOptions('FlowAmbient.js'));
+
+    expect(output).toContain('export const Button = registerClientReference');
+    for (const erased of ['Widget', 'version', 'helper', 'Id', 'Props', 'Secret']) {
+      expect(output).not.toContain(erased);
+    }
+  });
+
+  it('erases only the ambient binding, not a real class beside it', async () => {
+    const source =
+      "'use client';\n" +
+      'declare opaque type Secret: string;\n' +
+      'declare class Ambient {}\n' +
+      'class Real {}\n' +
+      'export { Ambient, Real };\n';
+
+    await expect(collectClientExportNames(source, moduleOptions('FlowMixed.js'))).resolves.toEqual(
+      ['Real']
+    );
+  });
+
+  it('erases a namespace whose only export is a per-specifier `export { type T }`', async () => {
+    const source =
+      "'use client';\n" +
+      'namespace N {\n  type T = string;\n  export { type T };\n}\n' +
+      'export { N };\n' +
+      'export const Button = () => null;\n';
+
+    await expect(
+      collectClientExportNames(source, moduleOptions('NamespaceTypeSpecifier.ts'))
+    ).resolves.toEqual(['Button']);
+  });
+
+  it('keeps a namespace that also exports a value', async () => {
+    // Guard against over-erasing: a type-only specifier export next to a real
+    // value member still leaves the namespace instantiated at runtime. A
+    // namespace-LOCAL value cannot be re-exported through a specifier (Babel
+    // rejects `export { size }` there with "Export 'size' is not defined"), so
+    // the value member here is an `export const`; the genuinely mixed
+    // specifier list is covered by the next test.
+    const source =
+      "'use client';\n" +
+      'namespace N {\n  type T = string;\n  export { type T };\n  export const size = 1;\n}\n' +
+      'export { N };\n';
+
+    await expect(
+      collectClientExportNames(source, moduleOptions('NamespaceValueMember.ts'))
+    ).resolves.toEqual(['N']);
+  });
+
+  it('keeps a namespace whose specifier list mixes a type and a value', async () => {
+    // Exercises the new `specifiers.every(...)` branch head-on: one `type`
+    // specifier and one value specifier in the SAME `export { ... }`. Babel
+    // only accepts a value specifier inside a namespace when the binding comes
+    // from module scope, so `size` is declared outside the namespace.
+    const source =
+      "'use client';\n" +
+      'const size = 1;\n' +
+      'namespace N {\n  type T = string;\n  export { type T, size };\n}\n' +
+      'export { N };\n';
+
+    await expect(
+      collectClientExportNames(source, moduleOptions('NamespaceMixedSpecifiers.ts'))
+    ).resolves.toEqual(['N']);
+  });
+
+  // `TSEnumDeclaration` and Flow's `EnumDeclaration` are deliberately NOT in
+  // `ERASED_NAMED_DECLARATIONS`: an enum emits a runtime object, so an exported
+  // enum is a genuine client reference. Adding them "for consistency" with the
+  // other TypeScript type-ish declarations would silently drop the export --
+  // the #206 failure mode this transform exists to prevent. These three guards
+  // are what goes red if that ever happens.
+  it('keeps a TypeScript enum, which emits a runtime object', async () => {
+    const source =
+      "'use client';\n" +
+      'export enum Color { Red, Blue }\n' +
+      'enum Size { Small }\n' +
+      'export { Size };\n';
+
+    await expect(collectClientExportNames(source, moduleOptions('Enums.ts'))).resolves.toEqual([
+      'Color',
+      'Size',
+    ]);
+    await expect(transformClientModule(source, moduleOptions('Enums.ts'))).resolves.toContain(
+      'export const Color = registerClientReference'
+    );
+  });
+
+  it('keeps a Flow enum, which emits a runtime object', async () => {
+    // Flow enums parse as `EnumDeclaration` under the plain `flow` plugin, so no
+    // `flowEnums` plugin is needed at the @babel/parser version this package
+    // depends on. Keep this source free of `export { <enum> }`: Babel's Flow
+    // scope handler never registers an enum binding, so a specifier export fails
+    // the Flow rung with "Export 'X' is not defined" and the file falls through
+    // to the TypeScript rung -- where the node is a `TSEnumDeclaration` and this
+    // test silently stops guarding Flow's `EnumDeclaration` at all.
+    const source = "'use client';\n" + 'export enum Status { Active, Done }\n';
+
+    await expect(collectClientExportNames(source, moduleOptions('Enums.js'))).resolves.toEqual([
+      'Status',
+    ]);
+  });
+
+  it('erases an ambient `declare enum` but keeps a real enum beside it', async () => {
+    // The ambient form is caught by the `declare === true` check rather than by
+    // the erased-declaration set, which is exactly the boundary the comment on
+    // `ERASED_NAMED_DECLARATIONS` describes.
+    const source =
+      "'use client';\n" +
+      'declare enum Ambient { A }\n' +
+      'enum Real { B }\n' +
+      'export { Ambient, Real };\n';
+
+    await expect(
+      collectClientExportNames(source, moduleOptions('AmbientEnum.ts'))
+    ).resolves.toEqual(['Real']);
+  });
+
+  it("rejects a malformed one-element `parserPlugins` tuple with the loader's own message", async () => {
+    const source = "'use client';\nexport const Button = () => null;\n";
+    const context = createLoaderContext('/app/Pipeline.js', {
+      getOptions: () => ({ parserPlugins: [['pipelineOperator']] }),
+    });
+
+    // Without the length check this reaches @babel/parser, which fails every
+    // plugin rung with `"pipelineOperator" requires "proposal" option`; that
+    // error is then wrapped in the loader's "failed to parse" message, which
+    // blames the file rather than the misconfigured option.
+    await expect(runLoader(context, source)).rejects.toThrow(
+      /the `parserPlugins` option must be an array/
+    );
+  });
+
+  it('still accepts a well-formed [name, options] tuple', async () => {
+    const source =
+      "'use client';\nexport function render(value) { return value |> String(%); }\n";
+    const context = createLoaderContext('/app/Pipeline.js', {
+      getOptions: () => ({
+        parserPlugins: [['pipelineOperator', { proposal: 'hack', topicToken: '%' }]],
+      }),
+    });
+
+    await expect(runLoader(context, source)).resolves.toContain(
+      'export const render = registerClientReference'
+    );
+  });
+});

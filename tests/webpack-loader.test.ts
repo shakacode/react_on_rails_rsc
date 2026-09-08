@@ -821,10 +821,11 @@ describe('follow-up polish from the #216 review pass (issue #218)', () => {
 
   it('keeps a namespace that also exports a value', async () => {
     // Guard against over-erasing: a type-only specifier export next to a real
-    // value member still leaves the namespace instantiated at runtime.
-    // (Babel cannot parse a *value* specifier export inside a namespace —
-    // `export { size }` there fails with "Export 'size' is not defined" — so
-    // the value member has to be an `export const`.)
+    // value member still leaves the namespace instantiated at runtime. A
+    // namespace-LOCAL value cannot be re-exported through a specifier (Babel
+    // rejects `export { size }` there with "Export 'size' is not defined"), so
+    // the value member here is an `export const`; the genuinely mixed
+    // specifier list is covered by the next test.
     const source =
       "'use client';\n" +
       'namespace N {\n  type T = string;\n  export { type T };\n  export const size = 1;\n}\n' +
@@ -832,6 +833,22 @@ describe('follow-up polish from the #216 review pass (issue #218)', () => {
 
     await expect(
       collectClientExportNames(source, moduleOptions('NamespaceValueMember.ts'))
+    ).resolves.toEqual(['N']);
+  });
+
+  it('keeps a namespace whose specifier list mixes a type and a value', async () => {
+    // Exercises the new `specifiers.every(...)` branch head-on: one `type`
+    // specifier and one value specifier in the SAME `export { ... }`. Babel
+    // only accepts a value specifier inside a namespace when the binding comes
+    // from module scope, so `size` is declared outside the namespace.
+    const source =
+      "'use client';\n" +
+      'const size = 1;\n' +
+      'namespace N {\n  type T = string;\n  export { type T, size };\n}\n' +
+      'export { N };\n';
+
+    await expect(
+      collectClientExportNames(source, moduleOptions('NamespaceMixedSpecifiers.ts'))
     ).resolves.toEqual(['N']);
   });
 

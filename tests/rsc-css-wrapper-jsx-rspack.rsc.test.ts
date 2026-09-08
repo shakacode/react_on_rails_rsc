@@ -32,6 +32,10 @@ const created: CompileResult[] = [];
 let client: CompileResult;
 let server: CompileResult;
 
+// `export * from './Level1'` is resolved through rspack's OWN resolver, so the
+// fixture needs the same `resolve.extensions` a real `.tsx` application sets.
+const RESOLVE = { extensions: ['.tsx', '.ts', '.js', '.json'] };
+
 const common = {
   chunkName: 'client-[request]',
   withCss: true,
@@ -41,12 +45,16 @@ const common = {
 } as const;
 
 beforeAll(() => {
-  client = compile(FIXTURE, { ...common });
+  client = compile(FIXTURE, { ...common, configExtra: { resolve: RESOLVE } });
   created.push(client);
   server = compile(FIXTURE, {
     ...common,
     isServer: true,
-    configExtra: { exposeClientRuntime: true, output: { library: { type: 'commonjs2' } } },
+    configExtra: {
+      exposeClientRuntime: true,
+      resolve: RESOLVE,
+      output: { library: { type: 'commonjs2' } },
+    },
   });
   created.push(server);
 });
@@ -60,7 +68,10 @@ const entry = (result: CompileResult, suffix: string) => {
   return entries[key]!;
 };
 
-async function resolveExport(exportName: string): Promise<{
+async function resolveExport(
+  file: string,
+  exportName: string
+): Promise<{
   links: Array<{ rel?: string; precedence?: string; href?: string }>;
   text: string;
   rootType: string;
@@ -69,7 +80,7 @@ async function resolveExport(exportName: string): Promise<{
     () => {
       throw new Error('client reference must not run on server');
     },
-    fixtureUrl('Card.tsx'),
+    fixtureUrl(file),
     exportName
   ) as React.ComponentType<{ title: string }>;
   const stream = renderToPipeableStream(
@@ -110,7 +121,7 @@ describe('cssWrapper on a JSX client module (real rspack)', () => {
 
   it('resolves and renders a NAMED export written in JSX, with its <link precedence>', async () => {
     const card = entry(client, '/Card.tsx');
-    const { links, text: t, rootType } = await resolveExport('Card');
+    const { links, text: t, rootType } = await resolveExport('Card.tsx', 'Card');
 
     // Pre-fix this was 'undefined': the wrapper had no `Card` export at all.
     expect(rootType).not.toBe('undefined');
@@ -120,9 +131,30 @@ describe('cssWrapper on a JSX client module (real rspack)', () => {
 
   it('still resolves the default export', async () => {
     const card = entry(client, '/Card.tsx');
-    const { links, text: t } = await resolveExport('default');
+    const { links, text: t } = await resolveExport('Card.tsx', 'default');
 
     expect(links).toEqual([{ rel: 'stylesheet', precedence: 'rsc-css', href: card.css![0]! }]);
+    expect(t).toContain('Hi');
+  });
+
+  // Exercises `createExportAllResolver` against RSPACK's own `getResolve` and
+  // path-sentinel handling, which is the bundler-specific half of the fix.
+  it('resolves a component re-exported through a TWO-level export * barrel', async () => {
+    const barrel = entry(client, '/Barrel.tsx');
+    const { links, text: t, rootType } = await resolveExport('Barrel.tsx', 'Deep');
+
+    // `Deep` lives two `export * from` hops away; the one-level scan missed it.
+    expect(rootType).not.toBe('undefined');
+    expect(links).toEqual([{ rel: 'stylesheet', precedence: 'rsc-css', href: barrel.css![0]! }]);
+    expect(t).toContain('Hi');
+  });
+
+  it('resolves a component re-exported through one export * hop', async () => {
+    const barrel = entry(client, '/Barrel.tsx');
+    const { links, text: t, rootType } = await resolveExport('Barrel.tsx', 'Middle');
+
+    expect(rootType).not.toBe('undefined');
+    expect(links).toEqual([{ rel: 'stylesheet', precedence: 'rsc-css', href: barrel.css![0]! }]);
     expect(t).toContain('Hi');
   });
 });

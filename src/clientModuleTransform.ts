@@ -316,17 +316,50 @@ function addExportNames(names: string[], node: unknown): void {
   }
 }
 
-/** TypeScript / Flow declarations that exist only in the type system. */
-const TYPE_ONLY_DECLARATIONS = new Set([
+/**
+ * Type-only declarations that bind a NAME in the enclosing scope.
+ *
+ * All of these are erased by the compiler, so a later `export { Name }` must
+ * not advertise a client reference. Flow's ambient `declare` family belongs
+ * here in full: `declare class C {}`, `declare var x: T`, and
+ * `declare function f(): void` are erased exactly like `declare interface` /
+ * `declare type` / `declare opaque type`, and `declare module` only names an
+ * ambient module.
+ *
+ * Deliberately absent: `TSEnumDeclaration` and Flow's `EnumDeclaration`, which
+ * do emit a runtime object (the ambient `declare enum` form is caught by the
+ * `declare === true` checks instead).
+ */
+const ERASED_NAMED_DECLARATIONS = new Set([
+  // TypeScript
   'TSInterfaceDeclaration',
   'TSTypeAliasDeclaration',
   'TSDeclareFunction',
-  'DeclareClass',
-  'DeclareFunction',
-  'DeclareVariable',
+  // Flow
   'InterfaceDeclaration',
   'OpaqueType',
   'TypeAlias',
+  // Flow ambient declarations
+  'DeclareClass',
+  'DeclareFunction',
+  'DeclareVariable',
+  'DeclareInterface',
+  'DeclareOpaqueType',
+  'DeclareTypeAlias',
+  'DeclareModule',
+]);
+
+/**
+ * Every TypeScript / Flow declaration that exists only in the type system: the
+ * name-binding ones above, plus Flow's `declare export ...` statement forms,
+ * which carry no local binding of their own. Derived from the set above so the
+ * two checks cannot drift apart.
+ */
+const TYPE_ONLY_DECLARATIONS = new Set([
+  ...ERASED_NAMED_DECLARATIONS,
+  'DeclareExportDeclaration',
+  'DeclareExportAllDeclaration',
+  'DeclareModuleExports',
 ]);
 
 /** True when a declaration is erased at runtime and must not become a client reference. */
@@ -355,7 +388,12 @@ function isTypeOnlyNamespace(namespace: BabelNode): boolean {
     if (statement.type === 'ExportNamedDeclaration') {
       if (statement.exportKind === 'type') return true;
       const declaration = statement.declaration as BabelNode | undefined;
-      return declaration ? isTypeOnlyDeclaration(declaration) : false;
+      if (declaration) return isTypeOnlyDeclaration(declaration);
+      // `export { type T }` records the type-ness on the specifier, not on the
+      // statement, so the statement's `exportKind` is still `value`. A mixed
+      // `export { type T, size }` keeps the namespace instantiated.
+      const specifiers = (statement.specifiers as BabelNode[] | undefined) ?? [];
+      return specifiers.every((specifier) => specifier.exportKind === 'type');
     }
     if (statement.type === 'TSImportEqualsDeclaration') return statement.importKind === 'type';
     if (statement.type === 'TSModuleDeclaration') return isTypeOnlyNamespace(statement);
@@ -393,15 +431,15 @@ function collectErasedLocalBindings(body: BabelNode[]): Set<string> {
         ? ((statement.declaration as BabelNode | undefined) ?? statement)
         : statement;
 
+    // Every erased name-binding declaration, including Flow's `declare class`
+    // / `declare var` / `declare function`, goes through the shared set so a
+    // new dialect node type only has to be listed once.
+    if (ERASED_NAMED_DECLARATIONS.has(node.type)) {
+      add(erased, node.id);
+      continue;
+    }
+
     switch (node.type) {
-      case 'TSInterfaceDeclaration':
-      case 'TSTypeAliasDeclaration':
-      case 'TSDeclareFunction':
-      case 'InterfaceDeclaration':
-      case 'TypeAlias':
-      case 'OpaqueType':
-        add(erased, node.id);
-        break;
       case 'ImportDeclaration':
         for (const specifier of (node.specifiers as BabelNode[]) ?? []) {
           const isType =

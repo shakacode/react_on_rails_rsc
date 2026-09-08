@@ -757,3 +757,110 @@ describe('independent-review fixes on PR #216', () => {
     expect(output).toContain('export const Button = registerClientReference');
   });
 });
+
+describe('follow-up polish from the #216 review pass (issue #218)', () => {
+  const moduleOptions = (name: string) => ({
+    filename: `/app/${name}`,
+    url: `file:///app/${name}`,
+  });
+
+  // Flow's ambient `declare` forms are erased at compile time, so a later
+  // `export { ... }` of those names must not advertise a client reference.
+  // The file has to be `.js`/`.jsx` for the Flow parser rung to be tried, and
+  // `declare opaque type` is Flow-only so the TypeScript rung cannot claim it.
+  const flowAmbientSource =
+    "'use client';\n" +
+    'declare class Widget {}\n' +
+    'declare var version: number;\n' +
+    'declare function helper(): void;\n' +
+    'declare type Id = string;\n' +
+    'declare interface Props {}\n' +
+    'declare opaque type Secret: string;\n' +
+    'export { Widget, version, helper, Id, Props, Secret };\n' +
+    'export const Button = () => null;\n';
+
+  it('erases Flow `declare` bindings that are re-exported by name', async () => {
+    await expect(
+      collectClientExportNames(flowAmbientSource, moduleOptions('FlowAmbient.js'))
+    ).resolves.toEqual(['Button']);
+  });
+
+  it('emits no client-reference stub for an erased Flow `declare` binding', async () => {
+    const output = await transformClientModule(flowAmbientSource, moduleOptions('FlowAmbient.js'));
+
+    expect(output).toContain('export const Button = registerClientReference');
+    for (const erased of ['Widget', 'version', 'helper', 'Id', 'Props', 'Secret']) {
+      expect(output).not.toContain(erased);
+    }
+  });
+
+  it('erases only the ambient binding, not a real class beside it', async () => {
+    const source =
+      "'use client';\n" +
+      'declare opaque type Secret: string;\n' +
+      'declare class Ambient {}\n' +
+      'class Real {}\n' +
+      'export { Ambient, Real };\n';
+
+    await expect(collectClientExportNames(source, moduleOptions('FlowMixed.js'))).resolves.toEqual(
+      ['Real']
+    );
+  });
+
+  it('erases a namespace whose only export is a per-specifier `export { type T }`', async () => {
+    const source =
+      "'use client';\n" +
+      'namespace N {\n  type T = string;\n  export { type T };\n}\n' +
+      'export { N };\n' +
+      'export const Button = () => null;\n';
+
+    await expect(
+      collectClientExportNames(source, moduleOptions('NamespaceTypeSpecifier.ts'))
+    ).resolves.toEqual(['Button']);
+  });
+
+  it('keeps a namespace that also exports a value', async () => {
+    // Guard against over-erasing: a type-only specifier export next to a real
+    // value member still leaves the namespace instantiated at runtime.
+    // (Babel cannot parse a *value* specifier export inside a namespace —
+    // `export { size }` there fails with "Export 'size' is not defined" — so
+    // the value member has to be an `export const`.)
+    const source =
+      "'use client';\n" +
+      'namespace N {\n  type T = string;\n  export { type T };\n  export const size = 1;\n}\n' +
+      'export { N };\n';
+
+    await expect(
+      collectClientExportNames(source, moduleOptions('NamespaceValueMember.ts'))
+    ).resolves.toEqual(['N']);
+  });
+
+  it("rejects a malformed one-element `parserPlugins` tuple with the loader's own message", async () => {
+    const source = "'use client';\nexport const Button = () => null;\n";
+    const context = createLoaderContext('/app/Pipeline.js', {
+      getOptions: () => ({ parserPlugins: [['pipelineOperator']] }),
+    });
+
+    // Without the length check this reaches @babel/parser, which fails every
+    // plugin rung with `"pipelineOperator" requires "proposal" option`; that
+    // error is then wrapped in the loader's "failed to parse" message, which
+    // blames the file rather than the misconfigured option.
+    await expect(runLoader(context, source)).rejects.toThrow(
+      /the `parserPlugins` option must be an array/
+    );
+  });
+
+  it('still accepts a well-formed [name, options] tuple', async () => {
+    const source =
+      "'use client';\nexport function render(value) { return value |> String(%); }\n";
+    const context = createLoaderContext('/app/Pipeline.js', {
+      getOptions: () => ({
+        parserPlugins: [['pipelineOperator', { proposal: 'hack', topicToken: '%' }]],
+      }),
+    });
+
+    await expect(runLoader(context, source)).resolves.toContain(
+      'export const render = registerClientReference'
+    );
+  });
+});

@@ -126,7 +126,11 @@ const loaderParserPlugins = (loaderContext: LoaderContext<unknown>): ParserPlugi
     !plugins.every(
       (plugin) =>
         typeof plugin === 'string' ||
-        (Array.isArray(plugin) && typeof plugin[0] === 'string' && plugin.length <= 2)
+        // A tuple plugin is exactly `[name, options]`. A one-element `['x']`
+        // reaches @babel/parser and fails with a plugin-specific message that
+        // the transform then wraps in its "failed to parse" error, blaming the
+        // source file instead of the option.
+        (Array.isArray(plugin) && plugin.length === 2 && typeof plugin[0] === 'string')
     )
   ) {
     throw new Error(

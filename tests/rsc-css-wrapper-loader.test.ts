@@ -303,6 +303,44 @@ describe('rscCssWrapperLoader export enumeration', () => {
     ).rejects.toThrow(/parserPlugins/);
   });
 
+  /*
+   * A tuple plugin is exactly `[name, options]`. This guard lives in the shared
+   * `src/loaderExportScan.ts` and deliberately duplicates the same correction made
+   * independently in #221, which still edits the pre-extraction copy in
+   * `src/WebpackLoader.ts`. Keeping BOTH strict makes either merge order safe.
+   *
+   * The test matters because the conflict is silent: git raises a modify/delete
+   * conflict in `WebpackLoader.ts`, and resolving it in favour of this PR's
+   * extraction would revert #221 with no conflict marker anywhere near the
+   * surviving copy. This assertion is the signal that would otherwise be missing.
+   */
+  it("rejects a one-element parserPlugins tuple with the loader's own message", async () => {
+    const source = "'use client';\nexport const value = 1;\nexport default value;\n";
+
+    // A `length <= 2` check accepts `['pipelineOperator']`, which then fails
+    // inside @babel/parser with a plugin-specific message that `parseModule`
+    // wraps in its "failed to parse" error — blaming the source file for what is
+    // really a misconfigured option.
+    const attempt = runWrapperLoader(`${APP}/Pipeline.js`, source, {
+      options: { parserPlugins: [['pipelineOperator']] },
+    });
+
+    await expect(attempt).rejects.toThrow(
+      /rscCssWrapperLoader: the `parserPlugins` option must be an array of @babel\/parser plugin names or \[name, options\] tuples\./
+    );
+    await expect(attempt).rejects.not.toThrow(/failed to parse/);
+  });
+
+  it('accepts a well-formed two-element parserPlugins tuple', async () => {
+    const source = "'use client';\nexport const value = 1 |> % + 1;\nexport default value;\n";
+
+    const code = await runWrapperLoader(`${APP}/Pipeline.js`, source, {
+      options: { parserPlugins: [['pipelineOperator', { proposal: 'hack', topicToken: '%' }]] },
+    });
+
+    expect(wrapperExports(code)).toEqual(['value', 'default']);
+  });
+
   it('still renders CSS links: the wrapper body is unchanged', async () => {
     const code = await runWrapperLoader(`${APP}/Card.jsx`, JSX_MODULE);
 

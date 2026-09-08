@@ -136,9 +136,39 @@ has complex internal dependency edges (inner module A imports inner module B
 which imports CSS), those internal edges may not surface through
 `getOutgoingConnections` on module A.
 
-This is unlikely to cause real issues because client references are async
-boundaries and are not folded into `ConcatenationModule` as inner modules. But
-the interaction is subtle and undertested.
+### Measured: this *does* break shared-child CSS hinting (issue #224)
+
+The paragraph that used to close this section claimed the interaction was
+"unlikely to cause real issues because client references are async boundaries."
+That reasoning is correct about the client reference itself and still wrong
+about the outcome. Measured on `258745a` with
+`tests/webpack-plugin/fixtures/split-shared-css` and a `chunks: 'all'` shared
+cache group (`minSize: 0`), reading `Button.css` from the emitted manifest:
+
+| `concatenateModules` | `cssWrapper` | shared child's CSS hinted? |
+| --- | --- | --- |
+| `false` | `false` | yes |
+| `false` | `true` | no (issue #214, fixed by #222) |
+| `true`  | `false` | **no** |
+| `true`  | `true`  | **no** |
+
+`shared.chunk.css` is emitted in all four rows and the shared chunk is always
+present in `Button.chunks`, so this is a *hint* bug, not a chunking difference.
+The reference's own CSS is hinted correctly in every row — only a CSS-bearing
+module shared by two or more client references is dropped.
+
+`optimization.concatenateModules` is **enabled by default in webpack
+`mode: 'production'`**, so the #188/#190 shared-child CSS recovery shipped in
+19.2.1 is inert in a default production build, independent of `cssWrapper`.
+
+**Why the suite never caught it:** `tests/webpack-plugin/helpers/runWebpackWithPlugin.js`
+pins `mode: 'development'`, where `concatenateModules` defaults to `false`. The
+webpack plugin suite has never exercised production defaults.
+
+**Status:** tracked in issue #224, shipping as a known limitation in `19.3.0`.
+It is pre-existing (19.2.1), not a regression from the 19.3.0 line, and the fix
+touches the `cssWrapper: false` path that #222 is specifically demonstrated to
+leave alone — so it needs its own PR and review cycle.
 
 ## 6. Per-chunk-group JS means over-preloading
 
@@ -208,7 +238,7 @@ output nondeterministic.
 | 2 | Chunk-driven CSS (not module-driven) | Design | Causes complexity; no direct user bug |
 | 3 | No server component CSS | Medium | Server-imported CSS relies on host app |
 | 4 | Client-nav FOUC via `preinit` | Low-Medium | Visible on slow networks during SPA nav |
-| 5 | `ConcatenationModule` edge cases | Very low | Client refs aren't concatenated |
+| 5 | `ConcatenationModule` drops shared-child CSS | **Medium** | **Yes — webpack `mode: 'production'` default; see #224** |
 | 6 | JS over-preloading per chunk group | Low | Extra bandwidth, no missing functionality |
 | 7 | `publicPath: 'auto'` silently drops CSS | Medium | Silent degradation, no warning |
 | 8 | Nondeterministic eager-import fallback | Very low | Extra preloads, no missing functionality |

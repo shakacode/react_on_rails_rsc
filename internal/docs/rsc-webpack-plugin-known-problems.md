@@ -115,7 +115,7 @@ React elements in the RSC stream alongside client references. This is what
 Waku does for server component CSS (but not for client component CSS — Waku has
 the same limitation there).
 
-## 5. `ConcatenationModule` drops shared-child CSS hinting
+## 5. `ConcatenationModule` drops child-module CSS hinting
 
 When webpack's `ModuleConcatenationPlugin` folds multiple modules into a single
 `ConcatenationModule`, the plugin iterates `module.modules` (the inner modules)
@@ -136,30 +136,44 @@ has complex internal dependency edges (inner module A imports inner module B
 which imports CSS), those internal edges may not surface through
 `getOutgoingConnections` on module A.
 
-### Measured: this *does* break shared-child CSS hinting (issue #224)
+### Measured: this *does* drop CSS hints (issue #224)
 
 The paragraph that used to close this section claimed the interaction was
 "unlikely to cause real issues because client references are async boundaries."
 That reasoning is correct about the client reference itself and still wrong
-about the outcome. Measured on `258745a` with
-`tests/webpack-plugin/fixtures/split-shared-css` and a `chunks: 'all'` shared
-cache group (`minSize: 0`), reading `Button.css` from the emitted manifest:
+about the outcome. Scope hoisting does not fold the reference, but it does hide
+the module edge the sibling-CSS walk follows to reach a child's stylesheet.
 
-| `concatenateModules` | `cssWrapper` | shared child's CSS hinted? |
-| --- | --- | --- |
-| `false` | `false` | yes |
-| `false` | `true` | no (issue #214, fixed by #222) |
-| `true`  | `false` | **no** |
-| `true`  | `true`  | **no** |
+Measured on `35d52af` (`main` with #222), reading each reference's `css` array
+from the emitted manifest:
 
-`shared.chunk.css` is emitted in all four rows and the shared chunk is always
-present in `Button.chunks`, so this is a *hint* bug, not a chunking difference.
-The reference's own CSS is hinted correctly in every row — only a CSS-bearing
-module shared by two or more client references is dropped.
+| Fixture / topology | `concatenateModules` | `cssWrapper` | CSS hinted? |
+| --- | --- | --- | --- |
+| `split-shared-css` — child shared by two refs | `false` | `false` | yes |
+| `split-shared-css` | `false` | `true` | yes (since #222) |
+| `split-shared-css` | `true`  | `false` | **no** |
+| `split-shared-css` | `true`  | `true`  | **no** |
+| `transitive-css-only-chunk` — child of a *single* ref | `false` | `false` | yes |
+| `transitive-css-only-chunk` | `true` | `false` | **no — `css` is `[]`** |
+
+Two things to take from the table:
+
+1. **It is not limited to shared children.** A single client reference whose
+   child module imports CSS loses that stylesheet too, and in the CSS-only
+   split-chunk topology the reference's `css` array comes back **empty** — the
+   stylesheet is emitted as `styles.chunk.css` and nothing points at it.
+2. **It is independent of `cssWrapper`.** #222 fixed the `cssWrapper` variant of
+   the *non-hoisted* walk (row 2), but every hoisted row stays broken with the
+   option off as well as on.
+
+In all rows the stylesheet asset is emitted and the owning chunk is present in
+the reference's `chunks`; only the hint is missing. So the failure is a manifest
+under-report, not a chunking difference.
 
 `optimization.concatenateModules` is **enabled by default in webpack
 `mode: 'production'`**, so the #188/#190 shared-child CSS recovery shipped in
-19.2.1 is inert in a default production build, independent of `cssWrapper`.
+19.2.1 — and the transitive-child recovery alongside it — are inert in a default
+production build.
 
 **Why the suite never caught it:** `tests/webpack-plugin/helpers/runWebpackWithPlugin.js`
 pins `mode: 'development'`, where `concatenateModules` defaults to `false`. The
@@ -238,7 +252,7 @@ output nondeterministic.
 | 2 | Chunk-driven CSS (not module-driven) | Design | Causes complexity; no direct user bug |
 | 3 | No server component CSS | Medium | Server-imported CSS relies on host app |
 | 4 | Client-nav FOUC via `preinit` | Low-Medium | Visible on slow networks during SPA nav |
-| 5 | `ConcatenationModule` drops shared-child CSS hints | **Medium** | **Yes — webpack `mode: 'production'` default; see #224** |
+| 5 | `ConcatenationModule` drops child-module CSS hints | **Medium** | **Yes — webpack `mode: 'production'` default; see #224** |
 | 6 | JS over-preloading per chunk group | Low | Extra bandwidth, no missing functionality |
 | 7 | `publicPath: 'auto'` silently drops CSS | Medium | Silent degradation, no warning |
 | 8 | Nondeterministic eager-import fallback | Very low | Extra preloads, no missing functionality |

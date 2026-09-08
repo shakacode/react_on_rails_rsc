@@ -115,7 +115,7 @@ React elements in the RSC stream alongside client references. This is what
 Waku does for server component CSS (but not for client component CSS — Waku has
 the same limitation there).
 
-## 5. `ConcatenationModule` interaction is partially handled
+## 5. `ConcatenationModule` drops shared-child CSS hinting
 
 When webpack's `ModuleConcatenationPlugin` folds multiple modules into a single
 `ConcatenationModule`, the plugin iterates `module.modules` (the inner modules)
@@ -238,7 +238,7 @@ output nondeterministic.
 | 2 | Chunk-driven CSS (not module-driven) | Design | Causes complexity; no direct user bug |
 | 3 | No server component CSS | Medium | Server-imported CSS relies on host app |
 | 4 | Client-nav FOUC via `preinit` | Low-Medium | Visible on slow networks during SPA nav |
-| 5 | `ConcatenationModule` drops shared-child CSS | **Medium** | **Yes — webpack `mode: 'production'` default; see #224** |
+| 5 | `ConcatenationModule` drops shared-child CSS hints | **Medium** | **Yes — webpack `mode: 'production'` default; see #224** |
 | 6 | JS over-preloading per chunk group | Low | Extra bandwidth, no missing functionality |
 | 7 | `publicPath: 'auto'` silently drops CSS | Medium | Silent degradation, no warning |
 | 8 | Nondeterministic eager-import fallback | Very low | Extra preloads, no missing functionality |

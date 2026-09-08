@@ -329,6 +329,11 @@ function addExportNames(names: string[], node: unknown): void {
  * Deliberately absent: `TSEnumDeclaration` and Flow's `EnumDeclaration`, which
  * do emit a runtime object (the ambient `declare enum` form is caught by the
  * `declare === true` checks instead).
+ *
+ * `id` is an `Identifier` for every entry except `DeclareModule`, where
+ * `declare module "foo" {}` carries a `StringLiteral` module name;
+ * `addExportNames` handles both, and a string can never collide with a local
+ * binding name.
  */
 const ERASED_NAMED_DECLARATIONS = new Set([
   // TypeScript
@@ -354,6 +359,12 @@ const ERASED_NAMED_DECLARATIONS = new Set([
  * name-binding ones above, plus Flow's `declare export ...` statement forms,
  * which carry no local binding of their own. Derived from the set above so the
  * two checks cannot drift apart.
+ *
+ * The three `declare export` / `declare module.exports` entries are for
+ * completeness of "type-only declaration": no current caller reaches them,
+ * because they are statement forms rather than an export declaration's
+ * `.declaration`, and `collectModuleExports` already ignores them. They are
+ * listed so the set stays a truthful answer to "is this node erased?".
  */
 const TYPE_ONLY_DECLARATIONS = new Set([
   ...ERASED_NAMED_DECLARATIONS,

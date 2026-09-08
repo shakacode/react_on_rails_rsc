@@ -582,6 +582,147 @@ describe('RSCRspackPlugin', () => {
     });
   });
 
+  describe('shared async dependency chunk CSS survives cssWrapper (#214)', () => {
+    // Same #188 topology, but with the opt-in `cssWrapper` FOUC fix (#196) on.
+    // `cssWrapper` resolves each 'use client' module to a generated wrapper
+    // (`!!rscCssWrapperLoader!<file>`) that imports the real module as
+    // `<file>?__rsc_orig`, and the manifest records the WRAPPER as the client
+    // reference. The shared-child CSS recovery walks exactly one non-style hop,
+    // so before #214 the wrapper consumed that hop: the walk reached the
+    // original module (recovering its own Button.css) but never reached
+    // `shared.js`, and the extracted shared chunk CSS was emitted but never
+    // hinted — turning the FOUC fix on reintroduced FOUC on the shared child.
+    const clientReferences = staticIslandClientReferences(/^\.\/(?:Button|SettingsPage)\.js$/);
+
+    // Explicit `chunks: 'all'` cache group — the shape a user writes for a
+    // style cache group, and the only shape that reached this topology before
+    // #213 removed the rspack splitChunks guard.
+    const sharedJsCssSplit = {
+      optimization: {
+        splitChunks: {
+          chunks: 'all',
+          minSize: 0,
+          cacheGroups: {
+            default: false,
+            defaultVendors: false,
+            shared: {
+              test: /shared\.(js|css)$/,
+              name: 'shared',
+              minChunks: 2,
+              chunks: 'all',
+              enforce: true,
+            },
+          },
+        },
+      },
+    };
+
+    // Rspack's stock `default` cache group with no user override. After #213
+    // this splits the shared child on its own, so the #214 bug is reachable
+    // from a default config — this variant must not regress to the guard era.
+    const defaultCacheGroupSplit = {
+      optimization: { splitChunks: { minSize: 0 } },
+    };
+
+    const sharedCssAssetOf = (result: CompileResult): string => {
+      const asset = result.assets.find((name) => /^shared(_js)?(\.chunk)?\.css$/.test(name));
+      expect(asset).toBeTruthy();
+      return `/assets/${asset!}`;
+    };
+
+    const sharedJsAssetOf = (result: CompileResult): string => {
+      const asset = result.assets.find((name) => /^shared(_js)?(\.chunk)?\.js$/.test(name));
+      expect(asset).toBeTruthy();
+      return asset!;
+    };
+
+    it.each([
+      ['explicit chunks:"all" cache group', sharedJsCssSplit],
+      ['stock default cache group (#213 topology)', defaultCacheGroupSplit],
+    ])(
+      "attaches the shared chunk's CSS to every reference with cssWrapper — %s",
+      (_label, configExtra) => {
+        const result = run('split-shared-css', {
+          clientReferences,
+          publicPath: '/assets',
+          withCss: true,
+          cssWrapper: true,
+          configExtra,
+        });
+
+        const sharedCssUrl = sharedCssAssetOf(result);
+        const sharedJsAsset = sharedJsAssetOf(result);
+        const button = manifestMetadataFor(result, '/Button.js');
+        const settings = manifestMetadataFor(result, '/SettingsPage.js');
+        // Non-vacuous precondition: the shared chunk really is in both reference
+        // chunk groups, so a missing `css` entry is a hint bug rather than a
+        // topology difference between the wrapper and non-wrapper builds.
+        expect(manifestChunkFiles(button.chunks)).toContain(sharedJsAsset);
+        expect(manifestChunkFiles(settings.chunks)).toContain(sharedJsAsset);
+        expect(button.css).toContain(sharedCssUrl);
+        expect(settings.css).toContain(sharedCssUrl);
+        // Each reference still keeps its own extracted CSS.
+        expect(readManifestCss(result, '/Button.js')).toContain('.button');
+        expect(readManifestCss(result, '/SettingsPage.js')).toContain('.settings');
+        // The shared child's rule is what FOUCs without the hint.
+        expect(readManifestCss(result, '/Button.js')).toContain('.shared');
+        expect(readManifestCss(result, '/SettingsPage.js')).toContain('.shared');
+      }
+    );
+
+    it.each([
+      ['explicit chunks:"all" cache group', sharedJsCssSplit],
+      ['stock default cache group (#213 topology)', defaultCacheGroupSplit],
+    ])('matches the cssWrapper-off manifest CSS exactly — %s', (_label, configExtra) => {
+      // The wrapper changes which module the manifest records, never which
+      // stylesheets a reference needs. Comparing both builds pins that
+      // invariant instead of only asserting the one previously-missing href.
+      const on = run('split-shared-css', {
+        clientReferences,
+        publicPath: '/assets',
+        withCss: true,
+        cssWrapper: true,
+        configExtra,
+      });
+      const off = run('split-shared-css', {
+        clientReferences,
+        publicPath: '/assets',
+        withCss: true,
+        configExtra,
+      });
+      for (const suffix of ['/Button.js', '/SettingsPage.js']) {
+        expect([...(manifestMetadataFor(on, suffix).css ?? [])].sort()).toEqual(
+          [...(manifestMetadataFor(off, suffix).css ?? [])].sort()
+        );
+      }
+    });
+
+    it("keeps an initial shared chunk's CSS out of client references with cssWrapper (#108 canary)", () => {
+      // The #108 guard must survive the #214 re-rooting: with the extra `vendor`
+      // entrypoint the split shared chunk becomes initial (its CSS is already
+      // delivered render-blocking by that entry's own <link>), so it must stay
+      // out of every client reference's `css` even though the walk now starts
+      // one hop deeper on the original module.
+      const result = run('split-shared-css', {
+        clientReferences,
+        publicPath: '/assets',
+        withCss: true,
+        cssWrapper: true,
+        extraEntries: { vendor: './vendorEntry.js' },
+        configExtra: sharedJsCssSplit,
+      });
+
+      const sharedCssUrl = sharedCssAssetOf(result);
+      const sharedJsAsset = sharedJsAssetOf(result);
+      const button = manifestMetadataFor(result, '/Button.js');
+      const settings = manifestMetadataFor(result, '/SettingsPage.js');
+      expect(manifestChunkFiles(button.chunks)).toContain(sharedJsAsset);
+      expect(manifestChunkFiles(settings.chunks)).toContain(sharedJsAsset);
+      expect(button.css ?? []).not.toContain(sharedCssUrl);
+      expect(settings.css ?? []).not.toContain(sharedCssUrl);
+    });
+  });
+
   describe('top-level manifest shape', () => {
     it('has exactly `moduleLoading` and `filePathToModuleMetadata` keys', () => {
       const result = run('basic-client');

@@ -40,6 +40,7 @@ import * as url from 'url';
 import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
+  isCssWrapperOriginalResource,
   isInitialChunk,
 } from '../clientReferences';
 import {
@@ -808,8 +809,29 @@ export class RSCRspackPlugin {
           return false;
         };
 
-        addDirectStyleImports(module);
-        for (const connection of getOutgoingConnections(module)) {
+        // With `cssWrapper`, the recorded client reference is the generated
+        // wrapper module, not the authored client module. The wrapper imports
+        // the real module as `<file>?__rsc_orig` and holds no CSS itself, so
+        // walking from the wrapper spends the single allotted non-style hop
+        // reaching the original and never reaches the original's shared
+        // CSS-bearing child (#214). Re-root the walk on the original.
+        // `moduleChunks` intentionally stays the recorded module's chunks: it is
+        // the "shares the reference's own chunk" signal, and the split-out child
+        // case is covered by the non-initial group-chunk clause of
+        // `belongsToReferenceChunkGroup`.
+        const walkRoot = ((): AnyModule => {
+          if (this.options.cssWrapper !== true) return module;
+          for (const connection of getOutgoingConnections(module)) {
+            const depModule = connection.module ?? connection.resolvedModule;
+            if (depModule && isCssWrapperOriginalResource(module.resource, depModule.resource)) {
+              return depModule;
+            }
+          }
+          return module;
+        })();
+
+        addDirectStyleImports(walkRoot);
+        for (const connection of getOutgoingConnections(walkRoot)) {
           const depModule = connection.module ?? connection.resolvedModule;
           if (!depModule?.resource) continue;
           const depResource = depModule.resource.replace(/[?#].*$/, '');

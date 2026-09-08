@@ -63,7 +63,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import webpack = require('webpack');
-import { hasUseClientDirective, isInitialChunk } from '../clientReferences';
+import {
+  hasUseClientDirective,
+  isCssWrapperOriginalResource,
+  isInitialChunk,
+} from '../clientReferences';
 import {
   emitEntryClientReferencesAsset,
   type EntryClientReferencesCompilation,
@@ -930,8 +934,29 @@ export class RSCWebpackPlugin {
                 }
                 return false;
               };
-              addDirectStyleImports(module);
-              for (const connection of moduleGraph.getOutgoingConnections(module)) {
+              // With `cssWrapper`, the recorded client reference is the
+              // generated wrapper module, not the authored client module. The
+              // wrapper imports the real module as `<file>?__rsc_orig` and holds
+              // no CSS itself, so walking from the wrapper spends the single
+              // allotted non-style hop reaching the original and never reaches
+              // the original's shared CSS-bearing child (#214). Re-root the walk
+              // on the original. `moduleChunks` intentionally stays the recorded
+              // module's chunks: it is the "shares the reference's own chunk"
+              // signal, and the split-out child case is covered by the
+              // non-initial group-chunk clause of `belongsToReferenceChunkGroup`.
+              const walkRoot = ((): FlightModule => {
+                if (!this.cssWrapper) return module;
+                for (const connection of moduleGraph.getOutgoingConnections(module)) {
+                  const depModule = connection.module ?? connection.resolvedModule;
+                  if (!depModule) continue;
+                  if (isCssWrapperOriginalResource(module.resource, depModule.resource)) {
+                    return depModule;
+                  }
+                }
+                return module;
+              })();
+              addDirectStyleImports(walkRoot);
+              for (const connection of moduleGraph.getOutgoingConnections(walkRoot)) {
                 // `module` is the resolved destination for most connections;
                 // some dependency types leave it null with the target on
                 // `resolvedModule`, so fall back to it.

@@ -8,6 +8,11 @@ All notable changes to this package will be documented in this file.
 - Fixed the opt-in `cssWrapper` option dropping the stylesheet hint for a plain child component shared by two or more client references, so enabling the flash-of-unstyled-content fix no longer caused a flash of unstyled content on the shared component. With `cssWrapper` on, the client manifest records a generated wrapper module as the client reference; the shared-child CSS recovery walked one dependency hop from that wrapper, which reached only the original client module and never its shared child, so the child's extracted stylesheet was emitted but never hinted. Both the webpack and Rspack plugins now start that walk from the original client module. Initial (entry-loaded) chunks stay excluded as before. ([#222])
 - Fixed the `"use client"` export scan to treat Flow's ambient `declare class` / `declare var` / `declare function` declarations and TypeScript namespaces whose only members are type-only specifier exports (`export { type T }`) as erased, so the generated server stub no longer advertises client references for names that do not exist at runtime. ([#221])
 - Fixed the `WebpackLoader` `parserPlugins` option to reject a malformed one-element tuple such as `['pipelineOperator']` with the loader's own message naming the option, instead of letting it fail inside the parser and surface as a "failed to parse the \"use client\" module" error that blames the source file. ([#221])
+### Changed
+- Dropped the `es-module-lexer` runtime dependency. It was only used by the `cssWrapper` export scan, which now shares the client-reference transform's parser. ([#223])
+
+### Fixed
+- Fixed the opt-in `cssWrapper` option dropping a `"use client"` module's named exports. The generated wrapper module is what the client manifest resolves to, and it replaces the module's export surface, but it enumerated exports with a parser that understands neither JSX nor TypeScript and silently fell back to wrapping only the default export. A component written as `export const Card = ({ title }) => <section className="card">{title}</section>` therefore resolved to `undefined` at render time even though the server-side client reference advertised it. The wrapper now enumerates exports with the same JSX- and TypeScript-aware pass the client-reference stub uses: `export * from` chains are resolved recursively through the bundler's own resolver instead of one level, reserved-word and arbitrary module namespace export names (`export { value as "weird name" }`) are aliased instead of emitting invalid syntax, and a parse failure, an unresolvable `export *` target, or a module with no runtime exports fails the build with an error naming the file. Affects both `RSCWebpackPlugin` and `RSCRspackPlugin`. ([#223])
 
 ## [19.3.0-rc.1] - 2026-09-06
 
@@ -149,3 +154,4 @@ All notable changes to this package will be documented in this file.
 [#216]: https://github.com/shakacode/react_on_rails_rsc/pull/216
 [#221]: https://github.com/shakacode/react_on_rails_rsc/pull/221
 [#222]: https://github.com/shakacode/react_on_rails_rsc/pull/222
+[#223]: https://github.com/shakacode/react_on_rails_rsc/pull/223

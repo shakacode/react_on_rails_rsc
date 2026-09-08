@@ -217,6 +217,26 @@ describe('rscCssWrapperLoader export enumeration', () => {
     expect(wrapperExports(code)).toEqual(await serverExports(`${APP}/Barrel.tsx`, source, files));
   });
 
+  it('fails the build on an ambiguous `export * from` diamond', async () => {
+    // `./a` and `./b` each declare their OWN `Deep`, so ECMAScript — and
+    // webpack, which warns `conflicting star exports for the name 'Deep'` —
+    // leave `Deep` off the namespace object. Emitting
+    // `export var Deep = __rscWrap(__orig['Deep'])` anyway put `undefined`
+    // behind a name the manifest advertises: "Element type is invalid" at
+    // render time, the same class of failure as the JSX enumeration bug.
+    const files = {
+      [`${APP}/a.tsx`]: 'export const Deep = ({ t }: { t: string }) => <i>{t}</i>;\n',
+      [`${APP}/b.tsx`]: 'export const Deep = ({ t }: { t: string }) => <b>{t}</b>;\n',
+    };
+    const source = "'use client';\nexport * from './a';\nexport * from './b';\n";
+
+    const expected = /takes "Deep" \(declared in .*a\.tsx and .*b\.tsx\)/s;
+    await expect(runWrapperLoader(`${APP}/Barrel.tsx`, source, { files })).rejects.toThrow(expected);
+    // The server-side stub has to refuse the same input, or the two sides would
+    // disagree about the module's export surface again.
+    await expect(serverExports(`${APP}/Barrel.tsx`, source, files)).rejects.toThrow(expected);
+  });
+
   it('aliases a non-identifier export name instead of emitting invalid syntax', async () => {
     const source = "'use client';\nconst v = 1;\nexport { v as 'weird name' };\nexport default v;\n";
 

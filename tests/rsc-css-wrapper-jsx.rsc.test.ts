@@ -144,6 +144,20 @@ describe('cssWrapper on a JSX client module (real webpack)', () => {
     expect(t).toContain('Hi');
   });
 
+  // An `export * from` diamond where BOTH targets declare their own `Foo`.
+  // Webpack drops the ambiguous name from the namespace object and only warns
+  // ("conflicting star exports for the name 'Foo'"), so the pre-check wrapper
+  // compiled to `var Foo = __rscWrap(__orig.Foo)` with `__orig.Foo === undefined`
+  // — the same "Element type is invalid" class this file exists to prevent.
+  it('fails the build on an ambiguous `export * from` diamond', () => {
+    expect(() =>
+      compile('rsc-css-ambiguous-star', {
+        ...common,
+        resolveExtra: { extensions: ['.tsx', '.ts', '.js', '.json'] },
+      })
+    ).toThrow(/takes "Foo" \(declared in .*a\.tsx and .*b\.tsx\)/s);
+  });
+
   it('does not wrap the TypeScript type-only export', () => {
     const wrapper = fs
       .readdirSync(client.outputPath)

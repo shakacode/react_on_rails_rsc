@@ -506,6 +506,12 @@ interface ModuleExports {
   path: string;
   /** Runtime export names in source order, de-duplicated. */
   names: string[];
+  /**
+   * Per export name, the modules that are PROVEN to declare its binding
+   * themselves. An empty set means "origin unknown", which is the answer for
+   * anything reached through a named re-export.
+   */
+  declaringModules: Map<string, Set<string>>;
 }
 
 /**
@@ -517,12 +523,21 @@ interface ModuleExports {
  * `export const X` twice.
  *
  * A name that two `export *` targets supply from genuinely different bindings
- * is ambiguous in ECMAScript and is not an export of this module. It is kept
- * anyway: distinguishing "ambiguous" from the common diamond re-export (two
- * barrels re-exporting the *same* binding) would mean resolving every named
- * re-export's source module, and getting that wrong drops a real component —
- * the exact #206 failure mode. An extra client reference for an input that is
- * already broken is the safer error, and it matches what the stock loader did.
+ * is ambiguous in ECMAScript: the linker drops it, so the module does NOT
+ * export it. Advertising it anyway is the #217 failure in another shape — the
+ * client-reference stub and the `cssWrapper` module would both name an export
+ * the bundled module has no binding for, and rendering it fails with "Element
+ * type is invalid". Webpack agrees: it warns
+ * `conflicting star exports for the name 'X'` and leaves `X` off the namespace
+ * object.
+ *
+ * So the ambiguity fails the build, but only when it is PROVABLE: `declaringModules`
+ * records origins solely for names a module declares itself, and two distinct
+ * declaring modules for one name is ambiguous no matter what the rest of the
+ * graph looks like. A named re-export (`export { X } from './y'`) leaves the
+ * origin unknown and never contributes to the proof, so the common diamond
+ * re-export — two barrels forwarding the *same* binding — still enumerates
+ * normally and no real component is ever dropped (the #206 failure mode).
  */
 async function collectModuleExports(
   body: BabelNode[],
@@ -532,6 +547,21 @@ async function collectModuleExports(
 ): Promise<ModuleExports> {
   const names: string[] = [];
   const erasedLocals = collectErasedLocalBindings(body);
+  const declaredHere = collectLocalValueDeclarations(body);
+  /** Names this module exports itself; each one shadows the `export *` name. */
+  const ownNames = new Set<string>();
+  /** Declaring modules per name, merged across this module's `export *` targets. */
+  const starDeclaringModules = new Map<string, Set<string>>();
+
+  /** Record an export this module states by name (anything but `export *`). */
+  const addOwnExport = (node: unknown): void => {
+    const collected: string[] = [];
+    addExportNames(collected, node);
+    for (const name of collected) {
+      names.push(name);
+      ownNames.add(name);
+    }
+  };
 
   for (const node of body) {
     switch (node.type) {
@@ -542,20 +572,30 @@ async function collectModuleExports(
 
         const child = await loadStarExports(specifier, filename, depth, context);
         for (const childName of child.names) {
-          if (childName !== 'default') names.push(childName);
+          if (childName === 'default') continue;
+          names.push(childName);
+          let declaring = starDeclaringModules.get(childName);
+          if (!declaring) {
+            declaring = new Set<string>();
+            starDeclaringModules.set(childName, declaring);
+          }
+          for (const modulePath of child.declaringModules.get(childName) ?? []) {
+            declaring.add(modulePath);
+          }
         }
         continue;
       }
       case 'ExportDefaultDeclaration': {
         if (isTypeOnlyDeclaration(node.declaration as BabelNode | undefined)) continue;
         names.push('default');
+        ownNames.add('default');
         continue;
       }
       case 'TSImportEqualsDeclaration': {
         // `export import A = N.B;` is a runtime export of `A` unless it is
         // `import type`.
         if (node.isExport !== true || node.importKind === 'type') continue;
-        addExportNames(names, node.id);
+        addOwnExport(node.id);
         continue;
       }
       case 'TSExportAssignment': {
@@ -572,10 +612,10 @@ async function collectModuleExports(
         if (declaration && !isTypeOnlyDeclaration(declaration)) {
           if (declaration.type === 'VariableDeclaration') {
             for (const declarator of (declaration.declarations as BabelNode[]) ?? []) {
-              addExportNames(names, declarator.id);
+              addOwnExport(declarator.id);
             }
           } else {
-            addExportNames(names, declaration.id);
+            addOwnExport(declaration.id);
           }
         }
 
@@ -586,7 +626,7 @@ async function collectModuleExports(
           if (specifier.exportKind === 'type') continue;
           const local = (specifier.local as BabelNode | undefined)?.name;
           if (isLocalReExport && typeof local === 'string' && erasedLocals.has(local)) continue;
-          addExportNames(names, specifier.exported);
+          addOwnExport(specifier.exported);
         }
         continue;
       }
@@ -595,7 +635,82 @@ async function collectModuleExports(
     }
   }
 
-  return { path: filename, names: [...new Set(names)] };
+  const declaringModules = new Map<string, Set<string>>();
+  const ambiguous: string[] = [];
+  for (const [name, declaring] of starDeclaringModules) {
+    // An export this module states by name wins over every `export *`, so a
+    // conflict between the star targets is unreachable for that name.
+    if (ownNames.has(name)) continue;
+    if (declaring.size > 1) {
+      ambiguous.push(`"${name}" (declared in ${[...declaring].sort().join(' and ')})`);
+    }
+    declaringModules.set(name, declaring);
+  }
+  if (ambiguous.length > 0) {
+    const where =
+      filename === context.rootFilename
+        ? `the "use client" module ${filename}`
+        : `${filename}, re-exported by the "use client" module ${context.rootFilename},`;
+    throw new Error(
+      `react-on-rails-rsc: ${where} takes ${ambiguous.join(', ')} from more than one ` +
+        '`export * from` target, and each target declares its own binding. ECMAScript drops an ' +
+        'ambiguous star export, so the client reference would advertise a name the bundled ' +
+        'module has no binding for and rendering it would fail with "Element type is invalid". ' +
+        "Re-export the one you meant explicitly (`export { Name } from './target'`) or rename " +
+        'the conflicting export.'
+    );
+  }
+  for (const name of ownNames) {
+    declaringModules.set(name, declaredHere.has(name) ? new Set([filename]) : new Set());
+  }
+
+  return { path: filename, names: [...new Set(names)], declaringModules };
+}
+
+/**
+ * Top-level names this module binds with a declaration of its own — not by an
+ * import, and not by an `export ... from` re-export.
+ *
+ * This is the evidence `collectModuleExports` uses to prove `export * from`
+ * ambiguity. Two different modules that each declare their own binding for one
+ * name are ambiguous in ECMAScript whatever else the graph does, while every
+ * other shape leaves the origin unknown and is treated as no evidence at all.
+ */
+function collectLocalValueDeclarations(body: BabelNode[]): Set<string> {
+  const declared = new Set<string>();
+
+  const add = (node: unknown) => {
+    const collected: string[] = [];
+    addExportNames(collected, node);
+    for (const name of collected) declared.add(name);
+  };
+
+  for (const statement of body) {
+    // Look through `export <decl>` to the declaration itself.
+    const node =
+      statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration'
+        ? ((statement.declaration as BabelNode | undefined) ?? statement)
+        : statement;
+    // `declare const X` is erased, so it binds nothing at runtime.
+    if (node.declare === true) continue;
+
+    switch (node.type) {
+      case 'VariableDeclaration':
+        for (const declarator of (node.declarations as BabelNode[]) ?? []) add(declarator.id);
+        break;
+      case 'FunctionDeclaration':
+      case 'ClassDeclaration':
+      case 'TSEnumDeclaration':
+        add(node.id);
+        break;
+      case 'TSModuleDeclaration':
+        if (!isTypeOnlyNamespace(node)) add(node.id);
+        break;
+      default:
+    }
+  }
+
+  return declared;
 }
 
 /** Resolve, read, and recurse into an `export * from '...'` target. */
@@ -637,7 +752,7 @@ async function loadStarExports(
   // A circular `export *` contributes nothing beyond what the outer visit
   // already collected.
   if (context.inProgress.has(resolved.path)) {
-    return { path: resolved.path, names: [] };
+    return { path: resolved.path, names: [], declaringModules: new Map() };
   }
 
   context.inProgress.add(resolved.path);

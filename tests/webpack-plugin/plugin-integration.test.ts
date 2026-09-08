@@ -361,6 +361,155 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
+  describe('shared async dependency chunk CSS survives cssWrapper (#214)', () => {
+    // Same #188 topology, but with the opt-in `cssWrapper` FOUC fix (#196) on.
+    // `cssWrapper` resolves each 'use client' module to a generated wrapper
+    // (`!!rscCssWrapperLoader!<file>`) that imports the real module as
+    // `<file>?__rsc_orig`, and the manifest records the WRAPPER as the client
+    // reference. The shared-child CSS recovery walks exactly one non-style hop,
+    // so before #214 the wrapper consumed that hop: the walk reached the
+    // original module (recovering its own Button.css) but never reached
+    // `shared.js`, and the extracted shared.chunk.css was emitted but never
+    // hinted — turning the FOUC fix on reintroduced FOUC on the shared child.
+    const sharedJsCssSplit = {
+      splitChunks: {
+        chunks: 'all',
+        minSize: 0,
+        cacheGroups: {
+          default: false,
+          defaultVendors: false,
+          shared: {
+            test: /shared\.(js|css)$/,
+            name: 'shared',
+            minChunks: 2,
+            enforce: true,
+          },
+        },
+      },
+    };
+
+    let result: CompileResult;
+
+    beforeAll(() => {
+      result = run('split-shared-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        cssWrapper: true,
+        optimizationExtra: sharedJsCssSplit,
+      });
+    });
+
+    it('extracts the shared chunk CSS as its own asset (precondition)', () => {
+      expect(result.assets).toContain('shared.chunk.css');
+    });
+
+    it('still records the authored client files as the manifest keys', () => {
+      // The wrapper's webpack resource is the bare client file, so `cssWrapper`
+      // must not leak `?__rsc_orig` or a loader-prefixed request into the keys.
+      const keys = Object.keys(result.manifest.filePathToModuleMetadata).sort();
+      expect(keys).toHaveLength(2);
+      expect(keys.some((k) => k.endsWith('/Button.js'))).toBe(true);
+      expect(keys.some((k) => k.endsWith('/SettingsPage.js'))).toBe(true);
+    });
+
+    it("keeps each client reference's own CSS", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(button.css).toContain('/assets/client-Button-js.chunk.css');
+      expect(settings.css).toContain('/assets/client-SettingsPage-js.chunk.css');
+    });
+
+    it("attaches the shared async chunk's CSS to both references", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      // Non-vacuous precondition: the shared chunk really is in both reference
+      // chunk groups, so a missing `css` entry is a hint bug, not a topology
+      // difference between the wrapper and non-wrapper builds.
+      expect(chunkFiles(button)).toContain('shared.chunk.js');
+      expect(chunkFiles(settings)).toContain('shared.chunk.js');
+      expect(button.css).toContain('/assets/shared.chunk.css');
+      expect(settings.css).toContain('/assets/shared.chunk.css');
+    });
+
+    it('matches the cssWrapper-off manifest CSS exactly', () => {
+      // The wrapper changes which module the manifest records, never which
+      // stylesheets a reference needs. Comparing both builds pins that
+      // invariant instead of only asserting the one previously-missing href.
+      const off = run('split-shared-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: sharedJsCssSplit,
+      });
+      for (const suffix of ['/Button.js', '/SettingsPage.js']) {
+        expect([...(entryEndingWith(result.manifest, suffix).css ?? [])].sort()).toEqual(
+          [...(entryEndingWith(off.manifest, suffix).css ?? [])].sort()
+        );
+      }
+    });
+
+    it('produces no fallback warning', () => {
+      expectNoWarnings(result);
+    });
+  });
+
+  describe('initial shared chunk CSS stays excluded under cssWrapper (#108 canary)', () => {
+    // The #108 guard must survive the #214 re-rooting: with the extra `vendor`
+    // entrypoint the split `shared` chunk becomes initial (its CSS is already
+    // delivered render-blocking by that entry's own <link>), so it must stay out
+    // of every client reference's `css` even though the walk now starts one hop
+    // deeper on the original module.
+    let result: CompileResult;
+
+    beforeAll(() => {
+      result = run('split-shared-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        cssWrapper: true,
+        extraEntries: { vendor: './vendorEntry.js' },
+        optimizationExtra: {
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              shared: {
+                test: /shared\.(js|css)$/,
+                name: 'shared',
+                minChunks: 2,
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+    });
+
+    it('keeps the initial shared chunk in both reference groups (precondition)', () => {
+      expect(result.assets).toContain('shared.css');
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(chunkFiles(button)).toContain('shared.js');
+      expect(chunkFiles(settings)).toContain('shared.js');
+    });
+
+    it("keeps the initial shared chunk's CSS out of both references", () => {
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(button.css).toContain('/assets/client-Button-js.chunk.css');
+      expect(settings.css).toContain('/assets/client-SettingsPage-js.chunk.css');
+      expect(button.css ?? []).not.toContain('/assets/shared.css');
+      expect(settings.css ?? []).not.toContain('/assets/shared.css');
+    });
+
+    it('produces no fallback warning', () => {
+      expectNoWarnings(result);
+    });
+  });
+
   describe('initial shared chunk CSS stays excluded from client references (#108 canary)', () => {
     // A `vendor` entrypoint also imports the shared CSS-bearing module, so the
     // split `shared` chunk is initial (`canBeInitial() === true`) yet still

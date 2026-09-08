@@ -494,6 +494,15 @@ Verified behavior on this branch:
   (a #184 design decision): `ref → Wrapper → Card → Card.css` with `Card` in a
   shared chunk still drops. Same bug class, deeper chain; fixable by the same
   discriminator applied to a deeper walk, at the cost of more graph traversal.
+  **#214 corollary:** the opt-in `cssWrapper` option (#196) inserts a generated
+  wrapper module between the manifest entry and the authored client module, so
+  the wrapper used to spend that single hop and the shared child's CSS dropped
+  exactly when the FOUC fix was on. Both plugins now re-root the walk on the
+  original module (`<file>?__rsc_orig`, matched via `isCssWrapperOriginalResource`
+  in `src/clientReferences.ts`) before counting the hop, so the depth budget is
+  measured from the authored module in both modes. Any future module the plugins
+  interpose ahead of the client reference must do the same, or it silently
+  re-consumes the budget.
 - **Multi-entrypoint granularity.** "Initial" is compilation-wide: a chunk
   initial for entry A is excluded even for a page that only loads entry B.
   The old guard excluded those chunks too (`useCount ≥ 2`), so this is

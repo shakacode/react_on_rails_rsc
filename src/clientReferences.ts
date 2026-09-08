@@ -126,3 +126,41 @@ export function hasUseClientDirective(source: string | Buffer): boolean {
 export function isInitialChunk(chunk: { canBeInitial?: () => boolean }): boolean {
   return typeof chunk.canBeInitial === 'function' ? chunk.canBeInitial() : false;
 }
+
+/**
+ * Query `rscCssWrapperLoader` appends when the generated `cssWrapper` module
+ * imports the real client module (`import * as __orig from '<file>?__rsc_orig'`).
+ * Keep in sync with that loader; the integration tests in
+ * `tests/webpack-plugin/plugin-integration.test.ts` and
+ * `tests/rspack-plugin/plugin.test.ts` fail loudly if the two drift.
+ */
+const CSS_WRAPPER_ORIGINAL_QUERY = '?__rsc_orig';
+
+/**
+ * Whether `depResource` is the original client module that the `cssWrapper`
+ * wrapper module at `wrapperResource` stands in for, shared by the webpack and
+ * rspack RSC plugins.
+ *
+ * With `cssWrapper` on, each `'use client'` module resolves to a generated
+ * wrapper (`!!rscCssWrapperLoader!<file>`) whose own resource is the bare client
+ * file, and the wrapper imports the real module as `<file>?__rsc_orig`. That
+ * self-plus-query edge is unique to the wrapper, so matching it identifies the
+ * wrapper structurally without inspecting loader paths or module identifiers.
+ *
+ * The shared-child CSS recovery (#188) walks exactly one non-style hop from the
+ * recorded client reference. The wrapper contributes no CSS of its own, so
+ * starting there spends that hop reaching the original module and never reaches
+ * the original's CSS-bearing child — the shared child's extracted stylesheet is
+ * emitted but never hinted (#214). Both plugins use this to re-root the walk on
+ * the original module.
+ */
+export function isCssWrapperOriginalResource(
+  wrapperResource: string | undefined,
+  depResource: string | undefined
+): boolean {
+  return (
+    !!wrapperResource &&
+    !!depResource &&
+    depResource === `${wrapperResource}${CSS_WRAPPER_ORIGINAL_QUERY}`
+  );
+}

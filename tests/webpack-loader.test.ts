@@ -835,6 +835,60 @@ describe('follow-up polish from the #216 review pass (issue #218)', () => {
     ).resolves.toEqual(['N']);
   });
 
+  // `TSEnumDeclaration` and Flow's `EnumDeclaration` are deliberately NOT in
+  // `ERASED_NAMED_DECLARATIONS`: an enum emits a runtime object, so an exported
+  // enum is a genuine client reference. Adding them "for consistency" with the
+  // other TypeScript type-ish declarations would silently drop the export --
+  // the #206 failure mode this transform exists to prevent. These three guards
+  // are what goes red if that ever happens.
+  it('keeps a TypeScript enum, which emits a runtime object', async () => {
+    const source =
+      "'use client';\n" +
+      'export enum Color { Red, Blue }\n' +
+      'enum Size { Small }\n' +
+      'export { Size };\n';
+
+    await expect(collectClientExportNames(source, moduleOptions('Enums.ts'))).resolves.toEqual([
+      'Color',
+      'Size',
+    ]);
+    await expect(transformClientModule(source, moduleOptions('Enums.ts'))).resolves.toContain(
+      'export const Color = registerClientReference'
+    );
+  });
+
+  it('keeps a Flow enum, which emits a runtime object', async () => {
+    // Flow enums parse as `EnumDeclaration` under the plain `flow` plugin on
+    // the `.js` rung, so no `flowEnums` plugin is needed at the @babel/parser
+    // version this package depends on. Plain `jsx` rejects the file, so the
+    // Flow rung is the one that claims it.
+    const source =
+      "'use client';\n" +
+      'export enum Status { Active, Done }\n' +
+      'enum Level { Low }\n' +
+      'export { Level };\n';
+
+    await expect(collectClientExportNames(source, moduleOptions('Enums.js'))).resolves.toEqual([
+      'Status',
+      'Level',
+    ]);
+  });
+
+  it('erases an ambient `declare enum` but keeps a real enum beside it', async () => {
+    // The ambient form is caught by the `declare === true` check rather than by
+    // the erased-declaration set, which is exactly the boundary the comment on
+    // `ERASED_NAMED_DECLARATIONS` describes.
+    const source =
+      "'use client';\n" +
+      'declare enum Ambient { A }\n' +
+      'enum Real { B }\n' +
+      'export { Ambient, Real };\n';
+
+    await expect(
+      collectClientExportNames(source, moduleOptions('AmbientEnum.ts'))
+    ).resolves.toEqual(['Real']);
+  });
+
   it("rejects a malformed one-element `parserPlugins` tuple with the loader's own message", async () => {
     const source = "'use client';\nexport const Button = () => null;\n";
     const context = createLoaderContext('/app/Pipeline.js', {

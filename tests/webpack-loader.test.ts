@@ -875,19 +875,17 @@ describe('follow-up polish from the #216 review pass (issue #218)', () => {
   });
 
   it('keeps a Flow enum, which emits a runtime object', async () => {
-    // Flow enums parse as `EnumDeclaration` under the plain `flow` plugin on
-    // the `.js` rung, so no `flowEnums` plugin is needed at the @babel/parser
-    // version this package depends on. Plain `jsx` rejects the file, so the
-    // Flow rung is the one that claims it.
-    const source =
-      "'use client';\n" +
-      'export enum Status { Active, Done }\n' +
-      'enum Level { Low }\n' +
-      'export { Level };\n';
+    // Flow enums parse as `EnumDeclaration` under the plain `flow` plugin, so no
+    // `flowEnums` plugin is needed at the @babel/parser version this package
+    // depends on. Keep this source free of `export { <enum> }`: Babel's Flow
+    // scope handler never registers an enum binding, so a specifier export fails
+    // the Flow rung with "Export 'X' is not defined" and the file falls through
+    // to the TypeScript rung -- where the node is a `TSEnumDeclaration` and this
+    // test silently stops guarding Flow's `EnumDeclaration` at all.
+    const source = "'use client';\n" + 'export enum Status { Active, Done }\n';
 
     await expect(collectClientExportNames(source, moduleOptions('Enums.js'))).resolves.toEqual([
       'Status',
-      'Level',
     ]);
   });
 

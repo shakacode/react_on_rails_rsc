@@ -34,6 +34,7 @@
  *     maxChunks?: number,           // applies webpack LimitChunkCountPlugin
  *     extraEntries?: object,        // additional entrypoints: name -> request
  *     withCss?: boolean,            // wires css-loader + MiniCssExtractPlugin
+ *     withTsx?: boolean,            // wires helpers/tsxLoader.js for JSX/TSX fixtures
  *     exposeClientRuntime?: boolean, // append helpers/exposeClientRuntime.js
  *                                    // to `main` so `output.library` exports
  *                                    // the bundled Flight node client
@@ -89,6 +90,7 @@ const {
   maxChunks,
   extraEntries,
   withCss,
+  withTsx,
   exposeClientRuntime,
 } = args;
 
@@ -126,6 +128,23 @@ if (withCss) {
   );
 }
 
+const moduleRules = [];
+if (withCss) {
+  moduleRules.push({ test: /\.css$/, use: [MiniCssExtractPlugin.loader, 'css-loader'] });
+}
+if (withTsx) {
+  // `!!`-prefixed requests (the RSC CSS wrapper) bypass this rule by design.
+  //
+  // The pattern must also match `.ts`: webpack >= 5.102 auto-enables
+  // `experiments.typescript` unless a rule claims `/file.ts`, and that built-in
+  // strip-types pass rejects every `.tsx` resource — including the generated
+  // wrapper, whose resource is the client `.tsx` file itself.
+  moduleRules.push({
+    test: /\.tsx?$/,
+    use: [require.resolve('./tsxLoader.js')],
+  });
+}
+
 // The runtime entry must come first in `main` so the plugin's block
 // injection happens in the default entrypoint. With `output.library`,
 // webpack exports the LAST entry module, so the optional runtime re-export
@@ -161,13 +180,7 @@ const config = {
     minimize: false,
     ...(revivedOptimizationExtra || {}),
   },
-  ...(withCss
-    ? {
-        module: {
-          rules: [{ test: /\.css$/, use: [MiniCssExtractPlugin.loader, 'css-loader'] }],
-        },
-      }
-    : {}),
+  ...(moduleRules.length > 0 ? { module: { rules: moduleRules } } : {}),
   devtool: false,
   plugins,
 };

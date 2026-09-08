@@ -153,7 +153,13 @@ const RESERVED_WORDS = new Set([
 
 const IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
-const isPlainIdentifier = (name: string): boolean =>
+/**
+ * Whether `name` can be used directly as a binding identifier (so
+ * `export const <name> = ...` / `export var <name> = ...` is legal). Shared with
+ * `src/webpack/rscCssWrapperLoader.ts` so the generated CSS wrapper aliases the
+ * exact same names the server stub aliases.
+ */
+export const isPlainIdentifier = (name: string): boolean =>
   IDENTIFIER_PATTERN.test(name) && !RESERVED_WORDS.has(name);
 
 /**

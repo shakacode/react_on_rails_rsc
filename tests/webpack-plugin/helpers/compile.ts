@@ -38,6 +38,8 @@ export interface CompileOptions {
   extraEntries?: Record<string, string>;
   /** Wires css-loader + MiniCssExtractPlugin so fixtures can import CSS. */
   withCss?: boolean;
+  /** Wires helpers/tsxLoader.js so fixtures can be written in real JSX/TSX. */
+  withTsx?: boolean;
   /** Enable the CSS FOUC wrapper (issue #4598). */
   cssWrapper?: boolean;
   /**
@@ -146,6 +148,7 @@ const compileInto = (
     maxChunks: options.maxChunks,
     extraEntries: options.extraEntries,
     withCss: options.withCss,
+    withTsx: options.withTsx,
     cssWrapper: options.cssWrapper,
     exposeClientRuntime: options.exposeClientRuntime,
   };

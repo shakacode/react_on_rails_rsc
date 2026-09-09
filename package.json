@@ -143,7 +143,6 @@
   "dependencies": {
     "@babel/parser": "^7.28.5",
     "acorn-loose": "^8.3.0",
-    "es-module-lexer": "^1.6.0",
     "neo-async": "^2.6.1",
     "react-server-dom-webpack": "~19.2.8",
     "webpack-sources": "^3.2.0"

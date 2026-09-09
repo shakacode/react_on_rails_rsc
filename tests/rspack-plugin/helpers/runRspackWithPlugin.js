@@ -17,6 +17,7 @@
  *     publicPath?: string,
  *     crossOriginLoading?: false|'anonymous'|'use-credentials',
  *     withCss?: boolean,
+ *     withTsx?: boolean,            // wires builtin:swc-loader for JSX/TSX fixtures
  *     maxChunks?: number,
  *     defines?: object,             // values passed to Rspack's DefinePlugin
  *     extraEntries?: object,        // additional entrypoints: name -> request
@@ -54,6 +55,7 @@ const {
   publicPath,
   crossOriginLoading,
   withCss,
+  withTsx,
   cssWrapper,
   chunkName,
   maxChunks,
@@ -114,6 +116,34 @@ if (typeof maxChunks === 'number') {
   plugins.push(new rspack.optimize.LimitChunkCountPlugin({ maxChunks }));
 }
 
+const moduleRules = [];
+if (withCss) {
+  moduleRules.push({
+    test: /\.css$/,
+    use: [rspack.CssExtractRspackPlugin.loader, 'css-loader'],
+  });
+}
+if (withTsx) {
+  // Rspack ships an SWC loader, so JSX/TSX fixtures need no new devDependency.
+  // `!!`-prefixed requests (the RSC CSS wrapper) bypass this rule by design —
+  // the wrapper loader must keep seeing raw source.
+  moduleRules.push({
+    test: /\.tsx?$/,
+    use: [
+      {
+        loader: 'builtin:swc-loader',
+        options: {
+          jsc: {
+            parser: { syntax: 'typescript', tsx: true },
+            transform: { react: { runtime: 'automatic' } },
+            target: 'es2020',
+          },
+        },
+      },
+    ],
+  });
+}
+
 const config = {
   mode: typeof maxChunks === 'number' ? 'none' : 'development',
   target: isServer ? 'node' : 'web',
@@ -140,13 +170,7 @@ const config = {
     minimize: false,
   },
   devtool: false,
-  ...(withCss
-    ? {
-        module: {
-          rules: [{ test: /\.css$/, use: [rspack.CssExtractRspackPlugin.loader, 'css-loader'] }],
-        },
-      }
-    : {}),
+  ...(moduleRules.length > 0 ? { module: { rules: moduleRules } } : {}),
   plugins,
   ...remainingConfigExtra,
 };

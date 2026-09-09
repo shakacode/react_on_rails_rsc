@@ -472,12 +472,72 @@ describe('repeated star re-exports', () => {
     const names = await collectWithModules(
       "'use client';\nexport * from './a';\nexport * from './b';\n",
       {
-        '/app/a.js': 'export const Shared = 1;\nexport const OnlyA = 2;\n',
-        '/app/b.js': 'export const Shared = 3;\nexport const OnlyB = 4;\n',
+        '/app/a.js': "export { Shared } from './shared';\nexport const OnlyA = 2;\n",
+        '/app/b.js': "export { Shared } from './shared';\nexport const OnlyB = 4;\n",
+        '/app/shared.js': 'export const Shared = 1;\n',
       }
     );
 
     expect(names).toEqual(['Shared', 'OnlyA', 'OnlyB']);
+  });
+
+  it('fails the build when two `export *` targets each declare their own binding', async () => {
+    // ECMAScript drops an ambiguous star export, and so does webpack (it warns
+    // `conflicting star exports for the name 'Shared'` and leaves it off the
+    // namespace object). Enumerating it anyway made the client-reference stub
+    // and the cssWrapper module advertise a name with no binding behind it,
+    // which renders as "Element type is invalid".
+    await expect(
+      collectWithModules("'use client';\nexport * from './a';\nexport * from './b';\n", {
+        '/app/a.js': 'export const Shared = 1;\nexport const OnlyA = 2;\n',
+        '/app/b.js': 'export const Shared = 3;\nexport const OnlyB = 4;\n',
+      })
+    ).rejects.toThrow(
+      'the "use client" module /app/Barrel.js takes "Shared" (declared in /app/a.js and ' +
+        '/app/b.js) from more than one `export * from` target'
+    );
+  });
+
+  it('reports the intermediate barrel that owns the ambiguity, not just the root', async () => {
+    await expect(
+      collectWithModules("'use client';\nexport * from './mid';\n", {
+        '/app/mid.js': "export * from './a';\nexport * from './b';\n",
+        '/app/a.js': 'export const Shared = 1;\n',
+        '/app/b.js': 'export const Shared = 3;\n',
+      })
+    ).rejects.toThrow(
+      '/app/mid.js, re-exported by the "use client" module /app/Barrel.js, takes "Shared"'
+    );
+  });
+
+  it('keeps an ambiguous star name that a named re-export shadows', async () => {
+    // `export { Shared } from './a'` wins over both `export *`, so the
+    // ambiguity between them is unreachable and must not fail the build.
+    const names = await collectWithModules(
+      "'use client';\nexport * from './a';\nexport * from './b';\nexport { Shared } from './a';\n",
+      {
+        '/app/a.js': 'export const Shared = 1;\n',
+        '/app/b.js': 'export const Shared = 3;\n',
+      }
+    );
+
+    expect(names).toEqual(['Shared']);
+  });
+
+  it('keeps a name two barrels re-export from the same module', async () => {
+    // Both sides forward the SAME binding through a named re-export, so the
+    // origin is unknown and nothing is provably ambiguous. Getting this wrong
+    // would drop a real component — the #206 failure mode.
+    const names = await collectWithModules(
+      "'use client';\nexport * from './a';\nexport * from './b';\n",
+      {
+        '/app/a.js': "import { Shared } from './shared';\nexport { Shared };\n",
+        '/app/b.js': "export { Shared } from './shared';\n",
+        '/app/shared.js': 'export const Shared = 1;\n',
+      }
+    );
+
+    expect(names).toEqual(['Shared']);
   });
 
   it('keeps a diamond re-export of the same underlying binding', async () => {

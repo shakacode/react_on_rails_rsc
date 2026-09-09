@@ -25,6 +25,8 @@ export interface CompileOptions {
   crossOriginLoading?: false | 'anonymous' | 'use-credentials';
   clientReferences?: unknown;
   withCss?: boolean;
+  /** Wires `builtin:swc-loader` so fixtures can be written in real JSX/TSX. */
+  withTsx?: boolean;
   cssWrapper?: boolean;
   chunkName?: string;
   /** Applies rspack.optimize.LimitChunkCountPlugin({ maxChunks }). */
@@ -126,6 +128,7 @@ const compileInto = (
     publicPath: options.publicPath,
     crossOriginLoading: options.crossOriginLoading,
     withCss: options.withCss,
+    withTsx: options.withTsx,
     cssWrapper: options.cssWrapper,
     chunkName: options.chunkName,
     maxChunks: options.maxChunks,

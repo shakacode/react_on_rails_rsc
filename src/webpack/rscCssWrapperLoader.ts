@@ -25,19 +25,74 @@
  *
  * The wrapper is self-contained (no runtime-package import) so it resolves in any
  * host build; it depends only on `react`, which is always present in these bundles.
+ *
+ * The wrapper REPLACES the client module's export surface — the client manifest
+ * points at the wrapper, not at the original file — so its export list has to
+ * match the one `src/WebpackLoader.ts` builds the server-side client-reference
+ * stub from. Both sides therefore enumerate exports with the same
+ * `collectClientExportNames` pass (JSX/TypeScript/Flow aware, type-only exports
+ * excluded, `export * from` resolved recursively through the bundler's own
+ * resolver) and fail the build rather than guessing. This loader is applied with
+ * a `!!` prefix, so it always sees RAW source: an enumerator that cannot parse
+ * JSX would drop every named export here while the server stub still advertised
+ * them (issues #217, #4598).
  */
 import type { LoaderContext } from 'webpack';
+import type { ParserPlugin } from '@babel/parser';
 import { pathToFileURL } from 'node:url';
-import { readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { collectClientExportNames, isPlainIdentifier } from '../clientModuleTransform';
+import { createExportAllResolver, loaderParserPlugins } from '../loaderExportScan';
 
 interface Options {
   /** Stable key for this client module (matches the manifest key). Defaults to the file URL. */
   key?: string;
+  /**
+   * Same meaning as `react-on-rails-rsc/WebpackLoader`'s option: extra
+   * `@babel/parser` plugins for proposal syntax. Neither plugin currently
+   * passes options to this loader (it is requested inline, with no query), so
+   * this exists for parity and for direct loader use.
+   */
+  parserPlugins?: ParserPlugin[];
 }
 
-// Bare `export * from 'x'` (NOT `export * as N from 'x'`, which lexes as a named export).
-const STAR_REEXPORT_RE = /export\s*\*\s*from\s*(['"])([^'"]+)\1/g;
+const LOADER_NAME = 'react-on-rails-rsc/rscCssWrapperLoader';
+
+/**
+ * Locals the generated wrapper declares at module scope. A client module that
+ * exports one of these names would collide with the declaration, so the whole
+ * set moves behind a longer prefix when that happens.
+ */
+const GENERATED_LOCALS = [
+  'React',
+  '__orig',
+  '__k',
+  '__rscHrefs',
+  '__FR',
+  '__MEMO',
+  '__rscIsComponent',
+  '__rscWrap',
+] as const;
+
+/** Base name for the `export {local as "weird name"}` alias bindings. */
+const ALIAS_BASE = '__rscCssAlias';
+
+/**
+ * Pick a scope prefix under which none of the generated module-scope locals
+ * collides with an export the wrapper declares with `export var <name>`.
+ * Almost always the empty string, which keeps the emitted wrapper byte-identical
+ * to the pre-existing output.
+ */
+function freeScopePrefix(declaredNames: string[]): string {
+  let scope = '';
+  const taken = new Set(declaredNames);
+  while (
+    GENERATED_LOCALS.some((local) => taken.has(`${scope}${local}`)) ||
+    declaredNames.some((name) => name.startsWith(`${scope}${ALIAS_BASE}`))
+  ) {
+    scope = `_${scope}`;
+  }
+  return scope;
+}
 
 export default function rscCssWrapperLoader(this: LoaderContext<Options>, source: string): void {
   const callback = this.async();
@@ -46,46 +101,32 @@ export default function rscCssWrapperLoader(this: LoaderContext<Options>, source
   const options = (typeof this.getOptions === 'function' ? this.getOptions() : {}) as Options;
   const key = options.key || pathToFileURL(resourcePath).href;
 
-  const resolve = (request: string): Promise<string> =>
-    new Promise((res, rej) =>
-      loaderContext.resolve(dirname(resourcePath), request, (err, result) =>
-        err || !result ? rej(err || new Error(`cannot resolve ${request}`)) : res(result),
-      ),
-    );
-
-  // es-module-lexer is ESM-only; load it dynamically from this CommonJS loader.
-  import('es-module-lexer')
-    .then(async ({ init, parse }) => {
-      await init;
-      const exportNames: string[] = [];
-      try {
-        const [, exports] = parse(source, resourcePath);
-        for (const e of exports) {
-          if (e.n) exportNames.push(e.n);
-        }
-        // Resolve bare `export * from` sources one level and collect their named
-        // exports (all available on this module's namespace via the re-export), so
-        // re-exported components are wrapped too rather than leaking unwrapped (FOUC).
-        const starSources = [...source.matchAll(STAR_REEXPORT_RE)].map((m) => m[2]!);
-        for (const starSource of starSources) {
-          try {
-            const resolved = await resolve(starSource);
-            loaderContext.addDependency(resolved);
-            const [, starExports] = parse(readFileSync(resolved, 'utf8'), resolved);
-            for (const e of starExports) {
-              // `export *` does not re-export the default.
-              if (e.n && e.n !== 'default' && !exportNames.includes(e.n)) {
-                exportNames.push(e.n);
-              }
-            }
-          } catch {
-            // If a star source can't be resolved/parsed, skip it (best effort).
-          }
-        }
-      } catch {
-        // If parsing fails, fall back to wrapping default only.
-        exportNames.length = 0;
-        exportNames.push('default');
+  // Everything runs inside the promise chain so a synchronous throw (an invalid
+  // `parserPlugins` option, a parse failure) reaches the loader callback rather
+  // than escaping past the already-acquired async callback.
+  Promise.resolve()
+    .then(() =>
+      collectClientExportNames(source, {
+        filename: resourcePath,
+        url: key,
+        // Same resolver the server-side stub uses, so an `export * from` chain
+        // enumerates to the same names on both sides (recursively, with cycle
+        // and duplicate handling) instead of one best-effort level.
+        resolveExportAll: createExportAllResolver(loaderContext as LoaderContext<unknown>),
+        parserPlugins: loaderParserPlugins(loaderContext as LoaderContext<unknown>, LOADER_NAME),
+      })
+    )
+    .then((exportNames) => {
+      if (exportNames.length === 0) {
+        // `transformClientModule` throws for this input too. Emitting
+        // `export default __rscWrap(__orig['default'])` here instead would put a
+        // module whose only export is `undefined` behind the manifest entry.
+        throw new Error(
+          `${LOADER_NAME}: the "use client" module ${resourcePath} has no runtime exports, so ` +
+            'the generated CSS wrapper would export nothing. Export at least one value (a ' +
+            'component, hook, or function), or remove the "use client" directive. TypeScript ' +
+            '`export type` / `export interface` declarations are erased and do not count.'
+        );
       }
 
       // Import the original with a distinct query so it is a different webpack
@@ -97,33 +138,63 @@ export default function rscCssWrapperLoader(this: LoaderContext<Options>, source
       const named = exportNames.filter((n) => n !== 'default');
       const hasDefault = exportNames.includes('default');
 
+      const scope = freeScopePrefix(named.filter(isPlainIdentifier));
+      const local = (name: (typeof GENERATED_LOCALS)[number]) => `${scope}${name}`;
+      const React = local('React');
+      const orig = local('__orig');
+      const k = local('__k');
+      const hrefs = local('__rscHrefs');
+      const forwardRefTag = local('__FR');
+      const memoTag = local('__MEMO');
+      const isComponent = local('__rscIsComponent');
+      const wrap = local('__rscWrap');
+
       const lines: string[] = [
-        `import * as React from 'react';`,
-        `import * as __orig from ${origRequest};`,
-        `var __k = ${keyLit};`,
-        `function __rscHrefs(){ var m = globalThis['__RSC_CSS_HREFS__']; var h = m && m[__k]; return Array.isArray(h) ? h : []; }`,
-        `var __FR = Symbol.for('react.forward_ref'), __MEMO = Symbol.for('react.memo');`,
-        `function __rscIsComponent(v){ return typeof v === 'function' || (v != null && typeof v === 'object' && (v.$$typeof === __FR || v.$$typeof === __MEMO)); }`,
-        `function __rscWrap(v){`,
-        `  if (!__rscIsComponent(v)) return v;`,
-        `  var W = React.forwardRef(function(props, ref){`,
-        `    var links = __rscHrefs().map(function(href){ return React.createElement('link', { key: href, rel: 'stylesheet', href: href, precedence: 'rsc-css' }); });`,
-        `    var el = React.createElement(v, ref == null ? props : Object.assign({}, props, { ref: ref }));`,
-        `    return React.createElement(React.Fragment, null, links, el);`,
+        `import * as ${React} from 'react';`,
+        `import * as ${orig} from ${origRequest};`,
+        `var ${k} = ${keyLit};`,
+        `function ${hrefs}(){ var m = globalThis['__RSC_CSS_HREFS__']; var h = m && m[${k}]; return Array.isArray(h) ? h : []; }`,
+        `var ${forwardRefTag} = Symbol.for('react.forward_ref'), ${memoTag} = Symbol.for('react.memo');`,
+        `function ${isComponent}(v){ return typeof v === 'function' || (v != null && typeof v === 'object' && (v.$$typeof === ${forwardRefTag} || v.$$typeof === ${memoTag})); }`,
+        `function ${wrap}(v){`,
+        `  if (!${isComponent}(v)) return v;`,
+        `  var W = ${React}.forwardRef(function(props, ref){`,
+        `    var links = ${hrefs}().map(function(href){ return ${React}.createElement('link', { key: href, rel: 'stylesheet', href: href, precedence: 'rsc-css' }); });`,
+        `    var el = ${React}.createElement(v, ref == null ? props : Object.assign({}, props, { ref: ref }));`,
+        `    return ${React}.createElement(${React}.Fragment, null, links, el);`,
         `  });`,
         `  W.displayName = 'withRscCss(' + ((v.displayName || v.name) || 'Component') + ')';`,
         `  return W;`,
         `}`,
       ];
 
+      let aliasIndex = 0;
       for (const n of named) {
-        lines.push(`export var ${n} = __rscWrap(__orig[${JSON.stringify(n)}]);`);
+        const value = `${wrap}(${orig}[${JSON.stringify(n)}])`;
+        if (isPlainIdentifier(n)) {
+          lines.push(`export var ${n} = ${value};`);
+        } else {
+          // Reserved words and ES2022 arbitrary module namespace names
+          // (`export {v as "weird name"}`) cannot be declared with `export var`;
+          // bind locally and re-export under an alias, exactly as the server
+          // stub does.
+          const alias = `${scope}${ALIAS_BASE}${aliasIndex}`;
+          aliasIndex += 1;
+          lines.push(`var ${alias} = ${value};`);
+          lines.push(`export {${alias} as ${JSON.stringify(n)}};`);
+        }
       }
       if (hasDefault) {
-        lines.push(`export default __rscWrap(__orig['default']);`);
+        lines.push(`export default ${wrap}(${orig}['default']);`);
       }
 
-      callback(null, lines.join('\n'));
+      return lines.join('\n');
     })
-    .catch((err: unknown) => callback(err as Error));
+    // Two-argument `then`, not `.catch`: webpack runs the rest of the build
+    // synchronously inside `callback`, so a `.catch` here would swallow that
+    // work's failures and call the callback a second time.
+    .then(
+      (wrapper) => callback(null, wrapper),
+      (error: unknown) => callback(error as Error)
+    );
 }

@@ -610,7 +610,8 @@ async function collectModuleExports(
         // `export import A = N.B;` is a runtime export of `A` unless it is
         // `import type`.
         if (node.isExport !== true || node.importKind === 'type') continue;
-        addOwnExport(node.id);
+        const local = (node.id as BabelNode | undefined)?.name;
+        addOwnExport(node.id, typeof local === 'string' && declaredHere.has(local));
         continue;
       }
       case 'TSExportAssignment': {
@@ -731,6 +732,18 @@ function collectLocalValueDeclarations(body: BabelNode[]): Set<string> {
       case 'TSModuleDeclaration':
         if (!isTypeOnlyNamespace(node)) add(node.id);
         break;
+      case 'TSImportEqualsDeclaration': {
+        // Internal aliases emit their own variable even if the namespace is
+        // imported. External require aliases depend on the TS module mode.
+        const reference = node.moduleReference as BabelNode | undefined;
+        if (
+          node.importKind !== 'type' &&
+          (reference?.type === 'TSQualifiedName' || reference?.type === 'Identifier')
+        ) {
+          add(node.id);
+        }
+        break;
+      }
       default:
     }
   }

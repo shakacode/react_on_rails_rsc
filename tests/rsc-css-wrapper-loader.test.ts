@@ -280,6 +280,28 @@ describe('rscCssWrapperLoader export enumeration', () => {
         fails: true,
       },
       {
+        label: 'TypeScript qualified import aliases create independent bindings',
+        a: 'namespace N { export const Value = 1; } export import Shared = N.Value;',
+        b: 'namespace N { export const Value = 2; } export import Shared = N.Value;',
+        fails: true,
+      },
+      {
+        label: 'TypeScript qualified aliases renamed through export specifiers',
+        a:
+          'namespace N { export const Value = 1; } import Local = N.Value; ' +
+          'export { Local as Shared };',
+        b:
+          'namespace N { export const Value = 2; } import Local = N.Value; ' +
+          'export { Local as Shared };',
+        fails: true,
+      },
+      {
+        label: 'external TypeScript require aliases keep their origin unknown',
+        a: "export import Shared = require('./shared');",
+        b: "export import Shared = require('./shared');",
+        fails: false,
+      },
+      {
         label: 'imported aliases keep their origin unknown',
         a: "import { Shared as Impl } from './shared'; export { Impl as Shared };",
         b: "import { Shared as Impl } from './shared'; export { Impl as Shared };",

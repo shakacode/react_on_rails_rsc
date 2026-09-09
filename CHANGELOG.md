@@ -2,7 +2,7 @@
 
 All notable changes to this package will be documented in this file.
 
-## [Unreleased]
+## [19.3.0-rc.2] - 2026-09-08
 
 ### Changed
 - Dropped the `es-module-lexer` runtime dependency. It was only used by the `cssWrapper` export scan, which now shares the client-reference transform's parser. ([#223])

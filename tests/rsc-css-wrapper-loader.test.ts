@@ -324,6 +324,57 @@ describe('rscCssWrapperLoader export enumeration', () => {
     });
   });
 
+  it.each([
+    'export const Shared = 3;',
+    "export { Shared } from './a';",
+    'const Local = 3; export { Local as Shared };',
+  ])('allows a parent to shadow an intermediate ambiguity: %s', async (ownExport) => {
+    const files = {
+      [`${APP}/a.js`]: 'export const Shared = 1; export const OnlyA = 1;',
+      [`${APP}/b.js`]: 'export const Shared = 2;',
+      [`${APP}/mid.js`]: "export * from './a'; export * from './b';",
+    };
+    const filename = `${APP}/Barrel.js`;
+    for (const body of [
+      "export * from './mid'; " + ownExport,
+      ownExport + " export * from './mid';",
+    ]) {
+      const source = "'use client'; " + body;
+      const code = await runWrapperLoader(filename, source, { files });
+      expect(wrapperExports(code).sort()).toEqual(['OnlyA', 'Shared']);
+      expect((await serverExports(filename, source, files)).sort()).toEqual(['OnlyA', 'Shared']);
+    }
+  });
+
+  it.each([
+    {
+      label: 'another unshadowed ambiguous name',
+      source: "'use client'; export * from './mid'; export const Shared = 3;",
+      extra: 'export const Other = 1;',
+      name: 'Other',
+    },
+    {
+      label: 'a memoized barrel reached through an unshadowed path',
+      source: "'use client'; export * from './left'; export * from './right';",
+      extra: '',
+      name: 'Shared',
+    },
+  ])('still rejects $label', async ({ source, extra, name }) => {
+    const files = {
+      [`${APP}/a.js`]: 'export const Shared = 1; ' + extra,
+      [`${APP}/b.js`]: 'export const Shared = 2; ' + extra,
+      [`${APP}/mid.js`]: "export * from './a'; export * from './b';",
+      [`${APP}/left.js`]: "export * from './mid'; export const Shared = 3;",
+      [`${APP}/right.js`]: "export * from './mid';",
+    };
+    const filename = `${APP}/Barrel.js`;
+    const expected =
+      '/app/mid.js, re-exported by the "use client" module /app/Barrel.js, ' +
+      `takes "${name}" (declared in /app/a.js and /app/b.js)`;
+    await expect(runWrapperLoader(filename, source, { files })).rejects.toThrow(expected);
+    await expect(serverExports(filename, source, files)).rejects.toThrow(expected);
+  });
+
   it('aliases a non-identifier export name instead of emitting invalid syntax', async () => {
     const source = "'use client';\nconst v = 1;\nexport { v as 'weird name' };\nexport default v;\n";
 

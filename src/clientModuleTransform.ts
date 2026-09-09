@@ -519,6 +519,8 @@ interface ModuleExports {
    * anything reached through a named re-export.
    */
   declaringModules: Map<string, Set<string>>;
+  /** Per-name diagnostics, deferred until parent explicit exports can shadow them. */
+  ambiguities: Map<string, string>;
 }
 
 /**
@@ -561,6 +563,7 @@ async function collectModuleExports(
   const ownDeclaredNames = new Set<string>();
   /** Declaring modules per name, merged across this module's `export *` targets. */
   const starDeclaringModules = new Map<string, Set<string>>();
+  const ambiguities = new Map<string, string>();
 
   /** Record an export this module states by name (anything but `export *`). */
   const addOwnExport = (node: unknown, declaredLocally = false): void => {
@@ -584,6 +587,8 @@ async function collectModuleExports(
         for (const childName of child.names) {
           if (childName === 'default') continue;
           names.push(childName);
+          const ambiguity = child.ambiguities.get(childName);
+          if (ambiguity) ambiguities.set(childName, ambiguity);
           let declaring = starDeclaringModules.get(childName);
           if (!declaring) {
             declaring = new Set<string>();
@@ -651,35 +656,41 @@ async function collectModuleExports(
   }
 
   const declaringModules = new Map<string, Set<string>>();
-  const ambiguous: string[] = [];
   for (const [name, declaring] of starDeclaringModules) {
-    // An export this module states by name wins over every `export *`, so a
-    // conflict between the star targets is unreachable for that name.
-    if (ownNames.has(name)) continue;
-    if (declaring.size > 1) {
-      ambiguous.push(`"${name}" (declared in ${[...declaring].sort().join(' and ')})`);
+    // An explicit export wins here and in every parent, even when the
+    // conflicting star exports belong to an intermediate barrel.
+    if (ownNames.has(name)) {
+      ambiguities.delete(name);
+      continue;
+    }
+    if (declaring.size > 1 && !ambiguities.has(name)) {
+      const where =
+        filename === context.rootFilename
+          ? `the "use client" module ${filename}`
+          : `${filename}, re-exported by the "use client" module ${context.rootFilename},`;
+      ambiguities.set(
+        name,
+        `react-on-rails-rsc: ${where} takes "${name}" ` +
+          `(declared in ${[...declaring].sort().join(' and ')}) from more than one ` +
+          '`export * from` target, and each target declares its own binding. ECMAScript drops an ' +
+          'ambiguous star export, so the client reference would advertise a name the bundled ' +
+          'module has no binding for and rendering it would fail with "Element type is invalid". ' +
+          "Re-export the one you meant explicitly (`export { Name } from './target'`) or rename " +
+          'the conflicting export.'
+      );
     }
     declaringModules.set(name, declaring);
   }
-  if (ambiguous.length > 0) {
-    const where =
-      filename === context.rootFilename
-        ? `the "use client" module ${filename}`
-        : `${filename}, re-exported by the "use client" module ${context.rootFilename},`;
-    throw new Error(
-      `react-on-rails-rsc: ${where} takes ${ambiguous.join(', ')} from more than one ` +
-        '`export * from` target, and each target declares its own binding. ECMAScript drops an ' +
-        'ambiguous star export, so the client reference would advertise a name the bundled ' +
-        'module has no binding for and rendering it would fail with "Element type is invalid". ' +
-        "Re-export the one you meant explicitly (`export { Name } from './target'`) or rename " +
-        'the conflicting export.'
-    );
+  // Memoized children retain their own ambiguities: a different parent may
+  // expose a name that this parent shadows.
+  if (depth === 0 && ambiguities.size > 0) {
+    throw new Error([...ambiguities.values()].join('\n'));
   }
   for (const name of ownNames) {
     declaringModules.set(name, ownDeclaredNames.has(name) ? new Set([filename]) : new Set());
   }
 
-  return { path: filename, names: [...new Set(names)], declaringModules };
+  return { path: filename, names: [...new Set(names)], declaringModules, ambiguities };
 }
 
 /**
@@ -766,7 +777,7 @@ async function loadStarExports(
   // A circular `export *` contributes nothing beyond what the outer visit
   // already collected.
   if (context.inProgress.has(resolved.path)) {
-    return { path: resolved.path, names: [], declaringModules: new Map() };
+    return { path: resolved.path, names: [], declaringModules: new Map(), ambiguities: new Map() };
   }
 
   context.inProgress.add(resolved.path);

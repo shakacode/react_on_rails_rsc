@@ -237,6 +237,93 @@ describe('rscCssWrapperLoader export enumeration', () => {
     await expect(serverExports(`${APP}/Barrel.tsx`, source, files)).rejects.toThrow(expected);
   });
 
+  describe('star-export ambiguity matrix', () => {
+    const root = "'use client';\nexport * from './a';\nexport * from './b';\n";
+    const cases = [
+      {
+        label: 'A: independent declarations',
+        a: 'export const Shared = 1;',
+        b: 'export const Shared = 2;',
+        fails: true,
+      },
+      {
+        label: 'B: shared origin through star re-exports',
+        a: "export * from './shared';",
+        b: "export * from './shared';",
+        fails: false,
+      },
+      {
+        label: 'C: own declaration shadows conflicting stars',
+        a: 'export const Shared = 1;',
+        b: 'export const Shared = 2;',
+        own: 'export const Shared = 3;',
+        fails: false,
+      },
+      {
+        label: 'D: named re-export leaves origin unknown',
+        a: 'export const Shared = 1;',
+        b: "export { Shared } from './a';",
+        fails: false,
+      },
+      {
+        // No specifier export of the enum: the Flow parser rung must
+        // accept this source directly rather than falling back to TypeScript.
+        label: 'E: independent Flow enums',
+        a: 'export enum Shared { Active, Done }',
+        b: 'export enum Shared { Open, Closed }',
+        fails: true,
+      },
+      {
+        label: 'F: renamed local declarations, including a later declaration',
+        a: "const Impl = () => 'a'; export { Impl as Shared };",
+        b: "export { Impl as Shared }; const Impl = () => 'b';",
+        fails: true,
+      },
+      {
+        label: 'imported aliases keep their origin unknown',
+        a: "import { Shared as Impl } from './shared'; export { Impl as Shared };",
+        b: "import { Shared as Impl } from './shared'; export { Impl as Shared };",
+        fails: false,
+      },
+      {
+        label: 'unrelated local name does not prove a named re-export origin',
+        a: "const Shared = 1; export { Shared } from './shared';",
+        b: "const Shared = 2; export { Shared } from './shared';",
+        fails: false,
+      },
+      {
+        label: 'exported aliases do not become local declarations',
+        a:
+          "import { Shared as Imported } from './shared'; const Local = 1; " +
+          'export { Local as Imported, Imported as Shared };',
+        b: 'export const Shared = 2;',
+        fails: false,
+        names: ['Imported', 'Shared'],
+      },
+    ];
+
+    it.each(cases)('$label', async ({ a, b, own = '', fails, names = ['Shared'] }) => {
+      const files = {
+        [`${APP}/a.js`]: a,
+        [`${APP}/b.js`]: b,
+        [`${APP}/shared.js`]: 'export const Shared = 1;',
+      };
+      const filename = `${APP}/Barrel.js`;
+      const source = root + own;
+      if (fails) {
+        const expected =
+          'the "use client" module /app/Barrel.js takes "Shared" ' +
+          '(declared in /app/a.js and /app/b.js) from more than one `export * from` target';
+        await expect(runWrapperLoader(filename, source, { files })).rejects.toThrow(expected);
+        await expect(serverExports(filename, source, files)).rejects.toThrow(expected);
+      } else {
+        const code = await runWrapperLoader(filename, source, { files });
+        expect(wrapperExports(code)).toEqual(names);
+        await expect(serverExports(filename, source, files)).resolves.toEqual(names);
+      }
+    });
+  });
+
   it('aliases a non-identifier export name instead of emitting invalid syntax', async () => {
     const source = "'use client';\nconst v = 1;\nexport { v as 'weird name' };\nexport default v;\n";
 

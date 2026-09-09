@@ -420,6 +420,14 @@ function isTypeOnlyNamespace(namespace: BabelNode): boolean {
 
 const isTypeImportKind = (kind: unknown): boolean => kind === 'type' || kind === 'typeof';
 
+/** Named value declarations shared by erased-binding and local-origin tracking. */
+const NAMED_VALUE_DECLARATIONS = new Set([
+  'FunctionDeclaration',
+  'ClassDeclaration',
+  'TSEnumDeclaration',
+  'EnumDeclaration', // Flow enum
+]);
+
 /**
  * Top-level binding names that TypeScript and Flow erase at compile time.
  *
@@ -455,6 +463,10 @@ function collectErasedLocalBindings(body: BabelNode[]): Set<string> {
       add(erased, node.id);
       continue;
     }
+    if (NAMED_VALUE_DECLARATIONS.has(node.type)) {
+      add(node.declare === true ? erased : values, node.id);
+      continue;
+    }
 
     switch (node.type) {
       case 'ImportDeclaration':
@@ -468,11 +480,6 @@ function collectErasedLocalBindings(body: BabelNode[]): Set<string> {
         for (const declarator of (node.declarations as BabelNode[]) ?? []) {
           add(node.declare === true ? erased : values, declarator.id);
         }
-        break;
-      case 'FunctionDeclaration':
-      case 'ClassDeclaration':
-      case 'TSEnumDeclaration':
-        add(node.declare === true ? erased : values, node.id);
         break;
       case 'TSModuleDeclaration':
         add(isTypeOnlyNamespace(node) ? erased : values, node.id);
@@ -550,16 +557,19 @@ async function collectModuleExports(
   const declaredHere = collectLocalValueDeclarations(body);
   /** Names this module exports itself; each one shadows the `export *` name. */
   const ownNames = new Set<string>();
+  /** Exported names whose local binding is proven to be declared here. */
+  const ownDeclaredNames = new Set<string>();
   /** Declaring modules per name, merged across this module's `export *` targets. */
   const starDeclaringModules = new Map<string, Set<string>>();
 
   /** Record an export this module states by name (anything but `export *`). */
-  const addOwnExport = (node: unknown): void => {
+  const addOwnExport = (node: unknown, declaredLocally = false): void => {
     const collected: string[] = [];
     addExportNames(collected, node);
     for (const name of collected) {
       names.push(name);
       ownNames.add(name);
+      if (declaredLocally) ownDeclaredNames.add(name);
     }
   };
 
@@ -612,10 +622,10 @@ async function collectModuleExports(
         if (declaration && !isTypeOnlyDeclaration(declaration)) {
           if (declaration.type === 'VariableDeclaration') {
             for (const declarator of (declaration.declarations as BabelNode[]) ?? []) {
-              addOwnExport(declarator.id);
+              addOwnExport(declarator.id, true);
             }
           } else {
-            addOwnExport(declaration.id);
+            addOwnExport(declaration.id, true);
           }
         }
 
@@ -626,7 +636,12 @@ async function collectModuleExports(
           if (specifier.exportKind === 'type') continue;
           const local = (specifier.local as BabelNode | undefined)?.name;
           if (isLocalReExport && typeof local === 'string' && erasedLocals.has(local)) continue;
-          addOwnExport(specifier.exported);
+          // The exported spelling may differ from the local binding. Imports
+          // and named re-exports still provide no proof of a local origin.
+          addOwnExport(
+            specifier.exported,
+            isLocalReExport && typeof local === 'string' && declaredHere.has(local)
+          );
         }
         continue;
       }
@@ -661,7 +676,7 @@ async function collectModuleExports(
     );
   }
   for (const name of ownNames) {
-    declaringModules.set(name, declaredHere.has(name) ? new Set([filename]) : new Set());
+    declaringModules.set(name, ownDeclaredNames.has(name) ? new Set([filename]) : new Set());
   }
 
   return { path: filename, names: [...new Set(names)], declaringModules };
@@ -693,15 +708,14 @@ function collectLocalValueDeclarations(body: BabelNode[]): Set<string> {
         : statement;
     // `declare const X` is erased, so it binds nothing at runtime.
     if (node.declare === true) continue;
+    if (NAMED_VALUE_DECLARATIONS.has(node.type)) {
+      add(node.id);
+      continue;
+    }
 
     switch (node.type) {
       case 'VariableDeclaration':
         for (const declarator of (node.declarations as BabelNode[]) ?? []) add(declarator.id);
-        break;
-      case 'FunctionDeclaration':
-      case 'ClassDeclaration':
-      case 'TSEnumDeclaration':
-        add(node.id);
         break;
       case 'TSModuleDeclaration':
         if (!isTypeOnlyNamespace(node)) add(node.id);

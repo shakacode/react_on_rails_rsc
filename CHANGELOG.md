@@ -2,7 +2,7 @@
 
 All notable changes to this package will be documented in this file.
 
-## [Unreleased]
+## [19.3.0-rc.3] - 2026-09-11
 
 ### Fixed
 - Restored stylesheet hints when Webpack or Rspack scope-hoists a client reference and its CSS-bearing child into `ConcatenationModule` wrappers. Production builds with module concatenation now retain shared and transitive child CSS with `cssWrapper` on or off, and server manifests keep each client reference mapped to its own generated CSS-wrapper module ID. ([#228])
@@ -107,7 +107,8 @@ All notable changes to this package will be documented in this file.
 ### Security
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
-[Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0-rc.2...HEAD
+[Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0-rc.3...HEAD
+[19.3.0-rc.3]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0-rc.2...19.3.0-rc.3
 [19.3.0-rc.2]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0-rc.1...19.3.0-rc.2
 [19.3.0-rc.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0-rc.0...19.3.0-rc.1
 [19.3.0-rc.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1...19.3.0-rc.0

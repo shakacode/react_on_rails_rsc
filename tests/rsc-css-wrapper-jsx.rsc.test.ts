@@ -51,6 +51,12 @@ const common = {
   withTsx: true,
   publicPath: '/assets/',
   cssWrapper: true,
+  optimizationExtra: {
+    concatenateModules: true,
+    usedExports: true,
+    moduleIds: 'deterministic',
+    chunkIds: 'deterministic',
+  },
 } as const;
 
 beforeAll(() => {
@@ -113,12 +119,13 @@ async function resolveExport(exportName: string): Promise<{
 describe('cssWrapper on a JSX client module (real webpack)', () => {
   it('records the client component CSS against the wrapper module', () => {
     const card = entryEndingWith(client.manifest, '/Card.tsx');
-    expect(String(card.id)).toContain('rscCssWrapperLoader');
-    expect(card.css && card.css.length).toBeGreaterThan(0);
+    const serverCard = entryEndingWith(server.manifest, '/Card.tsx');
+    expect(card.id).toBe(serverCard.id);
+    expect(serverCard.css && serverCard.css.length).toBeGreaterThan(0);
   });
 
   it('resolves and renders a NAMED export written in JSX, with its <link precedence>', async () => {
-    const card = entryEndingWith(client.manifest, '/Card.tsx');
+    const card = entryEndingWith(server.manifest, '/Card.tsx');
     const { links, text: t, rootType } = await resolveExport('Card');
 
     // Pre-fix this was 'undefined': the wrapper had no `Card` export at all.
@@ -128,7 +135,7 @@ describe('cssWrapper on a JSX client module (real webpack)', () => {
   });
 
   it('resolves and renders a second named export written in JSX', async () => {
-    const card = entryEndingWith(client.manifest, '/Card.tsx');
+    const card = entryEndingWith(server.manifest, '/Card.tsx');
     const { links, text: t, rootType } = await resolveExport('Badge');
 
     expect(rootType).not.toBe('undefined');
@@ -137,7 +144,7 @@ describe('cssWrapper on a JSX client module (real webpack)', () => {
   });
 
   it('still resolves the default export', async () => {
-    const card = entryEndingWith(client.manifest, '/Card.tsx');
+    const card = entryEndingWith(server.manifest, '/Card.tsx');
     const { links, text: t } = await resolveExport('default');
 
     expect(links).toEqual([{ rel: 'stylesheet', precedence: 'rsc-css', href: card.css![0]! }]);

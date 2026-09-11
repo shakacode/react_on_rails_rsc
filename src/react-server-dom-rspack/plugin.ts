@@ -757,6 +757,16 @@ export class RSCRspackPlugin {
       const getOutgoingConnections = compilation.moduleGraph?.getOutgoingConnections?.bind(
         compilation.moduleGraph
       );
+      const moduleAndInnerModules = (candidate: AnyModule): AnyModule[] => [
+        candidate,
+        ...(candidate.modules ?? []),
+      ];
+      const outgoingConnections = (candidate: AnyModule) =>
+        getOutgoingConnections
+          ? moduleAndInnerModules(candidate).flatMap((sourceModule) => [
+              ...getOutgoingConnections(sourceModule),
+            ])
+          : [];
 
       const directCssDepFiles = (module: AnyModule): string[] => {
         if (!getOutgoingConnections || cssPrefix === null) return [];
@@ -776,16 +786,33 @@ export class RSCRspackPlugin {
           }
         };
         const addDirectStyleImports = (sourceModule: AnyModule): void => {
-          for (const connection of getOutgoingConnections(sourceModule)) {
-            const depModule = connection.module ?? connection.resolvedModule;
-            if (!depModule?.resource) continue;
-            const depResource = depModule.resource.replace(/[?#].*$/, '');
-            if (!STYLE_SOURCE_RE.test(depResource)) continue;
-            addCssFromModuleChunks(depModule);
-            for (const cssConnection of getOutgoingConnections(depModule)) {
+          const addStyleModule = (styleModule: AnyModule, containingModule: AnyModule): void => {
+            if (!styleModule.resource) return;
+            const styleResource = styleModule.resource.replace(/[?#].*$/, '');
+            if (!STYLE_SOURCE_RE.test(styleResource)) return;
+            addCssFromModuleChunks(styleModule);
+            if (styleModule !== containingModule) addCssFromModuleChunks(containingModule);
+            for (const cssConnection of getOutgoingConnections(styleModule)) {
               const extractedCssModule = cssConnection.module ?? cssConnection.resolvedModule;
               if (!extractedCssModule || extractedCssModule.type !== 'css/mini-extract') continue;
               addCssFromModuleChunks(extractedCssModule);
+            }
+          };
+          for (const styleModule of moduleAndInnerModules(sourceModule)) {
+            addStyleModule(styleModule, sourceModule);
+          }
+          for (const connection of outgoingConnections(sourceModule)) {
+            const depModule = connection.module ?? connection.resolvedModule;
+            if (!depModule) continue;
+            const dependencyModules = moduleAndInnerModules(depModule);
+            const dependencyResources = dependencyModules
+              .map((candidate) => candidate.resource?.replace(/[?#].*$/, ''))
+              .filter((resource): resource is string => resource !== undefined);
+            if (dependencyResources.some((resource) => !STYLE_SOURCE_RE.test(resource))) {
+              continue;
+            }
+            for (const styleModule of dependencyModules) {
+              addStyleModule(styleModule, depModule);
             }
           }
         };
@@ -821,21 +848,33 @@ export class RSCRspackPlugin {
         // `belongsToReferenceChunkGroup`.
         const walkRoot = ((): AnyModule => {
           if (this.options.cssWrapper !== true) return module;
-          for (const connection of getOutgoingConnections(module)) {
-            const depModule = connection.module ?? connection.resolvedModule;
-            if (depModule && isCssWrapperOriginalResource(module.resource, depModule.resource)) {
-              return depModule;
+          for (const sourceModule of moduleAndInnerModules(module)) {
+            for (const connection of getOutgoingConnections(sourceModule)) {
+              const depModule = connection.module ?? connection.resolvedModule;
+              if (!depModule) continue;
+              for (const candidate of moduleAndInnerModules(depModule)) {
+                if (isCssWrapperOriginalResource(sourceModule.resource, candidate.resource)) {
+                  return candidate;
+                }
+              }
             }
           }
           return module;
         })();
 
         addDirectStyleImports(walkRoot);
-        for (const connection of getOutgoingConnections(walkRoot)) {
+        for (const connection of outgoingConnections(walkRoot)) {
           const depModule = connection.module ?? connection.resolvedModule;
-          if (!depModule?.resource) continue;
-          const depResource = depModule.resource.replace(/[?#].*$/, '');
-          if (STYLE_SOURCE_RE.test(depResource)) continue;
+          if (!depModule) continue;
+          const depResources = moduleAndInnerModules(depModule)
+            .map((candidate) => candidate.resource?.replace(/[?#].*$/, ''))
+            .filter((resource): resource is string => resource !== undefined);
+          if (
+            depResources.length === 0 ||
+            depResources.every((resource) => STYLE_SOURCE_RE.test(resource))
+          ) {
+            continue;
+          }
           if (!belongsToReferenceChunkGroup(depModule)) continue;
           addDirectStyleImports(depModule);
         }
@@ -887,9 +926,11 @@ export class RSCRspackPlugin {
               if (isRuntimeResource(inner.resource, this.options.isServer))
                 clientFileNameFound = true;
               if (!isResolvedClientReference(inner.resource)) continue;
-              // Rspack can fold an eager "use client" module in as an inner
-              // module; recover its direct CSS without inheriting wrapper CSS.
-              const innerDirectCss = directCssDepFiles(inner);
+              // Rspack can fold a "use client" module and its shared child
+              // into the same ConcatenationModule. The child edge then lives
+              // on the outer module, while the authored module retains only
+              // its own stylesheet edge (#224). Merge both graph views.
+              const innerDirectCss = mergeCssFiles(directCss, directCssDepFiles(inner));
               const innerManifestCss = mergeCssFiles(chunkCss, innerDirectCss);
               const moduleCss = this.getCssForModule(
                 inner.resource,

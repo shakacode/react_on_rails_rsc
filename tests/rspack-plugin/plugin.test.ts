@@ -512,6 +512,7 @@ describe('RSCRspackPlugin', () => {
     // produces the #188 topology in rspack client builds.
     const sharedJsCssSplit = {
       optimization: {
+        concatenateModules: true,
         splitChunks: {
           chunks: 'all',
           minSize: 0,
@@ -599,6 +600,7 @@ describe('RSCRspackPlugin', () => {
     // #213 removed the rspack splitChunks guard.
     const sharedJsCssSplit = {
       optimization: {
+        concatenateModules: true,
         splitChunks: {
           chunks: 'all',
           minSize: 0,

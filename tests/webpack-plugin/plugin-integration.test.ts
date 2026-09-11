@@ -361,6 +361,43 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     });
   });
 
+  describe('concatenated shared dependency CSS (#224)', () => {
+    it('attaches the shared stylesheet to every client reference', () => {
+      const result = run('split-shared-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: {
+          concatenateModules: true,
+          usedExports: true,
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              shared: {
+                test: /shared\.(js|css)$/,
+                name: 'shared',
+                minChunks: 2,
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+
+      expect(result.assets).toContain('shared.chunk.css');
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(chunkFiles(button)).toContain('shared.chunk.js');
+      expect(chunkFiles(settings)).toContain('shared.chunk.js');
+      expect(button.css).toContain('/assets/shared.chunk.css');
+      expect(settings.css).toContain('/assets/shared.chunk.css');
+      expectNoWarnings(result);
+    });
+  });
+
   describe('shared async dependency chunk CSS survives cssWrapper (#214)', () => {
     // Same #188 topology, but with the opt-in `cssWrapper` FOUC fix (#196) on.
     // `cssWrapper` resolves each 'use client' module to a generated wrapper
@@ -372,6 +409,8 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
     // `shared.js`, and the extracted shared.chunk.css was emitted but never
     // hinted — turning the FOUC fix on reintroduced FOUC on the shared child.
     const sharedJsCssSplit = {
+      concatenateModules: true,
+      usedExports: true,
       splitChunks: {
         chunks: 'all',
         minSize: 0,
@@ -704,6 +743,8 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
         publicPath: '/assets/',
         withCss: true,
         optimizationExtra: {
+          concatenateModules: true,
+          usedExports: true,
           splitChunks: {
             chunks: 'all',
             minSize: 0,
@@ -1065,6 +1106,32 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
   });
 
   describe('server build (isServer: true)', () => {
+    it('keeps each concatenated cssWrapper entry mapped to its own wrapper module', () => {
+      const options = {
+        chunkName: 'client-[request]',
+        cssWrapper: true,
+        optimizationExtra: {
+          concatenateModules: true,
+          usedExports: true,
+          moduleIds: 'named',
+          chunkIds: 'named',
+        },
+      } as const;
+      const client = run('client-imports-client', options);
+      const server = run('client-imports-client', { ...options, isServer: true });
+
+      for (const suffix of ['/Button.js', '/SettingsPage.js']) {
+        expect(entryEndingWith(server.manifest, suffix).id).toBe(
+          entryEndingWith(client.manifest, suffix).id
+        );
+      }
+      expect(entryEndingWith(server.manifest, '/Button.js').id).not.toBe(
+        entryEndingWith(server.manifest, '/SettingsPage.js').id
+      );
+      expectNoWarnings(client);
+      expectNoWarnings(server);
+    });
+
     it('emits server manifest entries from the single merged server bundle', () => {
       const result = run('client-imports-client', {
         isServer: true,

@@ -294,6 +294,14 @@ type FlightModule = {
   buildInfo?: { cacheable?: boolean };
 };
 
+type FlightModuleConnection = {
+  dependency?: unknown;
+  originModule?: FlightModule | null;
+  resolvedOriginModule?: FlightModule | null;
+  module?: FlightModule | null;
+  resolvedModule?: FlightModule | null;
+};
+
 type FlightChunk = {
   id: string | number | null;
   files: Iterable<string>;
@@ -342,7 +350,8 @@ type FlightCompilation = {
   moduleGraph?: {
     getOutgoingConnections(
       module: FlightModule
-    ): Iterable<{ module?: FlightModule | null; resolvedModule?: FlightModule | null }>;
+    ): Iterable<FlightModuleConnection>;
+    getParentModule?(dependency: unknown): FlightModule | undefined;
   };
   assets?: Record<string, AssetSource>;
   getAsset?: (filename: string) => FlightAsset | undefined;
@@ -920,11 +929,42 @@ export class RSCWebpackPlugin {
             const getModuleChunksIterable = compilation.chunkGraph.getModuleChunksIterable?.bind(
               compilation.chunkGraph
             );
-            const directCssDepFiles = (module: FlightModule): string[] => {
+            const directCssDepFiles = (
+              module: FlightModule,
+              connectionOwner: FlightModule = module
+            ): string[] => {
               if (!moduleGraph || !getModuleChunksIterable || cssPrefix === null) return [];
+              const sameModule = (left: FlightModule | null | undefined, right: FlightModule) =>
+                left === right || (!!left?.resource && left.resource === right.resource);
+              const attributedOutgoingConnections = (
+                sourceModule: FlightModule
+              ): FlightModuleConnection[] => {
+                if (connectionOwner === module) return outgoingConnections(sourceModule);
+                const sources = moduleAndInnerModules(sourceModule);
+                const matchesSource = (connection: FlightModuleConnection) =>
+                  sources.some(
+                    (source) =>
+                      sameModule(
+                        connection.dependency
+                          ? moduleGraph.getParentModule?.(connection.dependency)
+                          : undefined,
+                        source
+                      ) ||
+                      sameModule(connection.resolvedOriginModule, source) ||
+                      sameModule(connection.originModule, source)
+                  );
+                return [
+                  ...new Set([
+                    ...outgoingConnections(sourceModule),
+                    ...outgoingConnections(connectionOwner).filter(matchesSource),
+                  ]),
+                ];
+              };
               const files = new Set<string>();
               const moduleChunks = new Set(
-                [...getModuleChunksIterable(module)].filter((chunk) => groupChunks.has(chunk))
+                [...getModuleChunksIterable(connectionOwner)].filter((chunk) =>
+                  groupChunks.has(chunk)
+                )
               );
               const addCssFromModuleChunks = (cssModule: FlightModule): void => {
                 for (const cssChunk of getModuleChunksIterable(cssModule)) {
@@ -936,8 +976,11 @@ export class RSCWebpackPlugin {
                   }
                 }
               };
-              const addDirectStyleImports = (sourceModule: FlightModule): void => {
-                for (const connection of outgoingConnections(sourceModule)) {
+              const addDirectStyleImports = (
+                sourceModule: FlightModule,
+                connections = outgoingConnections(sourceModule)
+              ): void => {
+                for (const connection of connections) {
                   const depModule = connection.module ?? connection.resolvedModule;
                   if (!depModule) continue;
                   for (const styleModule of moduleAndInnerModules(depModule)) {
@@ -957,6 +1000,13 @@ export class RSCWebpackPlugin {
                 }
               };
               const belongsToReferenceChunkGroup = (depModule: FlightModule): boolean => {
+                if (
+                  moduleAndInnerModules(connectionOwner).some((candidate) =>
+                    sameModule(candidate, depModule)
+                  )
+                ) {
+                  return true;
+                }
                 for (const depChunk of getModuleChunksIterable(depModule)) {
                   if (moduleChunks.has(depChunk)) return true;
                   if (groupChunks.has(depChunk) && !isInitialChunk(depChunk)) {
@@ -978,7 +1028,7 @@ export class RSCWebpackPlugin {
               const walkRoot = ((): FlightModule => {
                 if (!this.cssWrapper) return module;
                 for (const sourceModule of moduleAndInnerModules(module)) {
-                  for (const connection of moduleGraph.getOutgoingConnections(sourceModule)) {
+                  for (const connection of attributedOutgoingConnections(sourceModule)) {
                     const depModule = connection.module ?? connection.resolvedModule;
                     if (!depModule) continue;
                     for (const candidate of moduleAndInnerModules(depModule)) {
@@ -990,8 +1040,9 @@ export class RSCWebpackPlugin {
                 }
                 return module;
               })();
-              addDirectStyleImports(walkRoot);
-              for (const connection of outgoingConnections(walkRoot)) {
+              const walkRootConnections = attributedOutgoingConnections(walkRoot);
+              addDirectStyleImports(walkRoot, walkRootConnections);
+              for (const connection of walkRootConnections) {
                 // `module` is the resolved destination for most connections;
                 // some dependency types leave it null with the target on
                 // `resolvedModule`, so fall back to it.
@@ -1042,12 +1093,19 @@ export class RSCWebpackPlugin {
                 recordClientReferencePresence(module);
                 recordModule(moduleId, module, moduleCss, preferredCssWrapper);
                 if (module.modules) {
+                  const innerClientReferences = module.modules.filter(isResolvedClientRef);
                   for (const concatenatedMod of module.modules) {
+                    const innerDirectCss = innerClientReferences.includes(concatenatedMod)
+                      ? directCssDepFiles(concatenatedMod, module)
+                      : [];
+                    const innerModuleCss = innerDirectCss.length
+                      ? [...new Set([...chunkCss, ...innerDirectCss])]
+                      : chunkCss;
                     recordClientReferencePresence(concatenatedMod);
                     recordModule(
                       moduleId,
                       concatenatedMod,
-                      moduleCss,
+                      innerModuleCss,
                       isCssWrapperModule(concatenatedMod)
                     );
                   }

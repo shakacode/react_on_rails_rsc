@@ -394,6 +394,65 @@ describe('ReactFlightWebpackPlugin (real webpack)', () => {
       expect(chunkFiles(settings)).toContain('shared.chunk.js');
       expect(button.css).toContain('/assets/shared.chunk.css');
       expect(settings.css).toContain('/assets/shared.chunk.css');
+      expect(button.css).not.toContain('/assets/client-SettingsPage-js.chunk.css');
+      expect(settings.css).not.toContain('/assets/client-Button-js.chunk.css');
+      expectNoWarnings(result);
+    });
+
+    it('keeps sibling CSS isolated when client references share a concatenated chunk', () => {
+      const result = run('split-shared-css', {
+        chunkName: 'client-[request]',
+        publicPath: '/assets/',
+        withCss: true,
+        optimizationExtra: {
+          concatenateModules: true,
+          usedExports: true,
+          splitChunks: {
+            chunks: 'all',
+            minSize: 0,
+            cacheGroups: {
+              default: false,
+              defaultVendors: false,
+              clients: {
+                test: /(?:Button|SettingsPage)\.js$/,
+                name: 'clients',
+                chunks: 'all',
+                enforce: true,
+              },
+              buttonStyles: {
+                test: /Button\.css$/,
+                name: 'button-styles',
+                type: 'css/mini-extract',
+                chunks: 'all',
+                enforce: true,
+              },
+              settingsStyles: {
+                test: /SettingsPage\.css$/,
+                name: 'settings-styles',
+                type: 'css/mini-extract',
+                chunks: 'all',
+                enforce: true,
+              },
+              shared: {
+                test: /shared\.(js|css)$/,
+                name: 'shared',
+                chunks: 'all',
+                minChunks: 2,
+                enforce: true,
+              },
+            },
+          },
+        },
+      });
+
+      const button = entryEndingWith(result.manifest, '/Button.js');
+      const settings = entryEndingWith(result.manifest, '/SettingsPage.js');
+      expect(button.css).toContain('/assets/button-styles.chunk.css');
+      expect(button.css).toContain('/assets/shared.chunk.css');
+      expect(button.css).not.toContain('/assets/settings-styles.chunk.css');
+      expect(settings.css).toContain('/assets/settings-styles.chunk.css');
+      expect(settings.css).toContain('/assets/shared.chunk.css');
+      expect(settings.css).not.toContain('/assets/button-styles.chunk.css');
       expectNoWarnings(result);
     });
   });

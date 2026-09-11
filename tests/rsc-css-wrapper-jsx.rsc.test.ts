@@ -56,6 +56,28 @@ const common = {
     usedExports: true,
     moduleIds: 'deterministic',
     chunkIds: 'deterministic',
+    splitChunks: {
+      chunks: 'all',
+      minSize: 0,
+      cacheGroups: {
+        default: false,
+        defaultVendors: false,
+        cardStyles: {
+          test: /Card\.css$/,
+          name: 'card-styles',
+          type: 'css/mini-extract',
+          chunks: 'all',
+          enforce: true,
+        },
+        panelStyles: {
+          test: /Panel\.css$/,
+          name: 'panel-styles',
+          type: 'css/mini-extract',
+          chunks: 'all',
+          enforce: true,
+        },
+      },
+    },
   },
 } as const;
 
@@ -120,8 +142,15 @@ describe('cssWrapper on a JSX client module (real webpack)', () => {
   it('records the client component CSS against the wrapper module', () => {
     const card = entryEndingWith(client.manifest, '/Card.tsx');
     const serverCard = entryEndingWith(server.manifest, '/Card.tsx');
+    const panel = entryEndingWith(client.manifest, '/Panel.tsx');
+    const serverPanel = entryEndingWith(server.manifest, '/Panel.tsx');
     expect(card.id).toBe(serverCard.id);
-    expect(serverCard.css && serverCard.css.length).toBeGreaterThan(0);
+    expect(panel.id).toBe(serverPanel.id);
+    expect(card.id).not.toBe(panel.id);
+    expect(serverCard.css).toContain('/assets/card-styles.css');
+    expect(serverCard.css).not.toContain('/assets/panel-styles.css');
+    expect(serverPanel.css).toContain('/assets/panel-styles.css');
+    expect(serverPanel.css).not.toContain('/assets/card-styles.css');
   });
 
   it('resolves and renders a NAMED export written in JSX, with its <link precedence>', async () => {

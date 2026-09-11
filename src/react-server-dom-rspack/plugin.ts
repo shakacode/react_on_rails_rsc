@@ -110,9 +110,11 @@ type AnyCompilation = {
   };
   moduleGraph?: {
     getOutgoingConnections?: (module: unknown) => Iterable<{
+      dependency?: unknown;
       module?: AnyModule | null;
       resolvedModule?: AnyModule | null;
     }>;
+    getParentModule?: (dependency: unknown) => AnyModule | null;
   };
   chunkGroups: Iterable<AnyChunkGroup>;
   outputOptions: {
@@ -173,6 +175,14 @@ type AnyModule = {
   resource?: string;
   modules?: AnyModule[]; // for ConcatenatedModule
   type?: string;
+};
+
+type AnyModuleConnection = {
+  dependency?: unknown;
+  originModule?: AnyModule | null;
+  resolvedOriginModule?: AnyModule | null;
+  module?: AnyModule | null;
+  resolvedModule?: AnyModule | null;
 };
 
 type AnyChunk = {
@@ -761,18 +771,47 @@ export class RSCRspackPlugin {
         candidate,
         ...(candidate.modules ?? []),
       ];
-      const outgoingConnections = (candidate: AnyModule) =>
+      const outgoingConnections = (candidate: AnyModule): AnyModuleConnection[] =>
         getOutgoingConnections
           ? moduleAndInnerModules(candidate).flatMap((sourceModule) => [
               ...getOutgoingConnections(sourceModule),
             ])
           : [];
 
-      const directCssDepFiles = (module: AnyModule): string[] => {
+      const directCssDepFiles = (
+        module: AnyModule,
+        connectionOwner: AnyModule = module
+      ): string[] => {
         if (!getOutgoingConnections || cssPrefix === null) return [];
+        const sameModule = (left: AnyModule | null | undefined, right: AnyModule) =>
+          left === right || (!!left?.resource && left.resource === right.resource);
+        const attributedOutgoingConnections = (
+          sourceModule: AnyModule
+        ): AnyModuleConnection[] => {
+          if (connectionOwner === module) return outgoingConnections(sourceModule);
+          const sources = moduleAndInnerModules(sourceModule);
+          const matchesSource = (connection: AnyModuleConnection) =>
+            sources.some(
+              (source) =>
+                sameModule(
+                  connection.dependency
+                    ? compilation.moduleGraph?.getParentModule?.(connection.dependency)
+                    : undefined,
+                  source
+                ) ||
+                sameModule(connection.resolvedOriginModule, source) ||
+                sameModule(connection.originModule, source)
+            );
+          return [
+            ...new Set([
+              ...outgoingConnections(sourceModule),
+              ...outgoingConnections(connectionOwner).filter(matchesSource),
+            ]),
+          ];
+        };
         const files = new Set<string>();
         const moduleChunks = new Set(
-          [...compilation.chunkGraph.getModuleChunks(module)]
+          [...compilation.chunkGraph.getModuleChunks(connectionOwner)]
             .map((chunk) => chunk as AnyChunk)
             .filter((chunk) => groupChunkSet.has(chunk))
         );
@@ -785,7 +824,10 @@ export class RSCRspackPlugin {
             }
           }
         };
-        const addDirectStyleImports = (sourceModule: AnyModule): void => {
+        const addDirectStyleImports = (
+          sourceModule: AnyModule,
+          connections = outgoingConnections(sourceModule)
+        ): void => {
           const addStyleModule = (styleModule: AnyModule, containingModule: AnyModule): void => {
             if (!styleModule.resource) return;
             const styleResource = styleModule.resource.replace(/[?#].*$/, '');
@@ -801,7 +843,7 @@ export class RSCRspackPlugin {
           for (const styleModule of moduleAndInnerModules(sourceModule)) {
             addStyleModule(styleModule, sourceModule);
           }
-          for (const connection of outgoingConnections(sourceModule)) {
+          for (const connection of connections) {
             const depModule = connection.module ?? connection.resolvedModule;
             if (!depModule) continue;
             const dependencyModules = moduleAndInnerModules(depModule);
@@ -826,6 +868,13 @@ export class RSCRspackPlugin {
         // signal, so it is conservative for partial multi-pack page loads — see
         // the known limitation in the #188 fix.
         const belongsToReferenceChunkGroup = (depModule: AnyModule): boolean => {
+          if (
+            moduleAndInnerModules(connectionOwner).some((candidate) =>
+              sameModule(candidate, depModule)
+            )
+          ) {
+            return true;
+          }
           for (const depChunkUnknown of compilation.chunkGraph.getModuleChunks(depModule)) {
             const depChunk = depChunkUnknown as AnyChunk;
             if (moduleChunks.has(depChunk)) return true;
@@ -849,7 +898,7 @@ export class RSCRspackPlugin {
         const walkRoot = ((): AnyModule => {
           if (this.options.cssWrapper !== true) return module;
           for (const sourceModule of moduleAndInnerModules(module)) {
-            for (const connection of getOutgoingConnections(sourceModule)) {
+            for (const connection of attributedOutgoingConnections(sourceModule)) {
               const depModule = connection.module ?? connection.resolvedModule;
               if (!depModule) continue;
               for (const candidate of moduleAndInnerModules(depModule)) {
@@ -862,8 +911,9 @@ export class RSCRspackPlugin {
           return module;
         })();
 
-        addDirectStyleImports(walkRoot);
-        for (const connection of outgoingConnections(walkRoot)) {
+        const walkRootConnections = attributedOutgoingConnections(walkRoot);
+        addDirectStyleImports(walkRoot, walkRootConnections);
+        for (const connection of walkRootConnections) {
           const depModule = connection.module ?? connection.resolvedModule;
           if (!depModule) continue;
           const depResources = moduleAndInnerModules(depModule)
@@ -922,6 +972,9 @@ export class RSCRspackPlugin {
             );
           }
           if (mod.modules) {
+            const innerClientReferences = mod.modules.filter((inner) =>
+              isResolvedClientReference(inner.resource)
+            );
             for (const inner of mod.modules) {
               if (isRuntimeResource(inner.resource, this.options.isServer))
                 clientFileNameFound = true;
@@ -930,7 +983,9 @@ export class RSCRspackPlugin {
               // into the same ConcatenationModule. The child edge then lives
               // on the outer module, while the authored module retains only
               // its own stylesheet edge (#224). Merge both graph views.
-              const innerDirectCss = mergeCssFiles(directCss, directCssDepFiles(inner));
+              const innerDirectCss = innerClientReferences.includes(inner)
+                ? directCssDepFiles(inner, mod)
+                : [];
               const innerManifestCss = mergeCssFiles(chunkCss, innerDirectCss);
               const moduleCss = this.getCssForModule(
                 inner.resource,

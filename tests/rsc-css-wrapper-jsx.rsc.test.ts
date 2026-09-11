@@ -51,6 +51,34 @@ const common = {
   withTsx: true,
   publicPath: '/assets/',
   cssWrapper: true,
+  optimizationExtra: {
+    concatenateModules: true,
+    usedExports: true,
+    moduleIds: 'deterministic',
+    chunkIds: 'deterministic',
+    splitChunks: {
+      chunks: 'all',
+      minSize: 0,
+      cacheGroups: {
+        default: false,
+        defaultVendors: false,
+        cardStyles: {
+          test: /Card\.css$/,
+          name: 'card-styles',
+          type: 'css/mini-extract',
+          chunks: 'all',
+          enforce: true,
+        },
+        panelStyles: {
+          test: /Panel\.css$/,
+          name: 'panel-styles',
+          type: 'css/mini-extract',
+          chunks: 'all',
+          enforce: true,
+        },
+      },
+    },
+  },
 } as const;
 
 beforeAll(() => {
@@ -113,12 +141,20 @@ async function resolveExport(exportName: string): Promise<{
 describe('cssWrapper on a JSX client module (real webpack)', () => {
   it('records the client component CSS against the wrapper module', () => {
     const card = entryEndingWith(client.manifest, '/Card.tsx');
-    expect(String(card.id)).toContain('rscCssWrapperLoader');
-    expect(card.css && card.css.length).toBeGreaterThan(0);
+    const serverCard = entryEndingWith(server.manifest, '/Card.tsx');
+    const panel = entryEndingWith(client.manifest, '/Panel.tsx');
+    const serverPanel = entryEndingWith(server.manifest, '/Panel.tsx');
+    expect(card.id).toBe(serverCard.id);
+    expect(panel.id).toBe(serverPanel.id);
+    expect(card.id).not.toBe(panel.id);
+    expect(serverCard.css).toContain('/assets/card-styles.css');
+    expect(serverCard.css).not.toContain('/assets/panel-styles.css');
+    expect(serverPanel.css).toContain('/assets/panel-styles.css');
+    expect(serverPanel.css).not.toContain('/assets/card-styles.css');
   });
 
   it('resolves and renders a NAMED export written in JSX, with its <link precedence>', async () => {
-    const card = entryEndingWith(client.manifest, '/Card.tsx');
+    const card = entryEndingWith(server.manifest, '/Card.tsx');
     const { links, text: t, rootType } = await resolveExport('Card');
 
     // Pre-fix this was 'undefined': the wrapper had no `Card` export at all.
@@ -128,7 +164,7 @@ describe('cssWrapper on a JSX client module (real webpack)', () => {
   });
 
   it('resolves and renders a second named export written in JSX', async () => {
-    const card = entryEndingWith(client.manifest, '/Card.tsx');
+    const card = entryEndingWith(server.manifest, '/Card.tsx');
     const { links, text: t, rootType } = await resolveExport('Badge');
 
     expect(rootType).not.toBe('undefined');
@@ -137,7 +173,7 @@ describe('cssWrapper on a JSX client module (real webpack)', () => {
   });
 
   it('still resolves the default export', async () => {
-    const card = entryEndingWith(client.manifest, '/Card.tsx');
+    const card = entryEndingWith(server.manifest, '/Card.tsx');
     const { links, text: t } = await resolveExport('default');
 
     expect(links).toEqual([{ rel: 'stylesheet', precedence: 'rsc-css', href: card.css![0]! }]);

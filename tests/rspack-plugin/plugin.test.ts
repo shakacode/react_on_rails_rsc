@@ -512,6 +512,7 @@ describe('RSCRspackPlugin', () => {
     // produces the #188 topology in rspack client builds.
     const sharedJsCssSplit = {
       optimization: {
+        concatenateModules: true,
         splitChunks: {
           chunks: 'all',
           minSize: 0,
@@ -544,8 +545,68 @@ describe('RSCRspackPlugin', () => {
       expect(button.css).toContain('/assets/shared.chunk.css');
       expect(settings.css).toContain('/assets/shared.chunk.css');
       // Each reference keeps its own extracted CSS as well.
-      expect(readManifestCss(result, '/Button.js')).toContain('.shared');
-      expect(readManifestCss(result, '/SettingsPage.js')).toContain('.shared');
+      const buttonCss = readManifestCss(result, '/Button.js');
+      const settingsCss = readManifestCss(result, '/SettingsPage.js');
+      expect(buttonCss).toContain('.shared');
+      expect(settingsCss).toContain('.shared');
+      expect(buttonCss).not.toContain('.settings');
+      expect(settingsCss).not.toContain('.button');
+    });
+
+    it('keeps sibling CSS isolated when references share a concatenated application graph', () => {
+      const result = run('split-shared-css', {
+        isServer: true,
+        clientReferences: staticIslandClientReferences(
+          /^\.\/(?:Button|ButtonWithSettingsCss|SettingsPage)\.js$/
+        ),
+        publicPath: '/assets',
+        withCss: true,
+        cssWrapper: true,
+        extraEntries: { eager: './eagerEntry.js' },
+        configExtra: {
+          optimization: {
+            concatenateModules: true,
+            splitChunks: {
+              chunks: 'all',
+              minSize: 0,
+              cacheGroups: {
+                default: false,
+                defaultVendors: false,
+                buttonStyles: {
+                  test: /Button\.css$/,
+                  name: 'button-styles',
+                  type: 'css/mini-extract',
+                  chunks: 'all',
+                  enforce: true,
+                },
+                settingsStyles: {
+                  test: /SettingsPage\.css$/,
+                  name: 'settings-styles',
+                  type: 'css/mini-extract',
+                  chunks: 'all',
+                  enforce: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const button = manifestMetadataFor(result, '/Button.js');
+      const buttonWithSettingsCss = manifestMetadataFor(result, '/ButtonWithSettingsCss.js');
+      const settings = manifestMetadataFor(result, '/SettingsPage.js');
+      expect(button.css).toContain('/assets/button-styles.css');
+      expect(button.css).not.toContain('/assets/settings-styles.css');
+      expect(buttonWithSettingsCss.css).toContain('/assets/button-styles.css');
+      expect(buttonWithSettingsCss.css).toContain('/assets/settings-styles.css');
+      expect(settings.css).toContain('/assets/settings-styles.css');
+      expect(settings.css).not.toContain('/assets/button-styles.css');
+      const buttonCss = readManifestCss(result, '/Button.js');
+      const settingsCss = readManifestCss(result, '/SettingsPage.js');
+      expect(buttonCss).toContain('.shared');
+      expect(settingsCss).toContain('.shared');
+      expect(buttonCss).not.toContain('.settings');
+      expect(settingsCss).not.toContain('.button');
     });
 
     it("keeps an initial shared chunk's CSS out of client references (#108 canary)", () => {
@@ -599,6 +660,7 @@ describe('RSCRspackPlugin', () => {
     // #213 removed the rspack splitChunks guard.
     const sharedJsCssSplit = {
       optimization: {
+        concatenateModules: true,
         splitChunks: {
           chunks: 'all',
           minSize: 0,

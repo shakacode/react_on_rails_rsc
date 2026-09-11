@@ -294,6 +294,14 @@ type FlightModule = {
   buildInfo?: { cacheable?: boolean };
 };
 
+type FlightModuleConnection = {
+  dependency?: unknown;
+  originModule?: FlightModule | null;
+  resolvedOriginModule?: FlightModule | null;
+  module?: FlightModule | null;
+  resolvedModule?: FlightModule | null;
+};
+
 type FlightChunk = {
   id: string | number | null;
   files: Iterable<string>;
@@ -342,7 +350,8 @@ type FlightCompilation = {
   moduleGraph?: {
     getOutgoingConnections(
       module: FlightModule
-    ): Iterable<{ module?: FlightModule | null; resolvedModule?: FlightModule | null }>;
+    ): Iterable<FlightModuleConnection>;
+    getParentModule?(dependency: unknown): FlightModule | undefined;
   };
   assets?: Record<string, AssetSource>;
   getAsset?: (filename: string) => FlightAsset | undefined;
@@ -778,10 +787,37 @@ export class RSCWebpackPlugin {
             const isResolvedClientRef = (module: FlightModule): boolean =>
               !!module.resource && chunkResolvedClientFiles.has(module.resource);
 
+            const moduleGraph = compilation.moduleGraph;
+            const moduleAndInnerModules = (candidate: FlightModule): FlightModule[] => [
+              candidate,
+              ...(candidate.modules ?? []),
+            ];
+            const outgoingConnections = (candidate: FlightModule) =>
+              moduleGraph
+                ? moduleAndInnerModules(candidate).flatMap((sourceModule) => [
+                    ...moduleGraph.getOutgoingConnections(sourceModule),
+                  ])
+                : [];
+            const isCssWrapperModule = (candidate: FlightModule): boolean =>
+              this.cssWrapper &&
+              !!moduleGraph &&
+              moduleAndInnerModules(candidate).some((sourceModule) =>
+                [...moduleGraph.getOutgoingConnections(sourceModule)].some((connection) => {
+                  const depModule = connection.module ?? connection.resolvedModule;
+                  return (
+                    !!depModule &&
+                    moduleAndInnerModules(depModule).some((dependency) =>
+                      isCssWrapperOriginalResource(sourceModule.resource, dependency.resource)
+                    )
+                  );
+                })
+              );
+
             const recordModule = (
               id: string | number | null,
               module: FlightModule,
-              moduleCss: readonly string[]
+              moduleCss: readonly string[],
+              isPreferredCssWrapper = false
             ): void => {
               if (!module.resource || !chunkResolvedClientFiles.has(module.resource)) {
                 return;
@@ -789,6 +825,7 @@ export class RSCWebpackPlugin {
               const href = url.pathToFileURL(module.resource).href;
               const existing = filePathToModuleMetadata[href];
               if (existing) {
+                if (isPreferredCssWrapper) existing.id = id;
                 const seenChunkIds = new Set<string | number | null>();
                 for (let i = 0; i < existing.chunks.length; i += 2) {
                   seenChunkIds.add(existing.chunks[i]!);
@@ -889,15 +926,45 @@ export class RSCWebpackPlugin {
             // multi-pack page loads — see the known limitation in the #188 fix.
             // Guarded on `moduleGraph`/`getModuleChunksIterable`, which the
             // unit-test mocks omit (they exercise the per-chunk pass only).
-            const moduleGraph = compilation.moduleGraph;
             const getModuleChunksIterable = compilation.chunkGraph.getModuleChunksIterable?.bind(
               compilation.chunkGraph
             );
-            const directCssDepFiles = (module: FlightModule): string[] => {
+            const directCssDepFiles = (
+              module: FlightModule,
+              connectionOwner: FlightModule = module
+            ): string[] => {
               if (!moduleGraph || !getModuleChunksIterable || cssPrefix === null) return [];
+              const sameModule = (left: FlightModule | null | undefined, right: FlightModule) =>
+                left === right || (!!left?.resource && left.resource === right.resource);
+              const attributedOutgoingConnections = (
+                sourceModule: FlightModule
+              ): FlightModuleConnection[] => {
+                if (connectionOwner === module) return outgoingConnections(sourceModule);
+                const sources = moduleAndInnerModules(sourceModule);
+                const matchesSource = (connection: FlightModuleConnection) =>
+                  sources.some(
+                    (source) =>
+                      sameModule(
+                        connection.dependency
+                          ? moduleGraph.getParentModule?.(connection.dependency)
+                          : undefined,
+                        source
+                      ) ||
+                      sameModule(connection.resolvedOriginModule, source) ||
+                      sameModule(connection.originModule, source)
+                  );
+                return [
+                  ...new Set([
+                    ...outgoingConnections(sourceModule),
+                    ...outgoingConnections(connectionOwner).filter(matchesSource),
+                  ]),
+                ];
+              };
               const files = new Set<string>();
               const moduleChunks = new Set(
-                [...getModuleChunksIterable(module)].filter((chunk) => groupChunks.has(chunk))
+                [...getModuleChunksIterable(connectionOwner)].filter((chunk) =>
+                  groupChunks.has(chunk)
+                )
               );
               const addCssFromModuleChunks = (cssModule: FlightModule): void => {
                 for (const cssChunk of getModuleChunksIterable(cssModule)) {
@@ -909,23 +976,37 @@ export class RSCWebpackPlugin {
                   }
                 }
               };
-              const addDirectStyleImports = (sourceModule: FlightModule): void => {
-                for (const connection of moduleGraph.getOutgoingConnections(sourceModule)) {
+              const addDirectStyleImports = (
+                sourceModule: FlightModule,
+                connections = outgoingConnections(sourceModule)
+              ): void => {
+                for (const connection of connections) {
                   const depModule = connection.module ?? connection.resolvedModule;
-                  if (!depModule || !depModule.resource) continue;
-                  const depResource = depModule.resource.replace(/[?#].*$/, '');
-                  if (!STYLE_SOURCE_RE.test(depResource)) continue;
-                  addCssFromModuleChunks(depModule);
-                  for (const cssConnection of moduleGraph.getOutgoingConnections(depModule)) {
-                    const extractedCssModule = cssConnection.module ?? cssConnection.resolvedModule;
-                    if (!extractedCssModule || extractedCssModule.type !== 'css/mini-extract') {
-                      continue;
+                  if (!depModule) continue;
+                  for (const styleModule of moduleAndInnerModules(depModule)) {
+                    if (!styleModule.resource) continue;
+                    const depResource = styleModule.resource.replace(/[?#].*$/, '');
+                    if (!STYLE_SOURCE_RE.test(depResource)) continue;
+                    addCssFromModuleChunks(styleModule);
+                    for (const cssConnection of moduleGraph.getOutgoingConnections(styleModule)) {
+                      const extractedCssModule =
+                        cssConnection.module ?? cssConnection.resolvedModule;
+                      if (!extractedCssModule || extractedCssModule.type !== 'css/mini-extract') {
+                        continue;
+                      }
+                      addCssFromModuleChunks(extractedCssModule);
                     }
-                    addCssFromModuleChunks(extractedCssModule);
                   }
                 }
               };
               const belongsToReferenceChunkGroup = (depModule: FlightModule): boolean => {
+                if (
+                  moduleAndInnerModules(connectionOwner).some((candidate) =>
+                    sameModule(candidate, depModule)
+                  )
+                ) {
+                  return true;
+                }
                 for (const depChunk of getModuleChunksIterable(depModule)) {
                   if (moduleChunks.has(depChunk)) return true;
                   if (groupChunks.has(depChunk) && !isInitialChunk(depChunk)) {
@@ -946,29 +1027,38 @@ export class RSCWebpackPlugin {
               // non-initial group-chunk clause of `belongsToReferenceChunkGroup`.
               const walkRoot = ((): FlightModule => {
                 if (!this.cssWrapper) return module;
-                for (const connection of moduleGraph.getOutgoingConnections(module)) {
-                  const depModule = connection.module ?? connection.resolvedModule;
-                  if (!depModule) continue;
-                  if (isCssWrapperOriginalResource(module.resource, depModule.resource)) {
-                    return depModule;
+                for (const sourceModule of moduleAndInnerModules(module)) {
+                  for (const connection of attributedOutgoingConnections(sourceModule)) {
+                    const depModule = connection.module ?? connection.resolvedModule;
+                    if (!depModule) continue;
+                    for (const candidate of moduleAndInnerModules(depModule)) {
+                      if (isCssWrapperOriginalResource(sourceModule.resource, candidate.resource)) {
+                        return candidate;
+                      }
+                    }
                   }
                 }
                 return module;
               })();
-              addDirectStyleImports(walkRoot);
-              for (const connection of moduleGraph.getOutgoingConnections(walkRoot)) {
+              const walkRootConnections = attributedOutgoingConnections(walkRoot);
+              addDirectStyleImports(walkRoot, walkRootConnections);
+              for (const connection of walkRootConnections) {
                 // `module` is the resolved destination for most connections;
                 // some dependency types leave it null with the target on
                 // `resolvedModule`, so fall back to it.
                 const depModule = connection.module ?? connection.resolvedModule;
-                if (!depModule || !depModule.resource) continue;
+                if (!depModule) continue;
                 // Match the style-import source (`.css` and the common
                 // preprocessor extensions); MiniCssExtract keeps the importing
                 // module's resource as the authored file even though the
                 // emitted chunk file is always `.css`. Strip any webpack
                 // resource query/fragment (`./Button.css?inline`) first.
-                const depResource = depModule.resource.replace(/[?#].*$/, '');
-                if (STYLE_SOURCE_RE.test(depResource)) continue;
+                const depResources = moduleAndInnerModules(depModule)
+                  .map((candidate) => candidate.resource?.replace(/[?#].*$/, ''))
+                  .filter((resource): resource is string => resource !== undefined);
+                if (depResources.length === 0 || depResources.every((resource) => STYLE_SOURCE_RE.test(resource))) {
+                  continue;
+                }
                 if (!belongsToReferenceChunkGroup(depModule)) continue;
                 addDirectStyleImports(depModule);
               }
@@ -988,10 +1078,10 @@ export class RSCWebpackPlugin {
                 // graph walk for the many plain dependency modules
                 // `recordModule` would drop anyway. A client reference can also
                 // be the root of a ConcatenationModule — its external `.css`
-                // imports live on the root, so walking the root recovers them.
-                // (A client reference is an async boundary, so webpack does not
-                // fold it in as a concatenated *inner* module; inner-module CSS
-                // imports therefore aren't a case that arises here.)
+                // imports live on the root, so walking both the root and its
+                // inner modules recovers them. An eagerly imported client
+                // reference can be an inner module even though the plugin also
+                // creates a separate async wrapper for it (#224).
                 const mayBeClientRef =
                   isResolvedClientRef(module) ||
                   (!!module.modules && module.modules.some(isResolvedClientRef));
@@ -999,12 +1089,25 @@ export class RSCWebpackPlugin {
                 const moduleCss = siblingCss.length
                   ? [...new Set([...chunkCss, ...siblingCss])]
                   : chunkCss;
+                const preferredCssWrapper = isCssWrapperModule(module);
                 recordClientReferencePresence(module);
-                recordModule(moduleId, module, moduleCss);
+                recordModule(moduleId, module, moduleCss, preferredCssWrapper);
                 if (module.modules) {
+                  const innerClientReferences = module.modules.filter(isResolvedClientRef);
                   for (const concatenatedMod of module.modules) {
+                    const innerDirectCss = innerClientReferences.includes(concatenatedMod)
+                      ? directCssDepFiles(concatenatedMod, module)
+                      : [];
+                    const innerModuleCss = innerDirectCss.length
+                      ? [...new Set([...chunkCss, ...innerDirectCss])]
+                      : chunkCss;
                     recordClientReferencePresence(concatenatedMod);
-                    recordModule(moduleId, concatenatedMod, moduleCss);
+                    recordModule(
+                      moduleId,
+                      concatenatedMod,
+                      innerModuleCss,
+                      isCssWrapperModule(concatenatedMod)
+                    );
                   }
                 }
               }

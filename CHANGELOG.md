@@ -2,6 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Restored stylesheet hints when Webpack or Rspack scope-hoists a client reference and its CSS-bearing child into `ConcatenationModule` wrappers. Production builds with module concatenation now retain shared and transitive child CSS with `cssWrapper` on or off, and server manifests keep each client reference mapped to its own generated CSS-wrapper module ID. ([#228])
+
 ## [19.3.0-rc.2] - 2026-09-08
 
 ### Changed
@@ -156,3 +161,4 @@ All notable changes to this package will be documented in this file.
 [#221]: https://github.com/shakacode/react_on_rails_rsc/pull/221
 [#222]: https://github.com/shakacode/react_on_rails_rsc/pull/222
 [#223]: https://github.com/shakacode/react_on_rails_rsc/pull/223
+[#228]: https://github.com/shakacode/react_on_rails_rsc/pull/228

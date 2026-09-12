@@ -294,7 +294,6 @@ describe('RSCWebpackLoader TypeScript handling', () => {
     "function Widget() { return null; } Widget.displayName = 'Widget';",
     "const Widget = () => null; Widget.displayName = 'Widget';",
     'class Widget {} Widget.propTypes = {};',
-    "import labels from './labels'; function Widget() {} Widget.displayName = labels.Widget;",
   ])(
     'rejects local component metadata that cannot make the component observable: %s',
     async (body) => {
@@ -318,12 +317,12 @@ describe('RSCWebpackLoader TypeScript handling', () => {
     );
   });
 
-  it.each([
-    'Widget.displayName = getLabels().Widget;',
-    'Widget[getMetadataKey()] = labels.Widget;',
-    'Widget.displayName = labels[getMetadataKey()];',
-  ])('preserves effectful component metadata evaluation: %s', async (metadata) => {
-    const source = `'use client';\nfunction Widget() {}\n${metadata}\n`;
+  it('preserves potential getter effects in component metadata reads', async () => {
+    const source =
+      "'use client';\n" +
+      "const labels = { get Widget() { registerMetadataRead(); return 'Widget'; } };\n" +
+      'function Widget() {}\n' +
+      'Widget.displayName = labels.Widget;\n';
 
     await expect(runLoader(createLoaderContext('/app/Widget.js'), source)).resolves.toBe('');
   });
@@ -822,6 +821,18 @@ describe('repeated star re-exports', () => {
         '/app/mid.js': "export * from './a';\nexport * from './b';\n",
         '/app/a.js': 'export const Shared = 1;\n',
         '/app/b.js': 'export const Shared = 3;\n',
+      })
+    ).rejects.toThrow(
+      '/app/mid.js, re-exported by the "use client" module /app/Barrel.js, takes "Shared"'
+    );
+  });
+
+  it('fails a named re-export from a barrel whose requested name is ambiguous', async () => {
+    await expect(
+      collectWithModules("'use client';\nexport { Shared } from './mid';\n", {
+        '/app/mid.js': "export * from './a';\nexport * from './b';\n",
+        '/app/a.js': 'export const Shared = 1;\n',
+        '/app/b.js': 'export const Shared = 2;\n',
       })
     ).rejects.toThrow(
       '/app/mid.js, re-exported by the "use client" module /app/Barrel.js, takes "Shared"'

@@ -325,16 +325,20 @@ describe('RSCWebpackLoader TypeScript handling', () => {
     );
   });
 
-  it('preserves a potentially effectful arbitrary imported heritage access', async () => {
-    const source =
-      "'use client';\n" +
-      "import Registry from './registry';\n" +
-      'class Widget extends Registry.Component {}\n';
+  it.each([
+    ["import Inferno from 'inferno';", 'Inferno.Component'],
+    ["import * as UI from './ui';", 'UI.Component'],
+    ["import { default as Preact } from 'preact';", 'Preact.Component'],
+  ])(
+    'rejects an unexported class rooted in a default or namespace import: %s',
+    async (importSource, heritage) => {
+      const source = `'use client';\n${importSource}\nclass Widget extends ${heritage} {}\n`;
 
-    await expect(runLoader(createLoaderContext('/app/registry-widget.js'), source)).resolves.toBe(
-      ''
-    );
-  });
+      await expect(runLoader(createLoaderContext('/app/Widget.js'), source)).rejects.toThrow(
+        /has no runtime exports or side effects/
+      );
+    }
+  );
 
   it.each([
     'try {} catch {}',

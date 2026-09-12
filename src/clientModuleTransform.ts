@@ -735,16 +735,15 @@ function hasRuntimeSideEffectsInStatement(
 }
 
 const hasRuntimeSideEffects = (body: BabelNode[]): boolean => {
-  // React class heritage is a particularly common forgotten-export shape. Treat member access
-  // through a React default/namespace import as inert for this guard, while preserving potential
-  // getter/Proxy effects through arbitrary imported values.
+  // Imported class heritage is a common forgotten-export shape. Treat member access through any
+  // default/namespace import as inert for this guard; limiting this to React would let the same
+  // silent drop recur for equivalent component libraries or application-local base classes.
   const importedBindings = new Set<string>();
   for (const statement of body) {
     if (
       statement.type !== 'ImportDeclaration' ||
       statement.importKind === 'type' ||
-      statement.importKind === 'typeof' ||
-      (statement.source as BabelNode | undefined)?.value !== 'react'
+      statement.importKind === 'typeof'
     ) {
       continue;
     }

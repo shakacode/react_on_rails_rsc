@@ -294,6 +294,7 @@ describe('RSCWebpackLoader TypeScript handling', () => {
     "function Widget() { return null; } Widget.displayName = 'Widget';",
     "const Widget = () => null; Widget.displayName = 'Widget';",
     'class Widget {} Widget.propTypes = {};',
+    "import labels from './labels'; function Widget() {} Widget.displayName = labels.Widget;",
   ])(
     'rejects local component metadata that cannot make the component observable: %s',
     async (body) => {
@@ -315,6 +316,16 @@ describe('RSCWebpackLoader TypeScript handling', () => {
     await expect(runLoader(createLoaderContext('/app/register-widget.js'), source)).resolves.toBe(
       ''
     );
+  });
+
+  it.each([
+    'Widget.displayName = getLabels().Widget;',
+    'Widget[getMetadataKey()] = labels.Widget;',
+    'Widget.displayName = labels[getMetadataKey()];',
+  ])('preserves effectful component metadata evaluation: %s', async (metadata) => {
+    const source = `'use client';\nfunction Widget() {}\n${metadata}\n`;
+
+    await expect(runLoader(createLoaderContext('/app/Widget.js'), source)).resolves.toBe('');
   });
 
   it('preserves a potentially effectful non-imported class heritage access', async () => {

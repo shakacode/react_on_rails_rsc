@@ -589,6 +589,27 @@ function hasRuntimeSideEffectsInClassHeritage(
   return hasRuntimeSideEffectExpression(node, importedBindings);
 }
 
+function hasRuntimeSideEffectsInMetadataValue(
+  node: BabelNode | undefined,
+  importedBindings: ReadonlySet<string>
+): boolean {
+  const value = unwrapTransparentExpression(node);
+  if (!value) return false;
+  if (value.type === 'MemberExpression' || value.type === 'OptionalMemberExpression') {
+    const property = value.property as BabelNode | undefined;
+    return (
+      hasRuntimeSideEffectsInMetadataValue(
+        value.object as BabelNode | undefined,
+        importedBindings
+      ) ||
+      (value.computed === true &&
+        (!isDefinitelyPrimitiveExpression(property) ||
+          hasRuntimeSideEffectExpression(property, importedBindings)))
+    );
+  }
+  return hasRuntimeSideEffectExpression(value, importedBindings);
+}
+
 function hasRuntimeSideEffectsInStatement(
   node: BabelNode | undefined,
   importedBindings: ReadonlySet<string>
@@ -812,7 +833,10 @@ const hasRuntimeSideEffects = (body: BabelNode[]): boolean => {
             left.property as BabelNode | undefined,
             importedBindings
           ))) &&
-      !hasRuntimeSideEffectExpression(expression.right as BabelNode | undefined, importedBindings)
+      !hasRuntimeSideEffectsInMetadataValue(
+        expression.right as BabelNode | undefined,
+        importedBindings
+      )
     ) {
       return false;
     }

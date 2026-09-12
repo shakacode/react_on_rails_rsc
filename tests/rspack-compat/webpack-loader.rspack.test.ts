@@ -353,11 +353,17 @@ describe('RSCWebpackLoader export enumeration under rspack (issue #206)', () => 
     expect(bundle).not.toContain('NotForwarded');
   });
 
-  it('fails the build instead of emitting an empty module', () => {
+  it('allows a side-effect-only "use client" module in the RSC bundle', () => {
+    const bundle = readBundle(compileFixture('side-effect-only-client-module.js'));
+
+    expect(bundle).not.toContain('registerClientReference');
+  });
+
+  it('fails the build instead of emitting an empty module for an inert client module', () => {
     const result = compileFixture('no-runtime-exports.tsx');
 
     expect(result.ok).toBe(false);
-    expect((result.errors || []).join('\n')).toMatch(/has no runtime exports/);
+    expect((result.errors || []).join('\n')).toMatch(/has no runtime exports or side effects/);
   });
 
   it('leaves "use server" modules on the stock node-loader path', () => {

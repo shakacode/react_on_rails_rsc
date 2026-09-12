@@ -28,10 +28,10 @@
  * with no build error (issue #206).
  *
  * This module owns the transform instead: it enumerates exports with
- * `@babel/parser` (JSX + TypeScript aware), refuses to emit an empty module,
- * and cross-checks the parsed export statements against the raw `export`
- * keyword tokens so a future parser regression fails the build instead of
- * silently dropping components.
+ * `@babel/parser` (JSX + TypeScript aware), preserves valid empty modules only
+ * for side-effect-only client entries, and cross-checks the parsed export statements
+ * against the raw `export` keyword tokens so a future parser regression fails the
+ * build instead of silently dropping components.
  *
  * The emitted source matches the stock `transformClientModule` output for
  * every export name the stock loader handles, so `WebpackLoader`'s
@@ -62,6 +62,763 @@ interface ParsedModule {
   directives: string[];
   tokens: BabelToken[];
 }
+
+const isBabelNode = (value: unknown): value is BabelNode =>
+  !!value && typeof value === 'object' && typeof (value as { type?: unknown }).type === 'string';
+
+const staticMemberName = (node: BabelNode | undefined): string | undefined => {
+  if (!node || (node.type !== 'MemberExpression' && node.type !== 'OptionalMemberExpression')) {
+    return undefined;
+  }
+  const property = node.property as BabelNode | undefined;
+  if (node.computed) {
+    return property?.type === 'StringLiteral' ? (property.value as string) : undefined;
+  }
+  return property?.type === 'Identifier' ? (property.name as string) : undefined;
+};
+
+const isCommonJSExportTarget = (node: BabelNode, shadowedNames: Set<string>): boolean => {
+  if (node.type !== 'MemberExpression' && node.type !== 'OptionalMemberExpression') return false;
+
+  const object = node.object as BabelNode | undefined;
+  if (
+    object?.type === 'Identifier' &&
+    object.name === 'exports' &&
+    !shadowedNames.has('exports')
+  ) {
+    return true;
+  }
+  if (
+    object?.type === 'Identifier' &&
+    object.name === 'module' &&
+    !shadowedNames.has('module') &&
+    staticMemberName(node) === 'exports'
+  ) {
+    return true;
+  }
+
+  const moduleObject = object?.object as BabelNode | undefined;
+  return (
+    (object?.type === 'MemberExpression' || object?.type === 'OptionalMemberExpression') &&
+    moduleObject?.type === 'Identifier' &&
+    moduleObject.name === 'module' &&
+    !shadowedNames.has('module') &&
+    staticMemberName(object) === 'exports'
+  );
+};
+
+const isDefinitelyPrimitiveExpression = (node: BabelNode | undefined): boolean => {
+  if (!node) return false;
+  switch (node.type) {
+    case 'StringLiteral':
+    case 'NumericLiteral':
+    case 'BooleanLiteral':
+    case 'NullLiteral':
+    case 'BigIntLiteral':
+    case 'DecimalLiteral':
+      return true;
+    case 'TemplateLiteral':
+      return ((node.expressions as unknown[] | undefined) ?? []).length === 0;
+    case 'UnaryExpression':
+      return node.operator === 'typeof' || node.operator === 'void' || node.operator === '!';
+    case 'TSAsExpression':
+    case 'TSTypeAssertion':
+    case 'TSNonNullExpression':
+    case 'TSSatisfiesExpression':
+    case 'TypeCastExpression':
+    case 'ParenthesizedExpression':
+      return isDefinitelyPrimitiveExpression(node.expression as BabelNode | undefined);
+    default:
+      return false;
+  }
+};
+
+const unwrapTransparentExpression = (node: BabelNode | undefined): BabelNode | undefined => {
+  let current = node;
+  while (
+    current &&
+    (current.type === 'TSAsExpression' ||
+      current.type === 'TSTypeAssertion' ||
+      current.type === 'TSNonNullExpression' ||
+      current.type === 'TSInstantiationExpression' ||
+      current.type === 'TSSatisfiesExpression' ||
+      current.type === 'TypeCastExpression' ||
+      current.type === 'ParenthesizedExpression' ||
+      current.type === 'ChainExpression')
+  ) {
+    current = current.expression as BabelNode | undefined;
+  }
+  return current;
+};
+
+const addBindingNames = (names: Set<string>, node: BabelNode | undefined): void => {
+  if (!node) return;
+  switch (node.type) {
+    case 'Identifier':
+      names.add(node.name as string);
+      return;
+    case 'AssignmentPattern':
+      addBindingNames(names, node.left as BabelNode | undefined);
+      return;
+    case 'RestElement':
+      addBindingNames(names, node.argument as BabelNode | undefined);
+      return;
+    case 'ArrayPattern':
+      for (const element of (node.elements as unknown[] | undefined) ?? []) {
+        if (isBabelNode(element)) addBindingNames(names, element);
+      }
+      return;
+    case 'ObjectPattern':
+      for (const property of (node.properties as unknown[] | undefined) ?? []) {
+        if (!isBabelNode(property)) continue;
+        addBindingNames(
+          names,
+          (property.type === 'RestElement' ? property.argument : property.value) as
+            | BabelNode
+            | undefined
+        );
+      }
+      return;
+    default:
+  }
+};
+
+const collectDirectScopeBindings = (body: BabelNode[]): Set<string> => {
+  const names = new Set<string>();
+  for (const statement of body) {
+    const declaration =
+      statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration'
+        ? (statement.declaration as BabelNode | undefined)
+        : statement;
+    if (!declaration) continue;
+
+    if (declaration.type === 'VariableDeclaration') {
+      for (const declarator of (declaration.declarations as unknown[] | undefined) ?? []) {
+        if (isBabelNode(declarator)) {
+          addBindingNames(names, declarator.id as BabelNode | undefined);
+        }
+      }
+    } else if (
+      declaration.type === 'FunctionDeclaration' ||
+      declaration.type === 'ClassDeclaration' ||
+      declaration.type === 'TSEnumDeclaration' ||
+      declaration.type === 'TSModuleDeclaration'
+    ) {
+      addBindingNames(names, declaration.id as BabelNode | undefined);
+    } else if (declaration.type === 'ImportDeclaration') {
+      if (declaration.importKind === 'type' || declaration.importKind === 'typeof') continue;
+      for (const specifier of (declaration.specifiers as unknown[] | undefined) ?? []) {
+        if (
+          isBabelNode(specifier) &&
+          specifier.importKind !== 'type' &&
+          specifier.importKind !== 'typeof'
+        ) {
+          addBindingNames(names, specifier.local as BabelNode | undefined);
+        }
+      }
+    } else if (declaration.type === 'TSImportEqualsDeclaration') {
+      if (declaration.importKind !== 'type') {
+        addBindingNames(names, declaration.id as BabelNode | undefined);
+      }
+    }
+  }
+  return names;
+};
+
+const addHoistedVarBindings = (value: unknown, names: Set<string>): void => {
+  if (Array.isArray(value)) {
+    for (const item of value) addHoistedVarBindings(item, names);
+    return;
+  }
+  if (!isBabelNode(value)) return;
+
+  // `var` does not escape a nested function or class static block into the module scope.
+  if (
+    value.type === 'FunctionDeclaration' ||
+    value.type === 'FunctionExpression' ||
+    value.type === 'ArrowFunctionExpression' ||
+    value.type === 'ObjectMethod' ||
+    value.type === 'ClassDeclaration' ||
+    value.type === 'ClassExpression' ||
+    value.type === 'ClassMethod' ||
+    value.type === 'ClassPrivateMethod' ||
+    value.type === 'TSModuleDeclaration'
+  ) {
+    return;
+  }
+
+  if (value.type === 'VariableDeclaration' && value.kind === 'var') {
+    for (const declarator of (value.declarations as unknown[] | undefined) ?? []) {
+      if (isBabelNode(declarator)) addBindingNames(names, declarator.id as BabelNode | undefined);
+    }
+  }
+  for (const child of Object.values(value)) addHoistedVarBindings(child, names);
+};
+
+/** Reject CommonJS assignments that cannot be represented by an ESM client reference. */
+function assertNoCommonJSExportAssignments(body: BabelNode[], filename: string): void {
+  const containsCommonJSExport = (value: unknown, shadowedNames: Set<string>): boolean => {
+    if (Array.isArray(value)) {
+      return value.some((item) => containsCommonJSExport(item, shadowedNames));
+    }
+    if (!value || typeof value !== 'object') return false;
+
+    const node = value as BabelNode;
+    if (node.type === 'CallExpression' || node.type === 'OptionalCallExpression') {
+      const callee = unwrapTransparentExpression(node.callee as BabelNode | undefined);
+      if (callee?.type === 'FunctionExpression' || callee?.type === 'ArrowFunctionExpression') {
+        const functionBindings = new Set(shadowedNames);
+        addBindingNames(functionBindings, callee.id as BabelNode | undefined);
+        for (const parameter of (callee.params as unknown[] | undefined) ?? []) {
+          if (isBabelNode(parameter)) addBindingNames(functionBindings, parameter);
+        }
+        const functionBody = callee.body as BabelNode | undefined;
+        if (functionBody?.type === 'BlockStatement') {
+          const statements = ((functionBody.body as unknown[] | undefined) ?? []).filter(
+            isBabelNode
+          );
+          const directBindings = collectDirectScopeBindings(statements);
+          for (const binding of directBindings) functionBindings.add(binding);
+          addHoistedVarBindings(statements, functionBindings);
+        }
+        if (containsCommonJSExport(functionBody, functionBindings)) return true;
+      }
+    }
+    // Assignments inside a function are not module-scope CommonJS exports. Skipping the whole
+    // function also avoids mistaking parameters or local bindings named `module` / `exports`.
+    if (
+      node.type === 'FunctionDeclaration' ||
+      node.type === 'FunctionExpression' ||
+      node.type === 'ArrowFunctionExpression' ||
+      node.type === 'ObjectMethod' ||
+      node.type === 'ClassMethod' ||
+      node.type === 'ClassPrivateMethod' ||
+      node.type === 'TSModuleDeclaration'
+    ) {
+      return false;
+    }
+
+    let nestedShadowedNames = shadowedNames;
+    if (node.type === 'BlockStatement' || node.type === 'Program' || node.type === 'StaticBlock') {
+      const scopeBindings = collectDirectScopeBindings(
+        ((node.body as unknown[] | undefined) ?? []).filter(isBabelNode)
+      );
+      if (scopeBindings.size > 0) {
+        nestedShadowedNames = new Set([...shadowedNames, ...scopeBindings]);
+      }
+    } else if (node.type === 'CatchClause' && isBabelNode(node.param)) {
+      nestedShadowedNames = new Set(shadowedNames);
+      addBindingNames(nestedShadowedNames, node.param);
+    } else if (
+      node.type === 'ForStatement' ||
+      node.type === 'ForInStatement' ||
+      node.type === 'ForOfStatement'
+    ) {
+      const declaration = node.type === 'ForStatement' ? node.init : node.left;
+      if (isBabelNode(declaration) && declaration.type === 'VariableDeclaration') {
+        nestedShadowedNames = new Set(shadowedNames);
+        for (const declarator of (declaration.declarations as unknown[] | undefined) ?? []) {
+          if (isBabelNode(declarator)) {
+            addBindingNames(nestedShadowedNames, declarator.id as BabelNode | undefined);
+          }
+        }
+      }
+    }
+
+    if (
+      (node.type === 'AssignmentExpression' &&
+        isBabelNode(node.left) &&
+        isCommonJSExportTarget(node.left, nestedShadowedNames)) ||
+      (node.type === 'UpdateExpression' &&
+        isBabelNode(node.argument) &&
+        isCommonJSExportTarget(node.argument, nestedShadowedNames))
+    ) {
+      return true;
+    }
+
+    return Object.values(node).some((child) =>
+      containsCommonJSExport(child, nestedShadowedNames)
+    );
+  };
+
+  const moduleBindings = collectDirectScopeBindings(body);
+  addHoistedVarBindings(body, moduleBindings);
+  if (body.some((statement) => containsCommonJSExport(statement, moduleBindings))) {
+    throw new Error(
+      `react-on-rails-rsc: the "use client" module ${filename} uses a CommonJS export ` +
+        'assignment (`exports.x` or `module.exports`), which cannot become a client reference. ' +
+        'Use ES module exports (`export default` / `export const`) instead.'
+    );
+  }
+}
+
+const EMPTY_BINDINGS: ReadonlySet<string> = new Set();
+
+const hasRuntimeSideEffectExpression = (
+  node: BabelNode | undefined,
+  importedBindings: ReadonlySet<string> = EMPTY_BINDINGS
+): boolean => {
+  if (!node) return false;
+
+  switch (node.type) {
+    case 'Identifier':
+    case 'StringLiteral':
+    case 'NumericLiteral':
+    case 'BooleanLiteral':
+    case 'NullLiteral':
+    case 'RegExpLiteral':
+    case 'BigIntLiteral':
+    case 'DecimalLiteral':
+    case 'ThisExpression':
+    case 'Super':
+    case 'MetaProperty':
+    case 'FunctionExpression':
+    case 'ArrowFunctionExpression':
+      return false;
+    case 'ClassExpression':
+      return hasRuntimeSideEffectsInClass(node, importedBindings);
+    case 'ArrayExpression':
+      return ((node.elements as unknown[]) ?? []).some((element) =>
+        isBabelNode(element) &&
+        (element.type === 'SpreadElement' ||
+          hasRuntimeSideEffectExpression(element, importedBindings))
+      );
+    case 'ObjectExpression':
+      return ((node.properties as unknown[]) ?? []).some((property) => {
+        if (!isBabelNode(property)) return false;
+        if (property.type === 'SpreadElement') {
+          // Spreading enumerates properties and reads their values, which can run Proxy traps/getters.
+          return true;
+        }
+        return (
+          // ToPropertyKey can run user code even when evaluating the key expression itself is inert.
+          property.computed === true ||
+          (property.type !== 'ObjectMethod' &&
+            hasRuntimeSideEffectExpression(
+              property.value as BabelNode | undefined,
+              importedBindings
+            ))
+        );
+      });
+    case 'TemplateLiteral':
+      // Interpolation applies ToString, which can call a user-defined conversion hook.
+      return ((node.expressions as unknown[]) ?? []).some(
+        (expression) =>
+          isBabelNode(expression) &&
+          (hasRuntimeSideEffectExpression(expression, importedBindings) ||
+            !isDefinitelyPrimitiveExpression(expression))
+      );
+    case 'MemberExpression':
+    case 'OptionalMemberExpression':
+      // Property access can execute a getter or Proxy trap even when the object and key are inert.
+      return true;
+    case 'UnaryExpression':
+      if (node.operator === 'delete') return true;
+      if (['+', '-', '~'].includes(node.operator as string)) {
+        const argument = node.argument as BabelNode;
+        return (
+          hasRuntimeSideEffectExpression(argument, importedBindings) ||
+          !isDefinitelyPrimitiveExpression(argument)
+        );
+      }
+      return hasRuntimeSideEffectExpression(node.argument as BabelNode, importedBindings);
+    case 'BinaryExpression':
+      // Strict equality does not coerce. Other binary operators can invoke conversion hooks,
+      // Proxy traps (`in`), or Symbol.hasInstance (`instanceof`).
+      const operandsHaveEffects =
+        hasRuntimeSideEffectExpression(node.left as BabelNode, importedBindings) ||
+        hasRuntimeSideEffectExpression(node.right as BabelNode, importedBindings);
+      if (operandsHaveEffects || node.operator === 'in' || node.operator === 'instanceof') {
+        return true;
+      }
+      if (node.operator === '===' || node.operator === '!==') return false;
+      // Primitive constants cannot invoke conversion hooks. Unknown values still qualify because
+      // arithmetic, relational, and loose-equality operators may call user-defined coercion.
+      return !(
+        isDefinitelyPrimitiveExpression(node.left as BabelNode | undefined) &&
+        isDefinitelyPrimitiveExpression(node.right as BabelNode | undefined)
+      );
+    case 'LogicalExpression':
+      return (
+        hasRuntimeSideEffectExpression(node.left as BabelNode, importedBindings) ||
+        hasRuntimeSideEffectExpression(node.right as BabelNode, importedBindings)
+      );
+    case 'ConditionalExpression':
+      return (
+        hasRuntimeSideEffectExpression(node.test as BabelNode, importedBindings) ||
+        hasRuntimeSideEffectExpression(node.consequent as BabelNode, importedBindings) ||
+        hasRuntimeSideEffectExpression(node.alternate as BabelNode, importedBindings)
+      );
+    case 'SequenceExpression':
+      return ((node.expressions as unknown[]) ?? []).some((expression) =>
+        hasRuntimeSideEffectExpression(
+          isBabelNode(expression) ? expression : undefined,
+          importedBindings
+        )
+      );
+    case 'TSAsExpression':
+    case 'TSTypeAssertion':
+    case 'TSNonNullExpression':
+    case 'TSInstantiationExpression':
+    case 'TSSatisfiesExpression':
+    case 'TypeCastExpression':
+    case 'ParenthesizedExpression':
+    case 'ChainExpression':
+      return hasRuntimeSideEffectExpression(
+        node.expression as BabelNode | undefined,
+        importedBindings
+      );
+    case 'JSXElement':
+    case 'JSXFragment':
+    case 'AssignmentExpression':
+    case 'UpdateExpression':
+    case 'CallExpression':
+    case 'OptionalCallExpression':
+    case 'NewExpression':
+    case 'AwaitExpression':
+    case 'YieldExpression':
+    case 'TaggedTemplateExpression':
+    case 'Import':
+    case 'ImportExpression':
+      return true;
+    default:
+      // Unknown syntax is not proof of an observable effect. Failing closed here preserves the
+      // export-loss guard; support new syntax explicitly when its evaluation semantics are known.
+      return false;
+  }
+};
+
+const hasRuntimeSideEffectsInPattern = (
+  node: BabelNode | undefined,
+  importedBindings: ReadonlySet<string>
+): boolean => {
+  if (!node) return false;
+
+  switch (node.type) {
+    case 'Identifier':
+      return false;
+    case 'RestElement':
+      return true;
+    case 'AssignmentPattern':
+      return (
+        hasRuntimeSideEffectsInPattern(node.left as BabelNode | undefined, importedBindings) ||
+        hasRuntimeSideEffectExpression(node.right as BabelNode | undefined, importedBindings)
+      );
+    case 'ArrayPattern':
+      // Array destructuring runs the iterator protocol, even when every binding is inert.
+      return true;
+    case 'ObjectPattern':
+      // Object destructuring can read getters or invoke Proxy traps.
+      return true;
+    default:
+      return false;
+  }
+};
+
+function hasRuntimeSideEffectsInClass(
+  node: BabelNode,
+  importedBindings: ReadonlySet<string>
+): boolean {
+  const decorators = (node.decorators as unknown[] | undefined) ?? [];
+  if (decorators.some(isBabelNode)) return true;
+  if (
+    hasRuntimeSideEffectsInClassHeritage(
+      node.superClass as BabelNode | undefined,
+      importedBindings
+    )
+  ) {
+    return true;
+  }
+
+  const classBody = node.body as BabelNode | undefined;
+  return ((classBody?.body as unknown[] | undefined) ?? []).some((element) => {
+    if (!isBabelNode(element)) return false;
+    if (((element.decorators as unknown[] | undefined) ?? []).some(isBabelNode)) return true;
+    if (element.computed === true) {
+      return true;
+    }
+    if (element.type === 'StaticBlock') {
+      return ((element.body as unknown[]) ?? []).some(
+        (statement) =>
+          isBabelNode(statement) &&
+          hasRuntimeSideEffectsInStatement(statement, importedBindings)
+      );
+    }
+    return (
+      element.static === true &&
+      hasRuntimeSideEffectExpression(element.value as BabelNode | undefined, importedBindings)
+    );
+  });
+}
+
+function hasRuntimeSideEffectsInClassHeritage(
+  node: BabelNode | undefined,
+  importedBindings: ReadonlySet<string>
+): boolean {
+  if (!node) return false;
+  if (node.type === 'MemberExpression' || node.type === 'OptionalMemberExpression') {
+    const object = node.object as BabelNode | undefined;
+    const property = node.property as BabelNode | undefined;
+    let root = unwrapTransparentExpression(object);
+    while (root?.type === 'MemberExpression' || root?.type === 'OptionalMemberExpression') {
+      root = unwrapTransparentExpression(root.object as BabelNode | undefined);
+    }
+    const rootedInImport =
+      root?.type === 'Identifier' && importedBindings.has(root.name as string);
+    return (
+      hasRuntimeSideEffectsInClassHeritage(object, importedBindings) ||
+      (node.computed === true &&
+        (!isDefinitelyPrimitiveExpression(property) ||
+          hasRuntimeSideEffectExpression(property, importedBindings))) ||
+      !rootedInImport
+    );
+  }
+  if (
+    node.type === 'TSAsExpression' ||
+    node.type === 'TSTypeAssertion' ||
+    node.type === 'TSNonNullExpression' ||
+    node.type === 'TSSatisfiesExpression' ||
+    node.type === 'TypeCastExpression' ||
+    node.type === 'ParenthesizedExpression'
+  ) {
+    return hasRuntimeSideEffectsInClassHeritage(
+      node.expression as BabelNode | undefined,
+      importedBindings
+    );
+  }
+  return hasRuntimeSideEffectExpression(node, importedBindings);
+}
+
+function hasRuntimeSideEffectsInStatement(
+  node: BabelNode | undefined,
+  importedBindings: ReadonlySet<string>
+): boolean {
+  if (!node) return false;
+  if (isTypeOnlyDeclaration(node)) return false;
+
+  switch (node.type) {
+    case 'EmptyStatement':
+    case 'FunctionDeclaration':
+    case 'TSInterfaceDeclaration':
+    case 'TSTypeAliasDeclaration':
+    case 'DeclareClass':
+    case 'DeclareFunction':
+    case 'DeclareVariable':
+    case 'DeclareModule':
+    case 'FlowDeclareInterface':
+    case 'InterfaceDeclaration':
+      return false;
+    case 'TSEnumDeclaration':
+    case 'EnumDeclaration':
+    case 'TSModuleDeclaration':
+      // Non-ambient enums and namespaces emit runtime code.
+      return true;
+    case 'TSImportEqualsDeclaration':
+      return node.importKind !== 'type';
+    case 'ClassDeclaration':
+      return hasRuntimeSideEffectsInClass(node, importedBindings);
+    case 'ImportDeclaration':
+      if (node.importKind === 'type') return false;
+      // Only an explicit side-effect import qualifies the containing module. A normal bound import
+      // must not hide a forgotten component export merely because its dependency may have effects.
+      return ((node.specifiers as unknown[] | undefined) ?? []).length === 0;
+    case 'ExportAllDeclaration':
+      // The re-export evaluates its target, but whether that has observable runtime effects is
+      // only known after `collectModuleExports` resolves and inspects the target.
+      return false;
+    case 'ExportNamedDeclaration':
+      if (node.exportKind === 'type') return false;
+      if (node.source) {
+        const specifiers = (node.specifiers as unknown[] | undefined) ?? [];
+        return (
+          specifiers.length === 0 ||
+          specifiers.some(
+            (specifier) => isBabelNode(specifier) && specifier.exportKind !== 'type'
+          )
+        );
+      }
+      return hasRuntimeSideEffectsInStatement(
+        node.declaration as BabelNode | undefined,
+        importedBindings
+      );
+    case 'ExportDefaultDeclaration': {
+      const declaration = node.declaration as BabelNode | undefined;
+      if (isTypeOnlyDeclaration(declaration)) return false;
+      return declaration?.type === 'FunctionDeclaration'
+        ? false
+        : declaration?.type === 'ClassDeclaration'
+          ? hasRuntimeSideEffectsInClass(declaration, importedBindings)
+          : hasRuntimeSideEffectExpression(declaration, importedBindings);
+    }
+    case 'VariableDeclaration':
+      return ((node.declarations as unknown[]) ?? []).some((declaration) =>
+        isBabelNode(declaration) &&
+        (hasRuntimeSideEffectsInPattern(
+          declaration.id as BabelNode | undefined,
+          importedBindings
+        ) ||
+          hasRuntimeSideEffectExpression(
+            declaration.init as BabelNode | undefined,
+            importedBindings
+          ))
+      );
+    case 'ExpressionStatement':
+      return hasRuntimeSideEffectExpression(
+        node.expression as BabelNode | undefined,
+        importedBindings
+      );
+    case 'BlockStatement':
+      return ((node.body as unknown[]) ?? []).some((statement) =>
+        isBabelNode(statement) && hasRuntimeSideEffectsInStatement(statement, importedBindings)
+      );
+    case 'IfStatement':
+      return (
+        hasRuntimeSideEffectExpression(node.test as BabelNode, importedBindings) ||
+        (isBabelNode(node.consequent) &&
+          hasRuntimeSideEffectsInStatement(node.consequent, importedBindings)) ||
+        (isBabelNode(node.alternate) &&
+          hasRuntimeSideEffectsInStatement(node.alternate, importedBindings))
+      );
+    case 'TryStatement':
+      return (
+        (isBabelNode(node.block) &&
+          hasRuntimeSideEffectsInStatement(node.block, importedBindings)) ||
+        (isBabelNode(node.handler) &&
+          isBabelNode(node.handler.body) &&
+          hasRuntimeSideEffectsInStatement(node.handler.body, importedBindings)) ||
+        (isBabelNode(node.finalizer) &&
+          hasRuntimeSideEffectsInStatement(node.finalizer, importedBindings))
+      );
+    case 'SwitchStatement':
+      return (
+        hasRuntimeSideEffectExpression(
+          node.discriminant as BabelNode | undefined,
+          importedBindings
+        ) ||
+        ((node.cases as unknown[] | undefined) ?? []).some((switchCase) => {
+          if (!isBabelNode(switchCase)) return false;
+          if (
+            hasRuntimeSideEffectExpression(
+              switchCase.test as BabelNode | undefined,
+              importedBindings
+            )
+          ) {
+            return true;
+          }
+          return ((switchCase.consequent as unknown[] | undefined) ?? []).some(
+            (statement) =>
+              isBabelNode(statement) &&
+              hasRuntimeSideEffectsInStatement(statement, importedBindings)
+          );
+        })
+      );
+    case 'ThrowStatement':
+    case 'DebuggerStatement':
+      return true;
+    case 'BreakStatement':
+    case 'ContinueStatement':
+      return false;
+    case 'ForStatement':
+    case 'ForInStatement':
+    case 'ForOfStatement':
+    case 'WhileStatement':
+    case 'DoWhileStatement':
+      return true;
+    case 'LabeledStatement':
+      return (
+        isBabelNode(node.body) && hasRuntimeSideEffectsInStatement(node.body, importedBindings)
+      );
+    default:
+      // Do not let an unrecognized statement bypass the no-runtime-export safety check.
+      return false;
+  }
+}
+
+const hasRuntimeSideEffects = (body: BabelNode[]): boolean => {
+  // Imported class heritage is a common forgotten-export shape. Treat member access through any
+  // default/namespace import as inert for this guard; limiting this to React would let the same
+  // silent drop recur for equivalent component libraries or application-local base classes.
+  const importedBindings = new Set<string>();
+  for (const statement of body) {
+    if (
+      statement.type !== 'ImportDeclaration' ||
+      statement.importKind === 'type' ||
+      statement.importKind === 'typeof'
+    ) {
+      continue;
+    }
+    for (const specifier of (statement.specifiers as unknown[] | undefined) ?? []) {
+      if (
+        isBabelNode(specifier) &&
+        (specifier.type === 'ImportDefaultSpecifier' ||
+          specifier.type === 'ImportNamespaceSpecifier' ||
+          (specifier.type === 'ImportSpecifier' &&
+            ((specifier.imported as BabelNode | undefined)?.name === 'default' ||
+              (specifier.imported as BabelNode | undefined)?.value === 'default'))) &&
+        specifier.importKind !== 'type' &&
+        specifier.importKind !== 'typeof'
+      ) {
+        addBindingNames(importedBindings, specifier.local as BabelNode | undefined);
+      }
+    }
+  }
+
+  // Assigning metadata to a locally declared function/class does not make that value observable.
+  // In particular, it must not let a forgotten component export degrade into an empty RSC stub.
+  // A later registration/call still qualifies independently, as do effectful right-hand sides.
+  const inertFunctionLikeBindings = new Set<string>();
+  for (const statement of body) {
+    if (statement.type === 'FunctionDeclaration') {
+      addBindingNames(inertFunctionLikeBindings, statement.id as BabelNode | undefined);
+      continue;
+    }
+    if (
+      statement.type === 'ClassDeclaration' &&
+      !hasRuntimeSideEffectsInClass(statement, importedBindings)
+    ) {
+      addBindingNames(inertFunctionLikeBindings, statement.id as BabelNode | undefined);
+      continue;
+    }
+    if (statement.type !== 'VariableDeclaration') continue;
+    for (const declarator of (statement.declarations as BabelNode[] | undefined) ?? []) {
+      const initializer = declarator.init as BabelNode | undefined;
+      if (
+        initializer?.type === 'FunctionExpression' ||
+        initializer?.type === 'ArrowFunctionExpression' ||
+        (initializer?.type === 'ClassExpression' &&
+          !hasRuntimeSideEffectsInClass(initializer, importedBindings))
+      ) {
+        addBindingNames(inertFunctionLikeBindings, declarator.id as BabelNode | undefined);
+      }
+    }
+  }
+
+  return body.some((statement) => {
+    const expression =
+      statement.type === 'ExpressionStatement'
+        ? (statement.expression as BabelNode | undefined)
+        : undefined;
+    const left = expression?.type === 'AssignmentExpression' ? expression.left : undefined;
+    if (
+      expression?.operator === '=' &&
+      isBabelNode(left) &&
+      (left.type === 'MemberExpression' || left.type === 'OptionalMemberExpression') &&
+      isBabelNode(left.object) &&
+      left.object.type === 'Identifier' &&
+      inertFunctionLikeBindings.has(left.object.name as string) &&
+      (left.computed !== true ||
+        (isDefinitelyPrimitiveExpression(left.property as BabelNode | undefined) &&
+          !hasRuntimeSideEffectExpression(
+            left.property as BabelNode | undefined,
+            importedBindings
+          ))) &&
+      !hasRuntimeSideEffectExpression(expression.right as BabelNode | undefined, importedBindings)
+    ) {
+      return false;
+    }
+    return hasRuntimeSideEffectsInStatement(statement, importedBindings);
+  });
+};
 
 /**
  * Resolves and reads a module referenced by `export * from '...'` inside a
@@ -502,6 +1259,8 @@ interface CollectContext {
   resolveExportAll?: ExportAllResolver;
   /** Resolved export sets, keyed by module path, so a shared barrel is read once. */
   memo: Map<string, ModuleExports>;
+  /** Resolver/read results, keyed by importing file and source specifier. */
+  resolvedTargets: Map<string, { path: string; source: string }>;
   /** Modules currently being resolved, so `export *` cycles terminate. */
   inProgress: Set<string>;
   /** Extra parser plugins, applied to star re-export targets as well as the root module. */
@@ -514,13 +1273,14 @@ interface ModuleExports {
   /** Runtime export names in source order, de-duplicated. */
   names: string[];
   /**
-   * Per export name, the modules that are PROVEN to declare its binding
-   * themselves. An empty set means "origin unknown", which is the answer for
-   * anything reached through a named re-export.
+   * Per export name, the modules that own its underlying binding. An empty set
+   * means the origin could not be resolved safely.
    */
   declaringModules: Map<string, Set<string>>;
   /** Per-name diagnostics, deferred until parent explicit exports can shadow them. */
   ambiguities: Map<string, string>;
+  /** Runtime effects executed while evaluating this module and its star-export targets. */
+  hasRuntimeSideEffects: boolean;
 }
 
 /**
@@ -540,13 +1300,10 @@ interface ModuleExports {
  * `conflicting star exports for the name 'X'` and leaves `X` off the namespace
  * object.
  *
- * So the ambiguity fails the build, but only when it is PROVABLE: `declaringModules`
- * records origins solely for names a module declares itself, and two distinct
- * declaring modules for one name is ambiguous no matter what the rest of the
- * graph looks like. A named re-export (`export { X } from './y'`) leaves the
- * origin unknown and never contributes to the proof, so the common diamond
- * re-export — two barrels forwarding the *same* binding — still enumerates
- * normally and no real component is ever dropped (the #206 failure mode).
+ * So the ambiguity fails the build unless every duplicate can be proven to
+ * resolve to the same binding. `declaringModules` follows named re-exports and
+ * imported bindings as well as star exports, so the common diamond re-export
+ * still enumerates normally while mixed or unresolved origins fail closed.
  */
 async function collectModuleExports(
   body: BabelNode[],
@@ -557,23 +1314,65 @@ async function collectModuleExports(
   const names: string[] = [];
   const erasedLocals = collectErasedLocalBindings(body);
   const declaredHere = collectLocalValueDeclarations(body);
+  const importedLocals = new Map<string, { specifier: string; importedName: string }>();
+  for (const statement of body) {
+    if (
+      statement.type !== 'ImportDeclaration' ||
+      isTypeImportKind(statement.importKind) ||
+      typeof (statement.source as BabelNode | undefined)?.value !== 'string'
+    ) {
+      continue;
+    }
+    const specifier = (statement.source as BabelNode).value as string;
+    for (const importSpecifier of (statement.specifiers as BabelNode[] | undefined) ?? []) {
+      if (isTypeImportKind(importSpecifier.importKind)) continue;
+      const local = (importSpecifier.local as BabelNode | undefined)?.name;
+      if (typeof local !== 'string') continue;
+      let importedName = '*';
+      if (importSpecifier.type === 'ImportDefaultSpecifier') importedName = 'default';
+      if (importSpecifier.type === 'ImportSpecifier') {
+        const imported = importSpecifier.imported as BabelNode | undefined;
+        importedName = String(imported?.name ?? imported?.value ?? '');
+      }
+      importedLocals.set(local, { specifier, importedName });
+    }
+  }
   /** Names this module exports itself; each one shadows the `export *` name. */
   const ownNames = new Set<string>();
-  /** Exported names whose local binding is proven to be declared here. */
-  const ownDeclaredNames = new Set<string>();
-  /** Declaring modules per name, merged across this module's `export *` targets. */
-  const starDeclaringModules = new Map<string, Set<string>>();
+  /** Underlying binding origins for exports this module states by name. */
+  const ownOrigins = new Map<string, Set<string>>();
+  /** One origin set per star branch that contributes each name. */
+  const starOrigins = new Map<string, Set<string>[]>();
   const ambiguities = new Map<string, string>();
+  let moduleHasRuntimeSideEffects = hasRuntimeSideEffects(body);
 
   /** Record an export this module states by name (anything but `export *`). */
-  const addOwnExport = (node: unknown, declaredLocally = false): void => {
+  const addOwnExport = (node: unknown, origins: Set<string> = new Set()): void => {
     const collected: string[] = [];
     addExportNames(collected, node);
     for (const name of collected) {
       names.push(name);
       ownNames.add(name);
-      if (declaredLocally) ownDeclaredNames.add(name);
+      ownOrigins.set(name, origins);
     }
+  };
+
+  const resolveNamedOrigin = async (
+    specifier: string,
+    importedName: string
+  ): Promise<Set<string>> => {
+    if (!context.resolveExportAll) return new Set();
+    const target = await loadStarExports(specifier, filename, depth, context);
+    moduleHasRuntimeSideEffects ||= target.hasRuntimeSideEffects;
+    if (importedName !== '*') {
+      const ambiguity = target.ambiguities.get(importedName);
+      if (ambiguity) throw new Error(ambiguity);
+    }
+    const resolved = target.declaringModules.get(importedName);
+    if (resolved && resolved.size > 0) return new Set(resolved);
+    // Keep the resolved module/export pair as a conservative identity. Two
+    // references to the same pair are safe; different or missing pairs are not.
+    return new Set([`${target.path}::${importedName}`]);
   };
 
   for (const node of body) {
@@ -584,19 +1383,15 @@ async function collectModuleExports(
         if (typeof specifier !== 'string') continue;
 
         const child = await loadStarExports(specifier, filename, depth, context);
+        moduleHasRuntimeSideEffects ||= child.hasRuntimeSideEffects;
         for (const childName of child.names) {
           if (childName === 'default') continue;
           names.push(childName);
           const ambiguity = child.ambiguities.get(childName);
           if (ambiguity) ambiguities.set(childName, ambiguity);
-          let declaring = starDeclaringModules.get(childName);
-          if (!declaring) {
-            declaring = new Set<string>();
-            starDeclaringModules.set(childName, declaring);
-          }
-          for (const modulePath of child.declaringModules.get(childName) ?? []) {
-            declaring.add(modulePath);
-          }
+          const contributions = starOrigins.get(childName) ?? [];
+          contributions.push(new Set(child.declaringModules.get(childName) ?? []));
+          starOrigins.set(childName, contributions);
         }
         continue;
       }
@@ -604,6 +1399,7 @@ async function collectModuleExports(
         if (isTypeOnlyDeclaration(node.declaration as BabelNode | undefined)) continue;
         names.push('default');
         ownNames.add('default');
+        ownOrigins.set('default', new Set([filename]));
         continue;
       }
       case 'TSImportEqualsDeclaration': {
@@ -611,7 +1407,7 @@ async function collectModuleExports(
         // `import type`.
         if (node.isExport !== true || node.importKind === 'type') continue;
         const local = (node.id as BabelNode | undefined)?.name;
-        addOwnExport(node.id, typeof local === 'string' && declaredHere.has(local));
+        addOwnExport(node.id, typeof local === 'string' ? new Set([filename]) : new Set());
         continue;
       }
       case 'TSExportAssignment': {
@@ -628,10 +1424,10 @@ async function collectModuleExports(
         if (declaration && !isTypeOnlyDeclaration(declaration)) {
           if (declaration.type === 'VariableDeclaration') {
             for (const declarator of (declaration.declarations as BabelNode[]) ?? []) {
-              addOwnExport(declarator.id, true);
+              addOwnExport(declarator.id, new Set([filename]));
             }
           } else {
-            addOwnExport(declaration.id, true);
+            addOwnExport(declaration.id, new Set([filename]));
           }
         }
 
@@ -640,14 +1436,29 @@ async function collectModuleExports(
         const isLocalReExport = !node.source;
         for (const specifier of (node.specifiers as BabelNode[]) ?? []) {
           if (specifier.exportKind === 'type') continue;
-          const local = (specifier.local as BabelNode | undefined)?.name;
+          const localNode = specifier.local as BabelNode | undefined;
+          const local =
+            typeof localNode?.name === 'string'
+              ? localNode.name
+              : typeof localNode?.value === 'string'
+                ? localNode.value
+                : undefined;
           if (isLocalReExport && typeof local === 'string' && erasedLocals.has(local)) continue;
-          // The exported spelling may differ from the local binding. Imports
-          // and named re-exports still provide no proof of a local origin.
-          addOwnExport(
-            specifier.exported,
-            isLocalReExport && typeof local === 'string' && declaredHere.has(local)
-          );
+          let origins = new Set<string>();
+          const source = (node.source as BabelNode | undefined)?.value;
+          if (typeof source === 'string') {
+            const importedName =
+              specifier.type === 'ExportNamespaceSpecifier' ? '*' : String(local ?? '');
+            origins = await resolveNamedOrigin(source, importedName);
+          } else if (typeof local === 'string' && declaredHere.has(local)) {
+            origins = new Set([filename]);
+          } else if (typeof local === 'string') {
+            const imported = importedLocals.get(local);
+            if (imported) {
+              origins = await resolveNamedOrigin(imported.specifier, imported.importedName);
+            }
+          }
+          addOwnExport(specifier.exported, origins);
         }
         continue;
       }
@@ -657,14 +1468,20 @@ async function collectModuleExports(
   }
 
   const declaringModules = new Map<string, Set<string>>();
-  for (const [name, declaring] of starDeclaringModules) {
+  for (const [name, contributions] of starOrigins) {
     // An explicit export wins here and in every parent, even when the
     // conflicting star exports belong to an intermediate barrel.
     if (ownNames.has(name)) {
       ambiguities.delete(name);
       continue;
     }
-    if (declaring.size > 1 && !ambiguities.has(name)) {
+    const declaring = new Set(contributions.flatMap((origins) => [...origins]));
+    const hasUnknownOrigin = contributions.some((origins) => origins.size === 0);
+    if (
+      (hasUnknownOrigin || declaring.size > 1) &&
+      contributions.length > 1 &&
+      !ambiguities.has(name)
+    ) {
       const where =
         filename === context.rootFilename
           ? `the "use client" module ${filename}`
@@ -672,8 +1489,13 @@ async function collectModuleExports(
       ambiguities.set(
         name,
         `react-on-rails-rsc: ${where} takes "${name}" ` +
-          `(declared in ${[...declaring].sort().join(' and ')}) from more than one ` +
-          '`export * from` target, and each target declares its own binding. ECMAScript drops an ' +
+          `(declared in ${
+            [...declaring]
+              .map((origin) => origin.split('::')[0])
+              .sort()
+              .join(' and ') || 'an unresolved re-export'
+          }) from more than one ` +
+          '`export * from` target without a shared binding. ECMAScript drops an ' +
           'ambiguous star export, so the client reference would advertise a name the bundled ' +
           'module has no binding for and rendering it would fail with "Element type is invalid". ' +
           "Re-export the one you meant explicitly (`export { Name } from './target'`) or rename " +
@@ -688,10 +1510,16 @@ async function collectModuleExports(
     throw new Error([...ambiguities.values()].join('\n'));
   }
   for (const name of ownNames) {
-    declaringModules.set(name, ownDeclaredNames.has(name) ? new Set([filename]) : new Set());
+    declaringModules.set(name, ownOrigins.get(name) ?? new Set());
   }
 
-  return { path: filename, names: [...new Set(names)], declaringModules, ambiguities };
+  return {
+    path: filename,
+    names: [...new Set(names)],
+    declaringModules,
+    ambiguities,
+    hasRuntimeSideEffects: moduleHasRuntimeSideEffects,
+  };
 }
 
 /**
@@ -774,15 +1602,19 @@ async function loadStarExports(
     );
   }
 
-  let resolved: { path: string; source: string };
-  try {
-    resolved = await context.resolveExportAll(specifier, filename);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `react-on-rails-rsc: failed to read "${specifier}" re-exported by the "use client" module ` +
-        `${filename}: ${message}`
-    );
+  const requestKey = `${filename}\0${specifier}`;
+  let resolved = context.resolvedTargets.get(requestKey);
+  if (!resolved) {
+    try {
+      resolved = await context.resolveExportAll(specifier, filename);
+      context.resolvedTargets.set(requestKey, resolved);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `react-on-rails-rsc: failed to read "${specifier}" re-exported by the "use client" module ` +
+          `${filename}: ${message}`
+      );
+    }
   }
 
   const memoized = context.memo.get(resolved.path);
@@ -790,12 +1622,19 @@ async function loadStarExports(
   // A circular `export *` contributes nothing beyond what the outer visit
   // already collected.
   if (context.inProgress.has(resolved.path)) {
-    return { path: resolved.path, names: [], declaringModules: new Map(), ambiguities: new Map() };
+    return {
+      path: resolved.path,
+      names: [],
+      declaringModules: new Map(),
+      ambiguities: new Map(),
+      hasRuntimeSideEffects: false,
+    };
   }
 
   context.inProgress.add(resolved.path);
   try {
     const parsed = parseModule(resolved.source, resolved.path, context.parserPlugins);
+    assertNoCommonJSExportAssignments(parsed.body, resolved.path);
     assertExportStatementsWereParsed(parsed, resolved.path);
 
     const exports = await collectModuleExports(parsed.body, resolved.path, depth + 1, context);
@@ -898,19 +1737,36 @@ export async function collectClientExportNames(
   source: string,
   options: ClientModuleTransformOptions
 ): Promise<string[]> {
+  return (await collectClientModuleInfo(source, options)).names;
+}
+
+export interface ClientModuleInfo {
+  names: string[];
+  hasRuntimeSideEffects: boolean;
+}
+
+export async function collectClientModuleInfo(
+  source: string,
+  options: ClientModuleTransformOptions
+): Promise<ClientModuleInfo> {
   const parsed = parseModule(source, options.filename, options.parserPlugins ?? []);
   assertSingleDirective(parsed.directives, options.filename);
+  assertNoCommonJSExportAssignments(parsed.body, options.filename);
   assertExportStatementsWereParsed(parsed, options.filename);
 
   const exports = await collectModuleExports(parsed.body, options.filename, 0, {
     rootFilename: options.filename,
     resolveExportAll: options.resolveExportAll,
     memo: new Map(),
+    resolvedTargets: new Map(),
     inProgress: new Set([options.filename]),
     parserPlugins: options.parserPlugins ?? [],
   });
 
-  return exports.names;
+  return {
+    names: exports.names,
+    hasRuntimeSideEffects: exports.hasRuntimeSideEffects,
+  };
 }
 
 const defaultExportThrowMessage = (url: string) =>
@@ -927,22 +1783,30 @@ const namedExportThrowMessage = (name: string) =>
 /**
  * Transform a `"use client"` module into its client-reference stub module.
  *
- * Throws (failing the bundler build) when the module has no runtime exports,
- * instead of the stock loader's silent empty-string result.
+ * Preserves the stock loader's empty-string result when a valid client module
+ * has no runtime exports but does have runtime side effects. This is needed for
+ * side-effect-only client entries, such as store registration packs that are
+ * intentionally omitted from the RSC server bundle. Inert modules, parse
+ * failures, and export-scan mismatches still throw before this point, so an
+ * actual client component cannot disappear silently.
  */
 export async function transformClientModule(
   source: string,
   options: ClientModuleTransformOptions
 ): Promise<string> {
-  const names = await collectClientExportNames(source, options);
+  const { names, hasRuntimeSideEffects: moduleHasRuntimeSideEffects } =
+    await collectClientModuleInfo(source, options);
 
   if (names.length === 0) {
-    throw new Error(
-      `react-on-rails-rsc: the "use client" module ${options.filename} has no runtime exports, ` +
-        'so no server component can reference it. Export at least one value (a component, hook, ' +
-        'or function), or remove the "use client" directive. TypeScript `export type` / ' +
-        '`export interface` declarations are erased and do not count.'
-    );
+    if (!moduleHasRuntimeSideEffects) {
+      throw new Error(
+        `react-on-rails-rsc: the "use client" module ${options.filename} has no runtime exports ` +
+          'or side effects. Export at least one value (a component, hook, or function), add a ' +
+          'runtime side effect, or remove the "use client" directive. TypeScript `export type` / ' +
+          '`export interface` declarations are erased and do not count.'
+      );
+    }
+    return '';
   }
 
   // A module that itself exports `registerClientReference` would collide with

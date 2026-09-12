@@ -2,6 +2,16 @@
 
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Allowed valid side-effect-only `"use client"` modules with no runtime exports to emit empty RSC
+  stubs, so entries such as store registration packs no longer break the RSC build. ([#230])
+- Fixed the client export scan advertising names that resolve to different bindings through mixed
+  named and star re-export paths, including TypeScript `export import` aliases. Such ambiguous
+  exports now fail the build with an error naming their origins instead of producing an invalid
+  client reference. ([#230])
+
 ## [19.3.0-rc.3] - 2026-09-11
 
 ### Fixed
@@ -163,3 +173,4 @@ All notable changes to this package will be documented in this file.
 [#222]: https://github.com/shakacode/react_on_rails_rsc/pull/222
 [#223]: https://github.com/shakacode/react_on_rails_rsc/pull/223
 [#228]: https://github.com/shakacode/react_on_rails_rsc/pull/228
+[#230]: https://github.com/shakacode/react_on_rails_rsc/pull/230

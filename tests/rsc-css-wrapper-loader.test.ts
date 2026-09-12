@@ -296,10 +296,10 @@ describe('rscCssWrapperLoader export enumeration', () => {
         fails: true,
       },
       {
-        label: 'external TypeScript require aliases keep their origin unknown',
+        label: 'external TypeScript require aliases create independent bindings',
         a: "export import Shared = require('./shared');",
         b: "export import Shared = require('./shared');",
-        fails: false,
+        fails: true,
       },
       {
         label: 'imported aliases keep their origin unknown',
@@ -319,31 +319,42 @@ describe('rscCssWrapperLoader export enumeration', () => {
           "import { Shared as Imported } from './shared'; const Local = 1; " +
           'export { Local as Imported, Imported as Shared };',
         b: 'export const Shared = 2;',
-        fails: false,
+        fails: true,
         names: ['Imported', 'Shared'],
+        declaredIn: '/app/b.js and /app/shared.js',
       },
     ];
 
-    it.each(cases)('$label', async ({ a, b, own = '', fails, names = ['Shared'] }) => {
-      const files = {
-        [`${APP}/a.js`]: a,
-        [`${APP}/b.js`]: b,
-        [`${APP}/shared.js`]: 'export const Shared = 1;',
-      };
-      const filename = `${APP}/Barrel.js`;
-      const source = root + own;
-      if (fails) {
-        const expected =
-          'the "use client" module /app/Barrel.js takes "Shared" ' +
-          '(declared in /app/a.js and /app/b.js) from more than one `export * from` target';
-        await expect(runWrapperLoader(filename, source, { files })).rejects.toThrow(expected);
-        await expect(serverExports(filename, source, files)).rejects.toThrow(expected);
-      } else {
-        const code = await runWrapperLoader(filename, source, { files });
-        expect(wrapperExports(code)).toEqual(names);
-        await expect(serverExports(filename, source, files)).resolves.toEqual(names);
+    it.each(cases)(
+      '$label',
+      async ({
+        a,
+        b,
+        own = '',
+        fails,
+        names = ['Shared'],
+        declaredIn = '/app/a.js and /app/b.js',
+      }) => {
+        const files = {
+          [`${APP}/a.js`]: a,
+          [`${APP}/b.js`]: b,
+          [`${APP}/shared.js`]: 'export const Shared = 1;',
+        };
+        const filename = `${APP}/Barrel.js`;
+        const source = root + own;
+        if (fails) {
+          const expected =
+            'the "use client" module /app/Barrel.js takes "Shared" ' +
+            `(declared in ${declaredIn}) from more than one \`export * from\` target`;
+          await expect(runWrapperLoader(filename, source, { files })).rejects.toThrow(expected);
+          await expect(serverExports(filename, source, files)).rejects.toThrow(expected);
+        } else {
+          const code = await runWrapperLoader(filename, source, { files });
+          expect(wrapperExports(code)).toEqual(names);
+          await expect(serverExports(filename, source, files)).resolves.toEqual(names);
+        }
       }
-    });
+    );
   });
 
   it.each([
@@ -457,13 +468,39 @@ describe('rscCssWrapperLoader export enumeration', () => {
     );
   });
 
-  it('fails the build for a module with no runtime exports', async () => {
-    const source = "'use client';\nexport type Only = string;\n";
+  it('preserves side effects for a module with no runtime exports', async () => {
+    const source =
+      "'use client';\n" +
+      "import ReactOnRails from 'react-on-rails-pro';\n" +
+      'ReactOnRails.registerStore({});\n';
 
-    await expect(runWrapperLoader(`${APP}/TypesOnly.ts`, source)).rejects.toThrow(
-      /has no runtime exports/
+    await expect(runWrapperLoader(`${APP}/Stores.js`, source)).resolves.toBe(
+      'import * as __rscCssOriginal from "/app/Stores.js?__rsc_orig";\n' +
+        'void __rscCssOriginal;'
     );
   });
+
+  it.each(['export type Only = string;', 'export default interface Only {}'])(
+    'rejects a module with no runtime exports or side effects: %s',
+    async (statement) => {
+      const source = `'use client';\n${statement}\n`;
+
+      await expect(runWrapperLoader(`${APP}/TypesOnly.ts`, source)).rejects.toThrow(
+        /has no runtime exports or side effects/
+      );
+    }
+  );
+
+  it.each(["exports.Card = () => null;", 'module.exports = () => null;'])(
+    'rejects CommonJS export assignment %s instead of treating it as empty',
+    async (assignment) => {
+      const source = `'use client';\n${assignment}\n`;
+
+      await expect(runWrapperLoader(`${APP}/CommonJS.js`, source)).rejects.toThrow(
+        /CommonJS export assignment/
+      );
+    }
+  );
 
   it('accepts proposal syntax through the parserPlugins loader option', async () => {
     const source = "'use client';\nexport const value = 1 |> % + 1;\nexport default value;\n";

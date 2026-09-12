@@ -24,6 +24,7 @@ import { parse as babelParse } from '@babel/parser';
 import type { LoaderContext } from 'webpack';
 import RSCWebpackLoader from '../src/WebpackLoader';
 import {
+  collectClientModuleInfo,
   collectClientExportNames,
   transformClientModule,
 } from '../src/clientModuleTransform';
@@ -216,10 +217,230 @@ describe('RSCWebpackLoader TypeScript handling', () => {
     ).resolves.toEqual(['Widget']);
   });
 
-  it('rejects a "use client" module whose exports are all erased', async () => {
+  it('rejects a "use client" module with no runtime exports or side effects', async () => {
     await expect(transformFixture('no-runtime-exports.tsx')).rejects.toThrow(
-      /has no runtime exports/
+      /has no runtime exports or side effects/
     );
+  });
+
+  it('allows a side-effect-only "use client" module in the RSC bundle', async () => {
+    const source =
+      "// Store registration belongs only in the browser bundle.\n" +
+      "'use client';\n" +
+      "import ReactOnRails from 'react-on-rails-pro';\n" +
+      "ReactOnRails.registerStore({});\n";
+
+    await expect(
+      runLoader(createLoaderContext('/app/stores-registration.js'), source)
+    ).resolves.toBe('');
+  });
+
+  it('allows an explicit side-effect import with no runtime exports', async () => {
+    const source = "'use client';\nimport './browser-registration';\n";
+
+    await expect(
+      runLoader(createLoaderContext('/app/browser-registration.js'), source)
+    ).resolves.toBe('');
+  });
+
+  it('rejects a bound import plus an unexported component declaration', async () => {
+    const source =
+      "'use client';\n" +
+      "import { Component } from 'react';\n" +
+      'class Widget extends Component {}\n';
+
+    await expect(runLoader(createLoaderContext('/app/Widget.js'), source)).rejects.toThrow(
+      /has no runtime exports or side effects/
+    );
+  });
+
+  it('rejects an unexported class with a member-expression superclass', async () => {
+    const source =
+      "'use client';\n" +
+      "import React from 'react';\n" +
+      'class Widget extends React.Component {}\n';
+
+    await expect(runLoader(createLoaderContext('/app/Widget.js'), source)).rejects.toThrow(
+      /has no runtime exports or side effects/
+    );
+  });
+
+  it('rejects an unexported React class imported through a named default specifier', async () => {
+    const source =
+      "'use client';\n" +
+      "import { default as React } from 'react';\n" +
+      'class Widget extends React.Component {}\n';
+
+    await expect(runLoader(createLoaderContext('/app/Widget.js'), source)).rejects.toThrow(
+      /has no runtime exports or side effects/
+    );
+  });
+
+  it.each(['(React as any).Component', 'React!.Component'])(
+    'rejects an unexported React class with wrapped heritage: %s',
+    async (heritage) => {
+      const source =
+        "'use client';\n" +
+        "import React from 'react';\n" +
+        `class Widget extends ${heritage} {}\n`;
+
+      await expect(runLoader(createLoaderContext('/app/Widget.tsx'), source)).rejects.toThrow(
+        /has no runtime exports or side effects/
+      );
+    }
+  );
+
+  it.each([
+    "function Widget() { return null; } Widget.displayName = 'Widget';",
+    "const Widget = () => null; Widget.displayName = 'Widget';",
+    'class Widget {} Widget.propTypes = {};',
+  ])(
+    'rejects local component metadata that cannot make the component observable: %s',
+    async (body) => {
+      const source = `'use client';\n${body}\n`;
+
+      await expect(runLoader(createLoaderContext('/app/Widget.js'), source)).rejects.toThrow(
+        /has no runtime exports or side effects/
+      );
+    }
+  );
+
+  it('preserves a registration call that makes a locally declared value observable', async () => {
+    const source =
+      "'use client';\n" +
+      'function Widget() { return null; }\n' +
+      "Widget.displayName = 'Widget';\n" +
+      'register(Widget);\n';
+
+    await expect(runLoader(createLoaderContext('/app/register-widget.js'), source)).resolves.toBe(
+      ''
+    );
+  });
+
+  it('preserves a potentially effectful non-imported class heritage access', async () => {
+    const source = "'use client';\nclass Widget extends globalThis.registry.Component {}\n";
+
+    await expect(runLoader(createLoaderContext('/app/registry-widget.js'), source)).resolves.toBe(
+      ''
+    );
+  });
+
+  it('preserves a potentially effectful arbitrary imported heritage access', async () => {
+    const source =
+      "'use client';\n" +
+      "import Registry from './registry';\n" +
+      'class Widget extends Registry.Component {}\n';
+
+    await expect(runLoader(createLoaderContext('/app/registry-widget.js'), source)).resolves.toBe(
+      ''
+    );
+  });
+
+  it.each([
+    'try {} catch {}',
+    'switch (value) {}',
+    'label: { break label; }',
+    '1 + 1;',
+    'const zIndex = -1;',
+    '+1;',
+    '~1;',
+    'const label = `id-${1}`;',
+  ])(
+    'rejects an inert control-flow statement: %s',
+    async (statement) => {
+      const source = `'use client';\n${statement}\n`;
+
+      await expect(runLoader(createLoaderContext('/app/inert-control.js'), source)).rejects.toThrow(
+        /has no runtime exports or side effects/
+      );
+    }
+  );
+
+  it.each([
+    "import { type Store } from './types';",
+    "import type Store = require('./types');",
+    "export { type Store } from './types';",
+    'export default interface Store {}',
+  ])('rejects specifier-level type-only syntax as inert: %s', async (statement) => {
+    const source = `'use client';\n${statement}\n`;
+
+    await expect(
+      runLoader(createLoaderContext('/app/types-only-client.ts'), source)
+    ).rejects.toThrow(/has no runtime exports or side effects/);
+  });
+
+  it.each([
+    'class Registry { static { globalThis.registryReady = true; } }',
+    'class Registry extends createRegistryBase() {}',
+    'const { [registerKey()]: registered } = {};',
+    'const { registered } = registry;',
+    'const [registered] = registry;',
+    'const registered = { ...registry };',
+    'const registered = [...registry];',
+    'const registered = `${registry}`;',
+    'const registered = -registry;',
+    'registry.initialize;',
+    'try {} catch { register(); }',
+    'function Widget() {} Widget[!register()] = true;',
+  ])('allows a declaration with runtime initialization: %s', async (statement) => {
+    const source = `'use client';\n${statement}\n`;
+
+    await expect(
+      runLoader(createLoaderContext('/app/class-registration.js'), source)
+    ).resolves.toBe('');
+  });
+
+  it.each([
+    "import Registry = require('./registry');",
+    'enum Registry { Ready }',
+    'namespace Registry { export const ready = true; }',
+  ])('allows runtime-emitting TypeScript syntax: %s', async (statement) => {
+    const source = `'use client';\n${statement}\n`;
+
+    await expect(
+      runLoader(createLoaderContext('/app/registration.ts'), source)
+    ).resolves.toBe('');
+  });
+
+  it('classifies runtime work in a default-exported class consistently', async () => {
+    await expect(
+      collectClientModuleInfo("'use client';\nexport default class extends createBase() {}\n", {
+        filename: '/app/default-class.js',
+        url: 'file:///app/default-class.js',
+      })
+    ).resolves.toMatchObject({ names: ['default'], hasRuntimeSideEffects: true });
+  });
+
+  it.each([
+    "exports.Card = () => null;",
+    'module.exports = () => null;',
+    '(function () { module.exports = () => null; })();',
+    '(() => { exports.Card = () => null; })();',
+  ])(
+    'rejects CommonJS export assignment %s instead of treating it as empty',
+    async (assignment) => {
+      const source = `'use client';\n${assignment}\n`;
+
+      await expect(
+        runLoader(createLoaderContext('/app/commonjs-client.js'), source)
+      ).rejects.toThrow(/CommonJS export assignment/);
+    }
+  );
+
+  it.each([
+    'export function update(exports) { exports.Card = true; }',
+    'export const update = (module) => { module.exports = true; };',
+    'const exports = {}; exports.Card = true;',
+    'try {} catch (exports) { exports.Card = true; }',
+    'if (true) { var module = {}; } module.exports = true;',
+    'for (var exports of [{}]) {} exports.Card = true;',
+    '(function (module) { module.exports = true; })({});',
+  ])('allows ordinary bindings named module or exports: %s', async (statement) => {
+    const source = `'use client';\n${statement}\n`;
+
+    await expect(
+      runLoader(createLoaderContext('/app/shadowed-commonjs-client.js'), source)
+    ).resolves.toEqual(expect.any(String));
   });
 });
 
@@ -279,6 +500,60 @@ describe('RSCWebpackLoader star re-exports', () => {
         },
       })
     ).rejects.toThrow(/failed to read "\.\/barrel-target"/);
+  });
+
+  it('allows a shadowed CommonJS-like assignment inside a star-export target', async () => {
+    const source = "'use client';\nexport * from './target';\n";
+
+    await expect(
+      collectClientExportNames(source, {
+        filename: '/app/barrel.js',
+        url: 'file:///app/barrel.js',
+        resolveExportAll: async () => ({
+          path: '/app/target.js',
+          source: 'function assign(exports) { exports.value = 1; }\nexport const Widget = 1;\n',
+        }),
+      })
+    ).resolves.toEqual(['Widget']);
+  });
+
+  it('rejects a root CommonJS assignment inside a star-export target', async () => {
+    await expect(
+      transformClientModule("'use client';\nexport * from './target';\n", {
+        filename: '/app/barrel.js',
+        url: 'file:///app/barrel.js',
+        resolveExportAll: async () => ({
+          path: '/app/target.js',
+          source: 'module.exports.Widget = function Widget() {};\n',
+        }),
+      })
+    ).rejects.toThrow(/CommonJS export assignment/);
+  });
+
+  it.each(['export type Only = string;\n', 'export default function Only() {}\n'])(
+    'rejects an inert star-export target that contributes no names: %s',
+    async (targetSource) => {
+      await expect(
+        transformClientModule("'use client';\nexport * from './target';\n", {
+          filename: '/app/barrel.ts',
+          url: 'file:///app/barrel.ts',
+          resolveExportAll: async () => ({ path: '/app/target.ts', source: targetSource }),
+        })
+      ).rejects.toThrow(/has no runtime exports or side effects/);
+    }
+  );
+
+  it('preserves runtime effects from a star-export target that contributes no names', async () => {
+    await expect(
+      transformClientModule("'use client';\nexport * from './target';\n", {
+        filename: '/app/barrel.js',
+        url: 'file:///app/barrel.js',
+        resolveExportAll: async () => ({
+          path: '/app/target.js',
+          source: 'registerClientPack();\nexport default function Only() {}\n',
+        }),
+      })
+    ).resolves.toBe('');
   });
 });
 
@@ -466,6 +741,22 @@ describe('repeated star re-exports', () => {
       },
     });
 
+  it('resolves one target once for multiple named re-exports', async () => {
+    const resolveExportAll = jest.fn(async () => ({
+      path: '/app/shared.js',
+      source: 'export const A = 1; export const B = 2; export const C = 3;',
+    }));
+
+    await expect(
+      collectClientExportNames("'use client';\nexport { A, B, C } from './shared';\n", {
+        filename: '/app/Barrel.js',
+        url: 'file:///app/Barrel.js',
+        resolveExportAll,
+      })
+    ).resolves.toEqual(['A', 'B', 'C']);
+    expect(resolveExportAll).toHaveBeenCalledTimes(1);
+  });
+
   it('emits a name supplied by two `export *` targets exactly once', async () => {
     // The stock loader pushed the name twice and emitted `export const X` twice,
     // which is a syntax error.
@@ -495,6 +786,18 @@ describe('repeated star re-exports', () => {
     ).rejects.toThrow(
       'the "use client" module /app/Barrel.js takes "Shared" (declared in /app/a.js and ' +
         '/app/b.js) from more than one `export * from` target'
+    );
+  });
+
+  it('fails when a named re-export and a declaration have different origins', async () => {
+    await expect(
+      collectWithModules("'use client';\nexport * from './a';\nexport * from './b';\n", {
+        '/app/a.js': "export { Shared } from './shared';\n",
+        '/app/b.js': 'export const Shared = 2;\n',
+        '/app/shared.js': 'export const Shared = 1;\n',
+      })
+    ).rejects.toThrow(
+      'takes "Shared" (declared in /app/b.js and /app/shared.js) from more than one `export * from` target'
     );
   });
 
@@ -534,6 +837,19 @@ describe('repeated star re-exports', () => {
         '/app/a.js': "import { Shared } from './shared';\nexport { Shared };\n",
         '/app/b.js': "export { Shared } from './shared';\n",
         '/app/shared.js': 'export const Shared = 1;\n',
+      }
+    );
+
+    expect(names).toEqual(['Shared']);
+  });
+
+  it('keeps identifier and string-literal re-exports of the same binding', async () => {
+    const names = await collectWithModules(
+      "'use client';\nexport * from './a';\nexport * from './b';\n",
+      {
+        '/app/a.js': "export { 'foo' as Shared } from './shared';\n",
+        '/app/b.js': "export { foo as Shared } from './shared';\n",
+        '/app/shared.js': 'export const foo = 1;\n',
       }
     );
 

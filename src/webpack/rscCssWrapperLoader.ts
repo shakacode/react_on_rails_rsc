@@ -40,7 +40,7 @@
 import type { LoaderContext } from 'webpack';
 import type { ParserPlugin } from '@babel/parser';
 import { pathToFileURL } from 'node:url';
-import { collectClientExportNames, isPlainIdentifier } from '../clientModuleTransform';
+import { collectClientModuleInfo, isPlainIdentifier } from '../clientModuleTransform';
 import { createExportAllResolver, loaderParserPlugins } from '../loaderExportScan';
 
 interface Options {
@@ -106,7 +106,7 @@ export default function rscCssWrapperLoader(this: LoaderContext<Options>, source
   // than escaping past the already-acquired async callback.
   Promise.resolve()
     .then(() =>
-      collectClientExportNames(source, {
+      collectClientModuleInfo(source, {
         filename: resourcePath,
         url: key,
         // Same resolver the server-side stub uses, so an `export * from` chain
@@ -116,17 +116,22 @@ export default function rscCssWrapperLoader(this: LoaderContext<Options>, source
         parserPlugins: loaderParserPlugins(loaderContext as LoaderContext<unknown>, LOADER_NAME),
       })
     )
-    .then((exportNames) => {
+    .then(({ names: exportNames, hasRuntimeSideEffects }) => {
       if (exportNames.length === 0) {
-        // `transformClientModule` throws for this input too. Emitting
-        // `export default __rscWrap(__orig['default'])` here instead would put a
-        // module whose only export is `undefined` behind the manifest entry.
-        throw new Error(
-          `${LOADER_NAME}: the "use client" module ${resourcePath} has no runtime exports, so ` +
-            'the generated CSS wrapper would export nothing. Export at least one value (a ' +
-            'component, hook, or function), or remove the "use client" directive. TypeScript ' +
-            '`export type` / `export interface` declarations are erased and do not count.'
-        );
+        if (!hasRuntimeSideEffects) {
+          throw new Error(
+            `${LOADER_NAME}: the "use client" module ${resourcePath} has no runtime exports ` +
+              'or side effects. Export at least one value (a component, hook, or function), ' +
+              'add a runtime side effect, or remove the "use client" directive.'
+          );
+        }
+
+        // The wrapper also runs in the browser-client build, so preserve the
+        // original module's side effects even though there are no exports to
+        // wrap. The RSC-side WebpackLoader separately turns the original into
+        // an empty stub.
+        const origRequest = JSON.stringify(`${resourcePath}?__rsc_orig`);
+        return `import * as __rscCssOriginal from ${origRequest};\nvoid __rscCssOriginal;`;
       }
 
       // Import the original with a distinct query so it is a different webpack

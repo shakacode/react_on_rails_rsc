@@ -2,55 +2,23 @@
 
 All notable changes to this package will be documented in this file.
 
-## [19.3.0-rc.4] - 2026-09-12
-
-### Fixed
-- Allowed valid side-effect-only `"use client"` modules with no runtime exports to emit empty RSC
-  stubs, so entries such as store registration packs no longer break the RSC build. ([#230])
-- Fixed the client export scan advertising names that resolve to different bindings through mixed
-  named and star re-export paths, including TypeScript `export import` aliases. Such ambiguous
-  exports now fail the build with an error naming their origins instead of producing an invalid
-  client reference. ([#230])
-
-## [19.3.0-rc.3] - 2026-09-11
-
-### Fixed
-- Restored stylesheet hints when Webpack or Rspack scope-hoists a client reference and its CSS-bearing child into `ConcatenationModule` wrappers. Production builds with module concatenation now retain shared and transitive child CSS with `cssWrapper` on or off, and server manifests keep each client reference mapped to its own generated CSS-wrapper module ID. ([#228])
-
-## [19.3.0-rc.2] - 2026-09-08
-
-### Changed
-- Dropped the `es-module-lexer` runtime dependency. It was only used by the `cssWrapper` export scan, which now shares the client-reference transform's parser. ([#223])
-
-### Fixed
-- Fixed the opt-in `cssWrapper` option dropping the stylesheet hint for a plain child component shared by two or more client references, so enabling the flash-of-unstyled-content fix no longer caused a flash of unstyled content on the shared component. With `cssWrapper` on, the client manifest records a generated wrapper module as the client reference; the shared-child CSS recovery walked one dependency hop from that wrapper, which reached only the original client module and never its shared child, so the child's extracted stylesheet was emitted but never hinted. Both the webpack and Rspack plugins now start that walk from the original client module. Initial (entry-loaded) chunks stay excluded as before. ([#222])
-- Fixed the `"use client"` export scan to treat Flow's ambient `declare class` / `declare var` / `declare function` declarations and TypeScript namespaces whose only members are type-only specifier exports (`export { type T }`) as erased, so the generated server stub no longer advertises client references for names that do not exist at runtime. ([#221])
-- Fixed the `WebpackLoader` `parserPlugins` option to reject a malformed one-element tuple such as `['pipelineOperator']` with the loader's own message naming the option, instead of letting it fail inside the parser and surface as a "failed to parse the \"use client\" module" error that blames the source file. ([#221])
-- Fixed the opt-in `cssWrapper` option dropping a `"use client"` module's named exports. The generated wrapper module is what the client manifest resolves to, and it replaces the module's export surface, but it enumerated exports with a parser that understands neither JSX nor TypeScript and silently fell back to wrapping only the default export. A component written as `export const Card = ({ title }) => <section className="card">{title}</section>` therefore resolved to `undefined` at render time even though the server-side client reference advertised it. The wrapper now enumerates exports with the same JSX- and TypeScript-aware pass the client-reference stub uses: `export * from` chains are resolved recursively through the bundler's own resolver instead of one level, reserved-word and arbitrary module namespace export names (`export { value as "weird name" }`) are aliased instead of emitting invalid syntax, and a parse failure, an unresolvable `export *` target, or a module with no runtime exports fails the build with an error naming the file. Affects both `RSCWebpackPlugin` and `RSCRspackPlugin`. ([#223])
-- Fixed the opt-in `cssWrapper` option silently wrapping a name that two `export * from` targets each declare independently, including Flow enums and renamed local bindings (`export { Local as Renamed }`). ECMAScript module linking drops such an ambiguous name from the namespace object, so the generated wrapper exported `undefined` and the component failed to render even though the client-reference stub advertised it. Enumerating the exports now fails the build with an error naming the module, the ambiguous name, and both declaring files. A name re-exported from one shared origin through several paths, or shadowed by the module's own declaration, is unaffected. ([#223])
-
-## [19.3.0-rc.1] - 2026-09-06
-
-### Added
-- Added a `parserPlugins` option to `react-on-rails-rsc/WebpackLoader` for enabling extra Babel parser plugins when enumerating `"use client"` exports, so proposal syntax the application build already accepts (for example the pipeline operator) does not fail the RSC bundle. ([#216])
-
-### Changed
-- A `"use client"` module with no runtime exports (type-only declarations, a CommonJS-style `exports.x = ...` body, or a TypeScript `export = X` assignment) now fails the build with an error naming the file, where the stock loader previously emitted an empty client-reference module and the component silently disappeared at render time. Give the module an ES module export or remove the directive. ([#216])
-
-### Fixed
-- Fixed `RSCRspackPlugin` to honor application `splitChunks` configuration for generated client-reference chunks, allowing shared JavaScript to be extracted once while preserving the complete sibling chunk metadata Flight needs for hydration. ([#213])
-- Fixed `"use client"` modules silently compiling to an empty client-reference module when the loader could not parse them. The loader runs first in the React on Rails loader chain, so it sees raw JSX/TSX, and the stock `react-server-dom-webpack` node-loader enumerated exports with `acorn-loose`, which supports neither JSX nor TypeScript and never fails: on some JSX shapes it dropped the trailing `export default` and the component then vanished from the RSC payload with no build error. Export names are now collected with a JSX- and TypeScript-aware parser, TypeScript type-only exports are excluded, `export * from` targets are resolved through the bundler's own resolver, and a `"use client"` module with no runtime exports fails the build with an error naming the file instead of emitting an empty module. ([#216])
-
-## [19.3.0-rc.0] - 2026-08-29
+## [19.3.0] - 2026-09-16
 
 ### Breaking Changes
 - Raised the stock Flight runtime, React, and React DOM minimums from 19.2.7 to 19.2.8 so the packaged runtime and peer contract stay aligned. ([#203])
 
 ### Added
-- Added an opt-in `cssWrapper` option to `RSCWebpackPlugin` and `RSCRspackPlugin` that prevents client-component CSS flash-of-unstyled-content by resolving each `"use client"` module to a generated wrapper which renders a native React 19 `<link rel="stylesheet" precedence>`, so the stylesheet blocks paint instead of arriving as a non-blocking `ReactDOM.preinit()` hint. Off by default. ([#196])
+- Added an opt-in `cssWrapper` option to `RSCWebpackPlugin` and `RSCRspackPlugin` that prevents client-component CSS flash-of-unstyled-content by resolving each `"use client"` module to a generated wrapper which renders a native React 19 `<link rel="stylesheet" precedence>`. The final wrapper preserves JSX, TypeScript, Flow, named, star, and side-effect-only module behavior while retaining shared-child stylesheet hints. Off by default. ([#196]) ([#222]) ([#223]) ([#230])
+- Added a validated `parserPlugins` option to `react-on-rails-rsc/WebpackLoader` for enabling extra Babel parser plugins when enumerating `"use client"` exports, so proposal syntax accepted by the application build does not fail the RSC bundle. ([#216]) ([#221])
+
+### Changed
+- Hardened `"use client"` transformation to parse raw JSX, TypeScript, and Flow exports; resolve `export *` chains; exclude erased declarations; and reject missing or ambiguous runtime exports with actionable errors. Valid side-effect-only client modules continue to emit empty RSC stubs so browser registration modules work without advertising client references. ([#216]) ([#221]) ([#223]) ([#230])
+- Dropped the `es-module-lexer` runtime dependency after unifying the CSS-wrapper and client-reference export scanners. ([#223])
 
 ### Fixed
 - Prevented `RSCRspackPlugin` browser bundles from requesting every discovered client-reference chunk at startup while preserving emitted chunks for Flight's on-demand loading. ([#207]) ([#210])
+- Fixed `RSCRspackPlugin` to honor application `splitChunks` configuration for generated client-reference chunks, allowing shared JavaScript to be extracted once while preserving the complete sibling chunk metadata Flight needs for hydration. ([#213])
+- Restored stylesheet hints when Webpack or Rspack scope-hoists a client reference and its CSS-bearing child into `ConcatenationModule` wrappers. Production builds with module concatenation retain shared and transitive child CSS with `cssWrapper` on or off, and server manifests keep each client reference mapped to its generated CSS-wrapper module ID. ([#228])
 
 ## [19.2.1] - 2026-07-14
 
@@ -117,11 +85,7 @@ All notable changes to this package will be documented in this file.
 ### Security
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
-[19.3.0-rc.4]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0-rc.3...19.3.0-rc.4
-[19.3.0-rc.3]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0-rc.2...19.3.0-rc.3
-[19.3.0-rc.2]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0-rc.1...19.3.0-rc.2
-[19.3.0-rc.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0-rc.0...19.3.0-rc.1
-[19.3.0-rc.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1...19.3.0-rc.0
+[19.3.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1...19.3.0
 [19.2.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.0...19.2.1
 [19.2.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5

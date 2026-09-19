@@ -100,9 +100,10 @@ gh pr list --search "<key terms from issue>" --state open
 
 react_on_rails_rsc uses a simple, changelog-driven release model. There are no
 automated release-tracker issues, release-mode labels, confidence-block
-protocol, or CI-expansion commands. CI is a single GitHub Actions jest
-unit-tests workflow ("Run unit tests (jest)") that runs on every PR, plus
-advisory Claude review checks. Releases are published with the
+protocol, or CI-expansion commands. Every PR runs unit-tests, artifact
+verification, e2e-tests, the compatibility-matrix jobs, and advisory Claude
+review. GitHub currently enforces none of those as required status checks.
+Releases are published with the
 changelog-driven `scripts/release.sh` (`yarn release` / `yarn release:dry-run`),
 which reads the target version from `CHANGELOG.md` and publishes to npm.
 
@@ -626,14 +627,15 @@ and the next action the agent will take after a response. Do not post routine pr
 
 ## CI Model
 
-CI in react_on_rails_rsc is a single GitHub Actions workflow, "Run unit tests
-(jest)" (`.github/workflows/unit-tests.yml`), that runs `yarn` + `yarn test` on
-Node 20.x for every PR. There is no path-selected CI, no full-CI expansion, and
-no CI-command audit trail. The advisory "Claude Code Review" / "Claude Code"
-checks may also run.
+Every pull request runs unit-tests (`.github/workflows/unit-tests.yml`, Node 22.x),
+artifact verification, e2e-tests, the compatibility-matrix jobs, and advisory
+Claude Code Review. There is no path-selected CI, no full-CI expansion, and
+no CI-command audit trail. Shaka's seam wait list covers the always-on
+test/artifact/e2e/compat job names; it does not wait on advisory review checks.
+The human merge gate is still the full `gh pr checks` list.
 
 - Do not push "hopeful" fixes just to let CI find a basic failure. Prefer local
-  `yarn test` + `yarn build`, then let the single CI workflow confirm.
+  `yarn test` + `yarn build`, then let hosted CI confirm.
 - During active implementation or review-fix churn, batch fixes locally before
   pushing instead of triggering repeated CI runs.
 
@@ -847,7 +849,7 @@ For a manual multi-PR landing plan:
 4. For each candidate PR, verify it is the right thing to work on now: approved or worth fixing, non-duplicative, scoped, and clear enough to complete.
 5. For blocked PRs, fix only the blocking cause, rerun targeted local checks, and batch one push.
 6. Do not create follow-up issues for ordinary review nits. Use one deferred bundle per PR only after explicit user approval.
-7. After local validation (`yarn test`, `yarn build`), let the single jest CI workflow confirm each PR before merge.
+7. After local validation (`yarn test`, `yarn build`), let hosted PR CI confirm each PR before merge.
 
 ## Post-Merge Batch Audit
 

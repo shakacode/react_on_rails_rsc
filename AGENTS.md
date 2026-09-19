@@ -287,4 +287,4 @@ Update `/CHANGELOG.md` for **user-visible changes only** (features, bug fixes, b
 
 Portable shared skills resolve this repo's commands and policy through:
 - **Commands** — run `.agents/bin/<name>` (`setup`, `validate`, `test`, ...); see `.agents/bin/README.md`. A missing script means that capability is n/a here.
-- **Policy / config** — `.agents/agent-workflow.yml`.
+- **Shaka seam** — `.agents/agent-workflow.yml` is the typed contract (setup/validate/test paths, review, merge, and the PR check names Shaka waits on). Human-only constraints stay in this file: changelog, `Follow-up:` titles, advisory AI reviewers, batch-closeout auto-merge for ready low-risk PRs, and the private coordination backend. GitHub currently enforces no required status checks; the seam still names the workflows that run on every PR.

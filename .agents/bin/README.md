@@ -15,4 +15,5 @@ means that capability is n/a here.
 | `shared-skill-dir` | Resolve an installed/shared skill directory | `<path-to-skill>` or a clear error |
 
 For one RSC test file: `NODE_CONDITIONS=react-server yarn jest <path>` (for
-`*.rsc.test.*`). Non-command policy lives in [`../agent-workflow.yml`](../agent-workflow.yml).
+`*.rsc.test.*`). The typed Shaka contract lives in [`../agent-workflow.yml`](../agent-workflow.yml);
+human-only constraints stay in [`../../AGENTS.md`](../../AGENTS.md).

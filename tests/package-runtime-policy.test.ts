@@ -30,7 +30,7 @@ const collectExportTargets = (value: unknown): string[] => {
 };
 
 describe('19.3 runtime release policy', () => {
-  it('stamps the package and changelog for the 19.3.1 release line', () => {
+  it('stamps the package and changelog for the 19.3.1-rc.0 candidate', () => {
     const pkg = readJson<PackageJson>('package.json');
     const changelog = fs.readFileSync(path.join(repoRoot, 'CHANGELOG.md'), 'utf8');
 
@@ -38,7 +38,7 @@ describe('19.3 runtime release policy', () => {
     // require editing this test between RC and final stamps. Still pins the
     // current package release line and requires the
     // CHANGELOG's top entry to match the package version exactly.
-    // Published 19.3.0 stayed on Flight 19.2.8; 19.3.1 is the first 19.3 Flight stamp.
+    // Published 19.3.0 stayed on Flight 19.2.8; 19.3.1-rc.N is the first 19.3 Flight stamp.
     expect(pkg.version).toMatch(/^19\.3\.1(?:-rc\.\d+)?$/);
     const topChangelogVersion = changelog.match(/^## \[([^\]]+)\] - \d{4}-\d{2}-\d{2}$/m)?.[1];
     expect(topChangelogVersion).toBe(pkg.version);

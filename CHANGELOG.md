@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [19.4.0] - 2026-09-19
 
 ### Breaking Changes
-- Opened the React 19.3 Flight line by depending on stock `react-server-dom-webpack@~19.3.0` and raising the `react` and `react-dom` peer floors to `^19.3.0`. Published `19.3.0` remains the React 19.2.8 line; apps still on React 19.2.8 must stay on `react-on-rails-rsc@19.3.0` instead of updating this package in isolation.
+- Opened the React 19.3 Flight line by depending on stock `react-server-dom-webpack@~19.3.0` and raising the `react` and `react-dom` peer floors to `^19.3.0`. Published `19.3.0` remains the React 19.2.8 line; apps still on React 19.2.8 must stay on `react-on-rails-rsc@19.3.0` instead of updating this package in isolation. ([#235])
 
   **Migration Guide:**
 
@@ -102,6 +102,7 @@ All notable changes to this package will be documented in this file.
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
 
 [#203]: https://github.com/shakacode/react_on_rails_rsc/pull/203
+[#235]: https://github.com/shakacode/react_on_rails_rsc/pull/235
 [#207]: https://github.com/shakacode/react_on_rails_rsc/pull/207
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
 [#140]: https://github.com/shakacode/react_on_rails_rsc/pull/140

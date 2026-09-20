@@ -132,7 +132,7 @@ gate. The real verification gates are `yarn test` and `yarn build`.
 
 ## Git Workflow
 
-**Branch naming**: `type/descriptive-name` (e.g., `fix/client-manifest-css-leak`). For issue work, include the issue number and 2-3 keywords (e.g., `jg/54-client-manifest-chunk-groups`).
+**Branch naming**: Shaka-owned work uses the seam `branches.name` template `{login}-{host}/{issue}-{description}` (for example `justin808-cursor/54-client-manifest`). Maintainer-opened branches may still use `type/descriptive-name` (e.g., `fix/client-manifest-css-leak`) or `jg/{issue}-{keywords}` (e.g., `jg/54-client-manifest-chunk-groups`).
 
 **Commit messages**: Explain why, not what. One logical change per commit.
 
@@ -148,13 +148,16 @@ gate. The real verification gates are `yarn test` and `yarn build`.
 
 `react_on_rails_rsc` uses a simple model. It does **not** have automated release-tracker issues,
 release-mode labels, an `Agent Merge Confidence` block protocol, `+ci-*` PR comment commands, or
-`full-ci`/`benchmark` CI-expansion labels. CI is just the jest unit-tests workflow that runs on every PR.
+`full-ci`/`benchmark` CI-expansion labels. Every pull request runs unit-tests, artifact
+verification, e2e-tests, the compatibility-matrix jobs, and advisory Claude Code Review.
+GitHub currently enforces none of those as required status checks.
 
 **Merge qualification:**
 
 - All `gh pr checks <PR>` are green — the **full** list, not `gh pr checks --required`. This repo
   defines zero required status-check contexts, so `--required` is vacuously green and must never be the
-  gate. Treat the full check list as the gate.
+  gate. Treat the full check list as the human merge gate. GitHub remains authoritative for live
+  required checks and mergeability; the seam does not copy that list.
 - All review threads are resolved or explicitly triaged; no unresolved blocker remains (a correctness
   bug, failing test, security issue, API-contract break, data-loss risk, or a missing changelog entry
   for a user-visible change).
@@ -195,7 +198,7 @@ run `yarn verify:artifacts` before `yarn release` on that fallback path. See
 
 For small, focused PRs (roughly 5 files changed or fewer and one clear purpose):
 
-- Use at most one AI reviewer that leaves inline comments. Additional AI tools should be summary-only.
+- Use at most one GitHub AI reviewer that leaves inline comments. Additional GitHub AI tools should be summary-only. The seam `review.reviewers` list is Shaka's local preference order, not extra hosted bots.
 - Wait for the first full review pass to finish before pushing follow-up commits.
 - Treat as blocking only: correctness bugs, failing tests, regressions, and clear inconsistencies with
   adjacent code. Nits and style suggestions are optional unless a maintainer asks for them.
@@ -287,4 +290,4 @@ Update `/CHANGELOG.md` for **user-visible changes only** (features, bug fixes, b
 
 Portable shared skills resolve this repo's commands and policy through:
 - **Commands** — run `.agents/bin/<name>` (`setup`, `validate`, `test`, ...); see `.agents/bin/README.md`. A missing script means that capability is n/a here.
-- **Policy / config** — `.agents/agent-workflow.yml`.
+- **Shaka seam** — `.agents/agent-workflow.yml` is the typed Shaka policy (review, merge preference, branch template). Commands are the fixed `.agents/bin/{setup,validate,test}` scripts, not YAML keys. Human-only constraints stay in this file: changelog, `Follow-up:` titles, advisory AI reviewers, batch-closeout auto-merge for ready low-risk PRs, and the private coordination backend. GitHub remains authoritative for live required checks, merge methods, and workflow actions.

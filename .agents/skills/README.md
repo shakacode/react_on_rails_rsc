@@ -19,8 +19,8 @@ For the workflow adoption and retargeting checklist, see
 
 ## Local Skill Status
 
-The shared skills read this repo's commands and policy from `AGENTS.md`, `.agents/bin/`, and
-`.agents/agent-workflow.yml`. Local skills below cover RSC-specific release, e2e, triage, and legacy
+The shared skills read this repo's commands from `AGENTS.md` and `.agents/bin/`, and the typed
+Shaka contract from `.agents/agent-workflow.yml`. Local skills below cover RSC-specific release, e2e, triage, and legacy
 runtime maintenance workflows.
 
 | Skill | Status |

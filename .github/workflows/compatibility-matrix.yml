@@ -27,29 +27,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: React 19.2.x / webpack 5.59.0 + rspack 1.x / Node 22
+          - label: React 19.3.x / webpack 5.59.0 + rspack 1.x / Node 22
             node-version: '22.x'
-            react-version: '~19.2.0'
-            react-dom-version: '~19.2.0'
-            types-react-version: '~19.2.0'
-            types-react-dom-version: '~19.2.0'
+            react-version: '~19.3.0'
+            react-dom-version: '~19.3.0'
+            types-react-version: '~19.3.0'
+            types-react-dom-version: '~19.3.0'
             webpack-version: '5.59.0'
             rspack-version: '1.x'
             node-options: --openssl-legacy-provider
-          - label: React 19.2.x / webpack latest 5.x + rspack 1.x / Node 24
+          - label: React 19.3.x / webpack latest 5.x + rspack 1.x / Node 24
             node-version: '24.x'
-            react-version: '~19.2.0'
-            react-dom-version: '~19.2.0'
-            types-react-version: '~19.2.0'
-            types-react-dom-version: '~19.2.0'
+            react-version: '~19.3.0'
+            react-dom-version: '~19.3.0'
+            types-react-version: '~19.3.0'
+            types-react-dom-version: '~19.3.0'
             webpack-version: '^5.0.0'
             rspack-version: '1.x'
-          - label: React 19.2.x / webpack latest 5.x + rspack 2.x / Node 22
+          - label: React 19.3.x / webpack latest 5.x + rspack 2.x / Node 22
             node-version: '22.x'
-            react-version: '~19.2.0'
-            react-dom-version: '~19.2.0'
-            types-react-version: '~19.2.0'
-            types-react-dom-version: '~19.2.0'
+            react-version: '~19.3.0'
+            react-dom-version: '~19.3.0'
+            types-react-version: '~19.3.0'
+            types-react-dom-version: '~19.3.0'
             webpack-version: '^5.0.0'
             rspack-version: '2.x'
 

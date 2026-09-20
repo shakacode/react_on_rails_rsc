@@ -35,10 +35,40 @@ const clientDir = path.join(buildDir, 'client');
 
 const ssrHtml = fs.readFileSync(path.join(buildDir, 'ssr.html'), 'utf8');
 const originalPayload = fs.readFileSync(path.join(buildDir, 'flight-payload.rsc'), 'utf8');
+
+const BY_VALUE_REF = /^\$[0-9a-f]+$/i;
+
+function flightStringTable(payload) {
+  const table = new Map();
+  for (const line of payload.split('\n')) {
+    const match = /^([0-9a-f]+):(.*)$/.exec(line);
+    if (!match) continue;
+    const rest = match[2];
+    if (rest.startsWith('"') || rest === 'null' || rest === 'true' || rest === 'false') {
+      table.set(match[1], JSON.parse(rest));
+    }
+  }
+  return table;
+}
+
+function resolveFlightValue(value, table, seen = new Set()) {
+  if (typeof value === 'string' && BY_VALUE_REF.test(value)) {
+    const id = value.slice(1).toLowerCase();
+    if (seen.has(id) || !table.has(id)) return value;
+    seen.add(id);
+    return resolveFlightValue(table.get(id), table, seen);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveFlightValue(item, table, seen));
+  }
+  return value;
+}
+
+const payloadStringTable = flightStringTable(originalPayload);
 const flightChunkFiles = [
   ...new Set(
     [...originalPayload.matchAll(/^[0-9a-f]+:I(\[.*\])$/gm)].flatMap((match) => {
-      const chunks = JSON.parse(match[1])[1];
+      const chunks = resolveFlightValue(JSON.parse(match[1])[1], payloadStringTable);
       return chunks.filter((_, index) => index % 2 === 1);
     }),
   ),
@@ -52,7 +82,7 @@ let omittedSharedChunkPairs = 0;
 const payload =
   scenario === 'omit-shared-from-flight'
     ? originalPayload.replace(/^([0-9a-f]+:I)(\[.*\])$/gm, (_match, prefix, json) => {
-        const row = JSON.parse(json);
+        const row = resolveFlightValue(JSON.parse(json), payloadStringTable);
         const chunks = row[1];
         const filtered = [];
         for (let index = 0; index < chunks.length; index += 2) {

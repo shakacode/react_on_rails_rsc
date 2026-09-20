@@ -29,8 +29,8 @@ const collectExportTargets = (value: unknown): string[] => {
   return Object.values(value).flatMap(collectExportTargets);
 };
 
-describe('19.2 runtime release policy', () => {
-  it('stamps the package and changelog for the 19.3.0 release line', () => {
+describe('19.3 runtime release policy', () => {
+  it('stamps the package and changelog for the 19.3.1-rc.0 candidate', () => {
     const pkg = readJson<PackageJson>('package.json');
     const changelog = fs.readFileSync(path.join(repoRoot, 'CHANGELOG.md'), 'utf8');
 
@@ -38,17 +38,32 @@ describe('19.2 runtime release policy', () => {
     // require editing this test between RC and final stamps. Still pins the
     // current package release line and requires the
     // CHANGELOG's top entry to match the package version exactly.
-    expect(pkg.version).toMatch(/^19\.3\.0(?:-rc\.\d+)?$/);
+    // Published 19.3.0 stayed on Flight 19.2.8; 19.3.1-rc.N is the first 19.3 Flight stamp.
+    expect(pkg.version).toMatch(/^19\.3\.1(?:-rc\.\d+)?$/);
     const topChangelogVersion = changelog.match(/^## \[([^\]]+)\] - \d{4}-\d{2}-\d{2}$/m)?.[1];
     expect(topChangelogVersion).toBe(pkg.version);
   });
 
-  it('depends on the stock React 19.2 Flight runtime and raises React peers to the runtime floor', () => {
+  it('depends on the stock React 19.3 Flight runtime and raises React peers to the runtime floor', () => {
     const pkg = readJson<PackageJson>('package.json');
 
-    expect(pkg.dependencies?.['react-server-dom-webpack']).toBe('~19.2.8');
-    expect(pkg.peerDependencies?.react).toBe('^19.2.8');
-    expect(pkg.peerDependencies?.['react-dom']).toBe('^19.2.8');
+    expect(pkg.dependencies?.['react-server-dom-webpack']).toBe('~19.3.0');
+    expect(pkg.peerDependencies?.react).toBe('^19.3.0');
+    expect(pkg.peerDependencies?.['react-dom']).toBe('^19.3.0');
+  });
+
+  it('covers webpack and rspack CI on React 19.3 with a matching Flight runtime', () => {
+    const matrix = fs.readFileSync(
+      path.join(repoRoot, '.github/workflows/compatibility-matrix.yml'),
+      'utf8'
+    );
+
+    expect(matrix).toContain("react-version: '~19.3.0'");
+    expect(matrix).toContain('COMPAT_REACT_SERVER_DOM_WEBPACK: ${{ matrix.react-version }}');
+    expect(matrix).toMatch(/React 19\.3\.x \/ webpack 5\.59\.0 \+ rspack 1\.x/);
+    expect(matrix).toMatch(/React 19\.3\.x \/ webpack latest 5\.x \+ rspack 1\.x/);
+    expect(matrix).toMatch(/React 19\.3\.x \/ webpack latest 5\.x \+ rspack 2\.x/);
+    expect(matrix).not.toMatch(/react-version: '~19\.2\.0'/);
   });
 
   it('does not publish export targets from the legacy vendored runtime tree', () => {

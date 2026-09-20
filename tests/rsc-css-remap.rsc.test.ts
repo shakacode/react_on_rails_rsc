@@ -18,6 +18,7 @@ import { renderToPipeableStream } from '../src/server.node';
 import { buildClientRenderer } from '../src/client.node';
 import type { BundleManifest } from '../src/types';
 import { compile, cleanupOutputDirs, entryEndingWith, type CompileResult } from './webpack-plugin/helpers/compile';
+import { importRows } from './helpers/flightWire';
 
 const { registerClientReference } = require('react-server-dom-webpack/server.node') as {
   registerClientReference: (impl: () => never, id: string, exportName: string) => unknown;
@@ -122,9 +123,7 @@ describe('rsc css remap prototype (real webpack)', () => {
     const payload = await text(readable);
 
     // (browser path) The wire I-row metadata must carry the WRAPPER id, not the original.
-    const iRow = [...payload.matchAll(/^[0-9a-f]+:I(\[.*\])$/gm)].map(
-      (m) => JSON.parse(m[1]!) as [string, string[], string],
-    )[0];
+    const iRow = importRows(payload)[0];
     expect(iRow).toBeDefined();
     expect(iRow![0]).toBe(wrapperClientId);
     expect(iRow![0]).not.toBe(originalClientFooId);

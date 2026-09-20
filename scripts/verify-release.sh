@@ -378,7 +378,8 @@ function assertCaretRangeIncludesVersion(range, version, label) {
 }
 
 // Keep the package manifest bound to the exact stock runtime patch validated by
-// this release. A newer 19.2.x lockfile resolution must update package.json too.
+// this release. A newer lockfile resolution in the same runtime minor must
+// update package.json too.
 assertEqual(
   rootPackage.dependencies?.['react-server-dom-webpack'],
   expectedRuntimeDependencyRange,

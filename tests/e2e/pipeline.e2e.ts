@@ -39,6 +39,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
+import { importRows, resolveFlightJson } from '../helpers/flightWire';
 
 const PROJECT_DIR = process.env.RSC_E2E_PROJECT_DIR ?? '';
 if (!PROJECT_DIR) {
@@ -164,22 +165,16 @@ const normalizeChunkOrder = (
     ]),
   );
 
-/** Flight module-import rows look like `<row id>:I[id, chunks, name]`. */
-const importRows = (payload: string): [string, string[], string][] =>
-  [...payload.matchAll(/^[0-9a-f]+:I(\[.*\])$/gm)].map(
-    (m) => JSON.parse(m[1]!) as [string, string[], string],
-  );
-
 /** Flight stylesheet hint rows look like `<row id>:HS[...]` or `:HS[...]`. */
 const styleHintRows = (payload: string): [string, string][] =>
   [...payload.matchAll(/^(?:[0-9a-f]+)?:HS(\[.*\])$/gm)].map(
-    (m) => JSON.parse(m[1]!) as [string, string],
+    (m) => resolveFlightJson<[string, string]>(payload, m[1]!)
   );
 
 /** Flight preload/preinit rows look like `<row id>:HL[...]` or `:HL[...]`. */
 const linkHintRows = (payload: string): LinkHintRow[] =>
   [...payload.matchAll(/^(?:[0-9a-f]+)?:HL(\[.*\])$/gm)].map(
-    (m) => JSON.parse(m[1]!) as LinkHintRow,
+    (m) => resolveFlightJson<LinkHintRow>(payload, m[1]!)
   );
 
 jest.setTimeout(300_000);

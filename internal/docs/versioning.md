@@ -26,6 +26,10 @@ Examples:
 - `19.2.x` is the package line for the React 19.2 runtime line. React 19.2 work
   should not be published as a `19.0.x` package, even when the package API is
   otherwise unchanged.
+- `19.3.x` from `19.3.1` onward is the package line for the React 19.3 runtime
+  line. Published `19.3.0` already shipped on React 19.2.8 Flight, so that
+  exact version stays the 19.2.8 stamp; later 19.3.x patches require React
+  19.3.
 
 ## Peer Dependencies
 

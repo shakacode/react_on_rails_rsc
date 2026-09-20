@@ -156,9 +156,8 @@ GitHub currently enforces none of those as required status checks.
 
 - All `gh pr checks <PR>` are green — the **full** list, not `gh pr checks --required`. This repo
   defines zero required status-check contexts, so `--required` is vacuously green and must never be the
-  gate. Treat the full check list as the human merge gate. Shaka's seam `protection.required_checks`
-  waits only on the always-on test/artifact/e2e/compat job names; it does not wait on advisory
-  review checks such as `claude-review`.
+  gate. Treat the full check list as the human merge gate. GitHub remains authoritative for live
+  required checks and mergeability; the seam does not copy that list.
 - All review threads are resolved or explicitly triaged; no unresolved blocker remains (a correctness
   bug, failing test, security issue, API-contract break, data-loss risk, or a missing changelog entry
   for a user-visible change).
@@ -291,4 +290,4 @@ Update `/CHANGELOG.md` for **user-visible changes only** (features, bug fixes, b
 
 Portable shared skills resolve this repo's commands and policy through:
 - **Commands** — run `.agents/bin/<name>` (`setup`, `validate`, `test`, ...); see `.agents/bin/README.md`. A missing script means that capability is n/a here.
-- **Shaka seam** — `.agents/agent-workflow.yml` is the typed contract (setup/validate/test paths, review, merge, branch template, and the always-on PR job names Shaka waits on). Human-only constraints stay in this file: changelog, `Follow-up:` titles, advisory AI reviewers, batch-closeout auto-merge for ready low-risk PRs, and the private coordination backend. GitHub currently enforces no required status checks. The seam wait list omits advisory review checks.
+- **Shaka seam** — `.agents/agent-workflow.yml` is the typed Shaka policy (review, merge preference, branch template). Commands are the fixed `.agents/bin/{setup,validate,test}` scripts, not YAML keys. Human-only constraints stay in this file: changelog, `Follow-up:` titles, advisory AI reviewers, batch-closeout auto-merge for ready low-risk PRs, and the private coordination backend. GitHub remains authoritative for live required checks, merge methods, and workflow actions.

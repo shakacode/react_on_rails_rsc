@@ -2,10 +2,6 @@
 ---
 version: 1
 base_branch: main
-commands:
-  setup: ".agents/bin/setup"
-  validate: ".agents/bin/validate"
-  test: ".agents/bin/test"
 review:
   required: none
   reviewers:
@@ -17,26 +13,5 @@ review:
       model_family: grok
 merge:
   preference: ask
-  method: squash
-  release: explicit_approval
-protection:
-  required_checks:
-  - unit-tests
-  - verify-artifacts
-  - e2e-tests
-  - React 19.2.x / webpack 5.59.0 + rspack 1.x / Node 22
-  - React 19.2.x / webpack latest 5.x + rspack 1.x / Node 24
-  - React 19.2.x / webpack latest 5.x + rspack 2.x / Node 22
-  direct_push: false
-  force_push: false
-  branch_deletion: false
 branches:
   name: "{login}-{host}/{issue}-{description}"
-trusted_actions:
-- actions/checkout
-- actions/setup-node
-- actions/github-script
-- actions/upload-artifact
-- anthropics/claude-code-action
-- ruby/setup-ruby
-- dependabot/fetch-metadata

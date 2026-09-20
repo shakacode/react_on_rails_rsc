@@ -630,9 +630,8 @@ and the next action the agent will take after a response. Do not post routine pr
 Every pull request runs unit-tests (`.github/workflows/unit-tests.yml`, Node 22.x),
 artifact verification, e2e-tests, the compatibility-matrix jobs, and advisory
 Claude Code Review. There is no path-selected CI, no full-CI expansion, and
-no CI-command audit trail. Shaka's seam wait list covers the always-on
-test/artifact/e2e/compat job names; it does not wait on advisory review checks.
-The human merge gate is still the full `gh pr checks` list.
+no CI-command audit trail. GitHub remains authoritative for live required checks
+and mergeability. The human merge gate is still the full `gh pr checks` list.
 
 - Do not push "hopeful" fixes just to let CI find a basic failure. Prefer local
   `yarn test` + `yarn build`, then let hosted CI confirm.

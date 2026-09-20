@@ -42,6 +42,7 @@ import {
   chunkFiles,
   type CompileResult,
 } from './webpack-plugin/helpers/compile';
+import { importRows } from './helpers/flightWire';
 
 const { registerClientReference } = require('react-server-dom-webpack/server.node') as {
   registerClientReference: (
@@ -117,12 +118,6 @@ const encodePayload = async (): Promise<string> => {
   stream.pipe(readable);
   return text(readable);
 };
-
-/** Flight module-import rows look like `<hex row id>:I[id, chunks, name]`. */
-const importRows = (payload: string): [string, string[], string][] =>
-  [...payload.matchAll(/^[0-9a-f]+:I(\[.*\])$/gm)].map(
-    (m) => JSON.parse(m[1]!) as [string, string[], string],
-  );
 
 describe('webpack plugin end-to-end (generated manifests through real Flight)', () => {
   it('embeds exactly the generated client manifest chunk lists in the wire payload', async () => {

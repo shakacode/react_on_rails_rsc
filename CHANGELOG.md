@@ -2,6 +2,16 @@
 
 All notable changes to this package will be documented in this file.
 
+## [19.4.0] - 2026-09-19
+
+### Breaking Changes
+- Opened the React 19.3 Flight line by depending on stock `react-server-dom-webpack@~19.3.0` and raising the `react` and `react-dom` peer floors to `^19.3.0`. Published `19.3.0` remains the React 19.2.8 line; apps still on React 19.2.8 must stay on `react-on-rails-rsc@19.3.0` instead of updating this package in isolation.
+
+  **Migration Guide:**
+
+  1. Upgrade application `react`, `react-dom`, and `react-server-dom-webpack` together to 19.3.0 so the nested Flight runtime matches React and a second Flight copy is not installed.
+  2. Keep `react-on-rails-rsc@19.3.0` while the app remains on React 19.2.8. Do not treat `19.4.0` as a drop-in patch for that line.
+
 ## [19.3.0] - 2026-09-16
 
 ### Breaking Changes
@@ -85,6 +95,7 @@ All notable changes to this package will be documented in this file.
 ### Security
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
+[19.4.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0...19.4.0
 [19.3.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1...19.3.0
 [19.2.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.0...19.2.1
 [19.2.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0

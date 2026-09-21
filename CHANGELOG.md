@@ -2,6 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Fixed `react-on-rails-rsc/WebpackLoader` failing RSC bundle builds with `SyntaxError: Unexpected token '/' ... is not valid JSON` when a `"use server"` (or other stock-path directive) module ends with a `//# sourceMappingURL=` comment — the shape npm packages publish. The loader now answers the stock node-loader's requests honestly: it serves the real sibling `.map` file when it exists (registered as a watch dependency), decodes inline `data:` sourcemap URIs, falls back to a valid empty map for dangling pointers, and defensively serves any other requested module URL from the input filesystem (unreachable via the stock node-loader wiring today). ([#236])
+
 ## [19.3.1-rc.0] - 2026-09-19
 
 ### Breaking Changes
@@ -95,6 +100,7 @@ All notable changes to this package will be documented in this file.
 ### Security
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
+[Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.1-rc.0...HEAD
 [19.3.1-rc.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0...19.3.1-rc.0
 [19.3.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1...19.3.0
 [19.2.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.0...19.2.1
@@ -103,6 +109,7 @@ All notable changes to this package will be documented in this file.
 
 [#203]: https://github.com/shakacode/react_on_rails_rsc/pull/203
 [#235]: https://github.com/shakacode/react_on_rails_rsc/pull/235
+[#236]: https://github.com/shakacode/react_on_rails_rsc/pull/236
 [#207]: https://github.com/shakacode/react_on_rails_rsc/pull/207
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
 [#140]: https://github.com/shakacode/react_on_rails_rsc/pull/140

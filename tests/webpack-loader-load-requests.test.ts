@@ -31,21 +31,46 @@ const readFixture = (name: string): string => fs.readFileSync(fixturePath(name),
 
 const EMPTY_SOURCE_MAP = { version: 3, sources: [], names: [], mappings: '' };
 
+interface FakeInputFs {
+  readFile: jest.Mock;
+}
+
 interface FakeLoaderContext {
   resourcePath: string;
   addDependency: jest.Mock;
   addMissingDependency: jest.Mock;
+  fs?: FakeInputFs;
 }
 
-const createLoaderContext = (resourcePath: string): FakeLoaderContext => ({
+const createLoaderContext = (
+  resourcePath: string,
+  overrides: Partial<FakeLoaderContext> = {}
+): FakeLoaderContext => ({
   resourcePath,
   addDependency: jest.fn(),
   addMissingDependency: jest.fn(),
+  ...overrides,
+});
+
+/** A bundler-style callback input filesystem serving virtual file contents. */
+const createInputFs = (files: Record<string, string>): FakeInputFs => ({
+  readFile: jest.fn((file: string, callback: (error: unknown, data?: unknown) => void) => {
+    const content = files[file];
+    if (content !== undefined) {
+      callback(null, Buffer.from(content, 'utf8'));
+    } else {
+      callback(new Error(`virtual fs: no such file ${file}`));
+    }
+  }),
 });
 
 /** Build a handler for `resourcePath` the way the loader does. */
-const handlerFor = (resourcePath: string, source: string) => {
-  const context = createLoaderContext(resourcePath);
+const handlerFor = (
+  resourcePath: string,
+  source: string,
+  overrides: Partial<FakeLoaderContext> = {}
+) => {
+  const context = createLoaderContext(resourcePath, overrides);
   const fileUrl = pathToFileURL(resourcePath).href;
   return {
     context,
@@ -224,6 +249,65 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
     expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
     expect(context.addDependency).not.toHaveBeenCalled();
+  });
+});
+
+describe('createLoadRequestHandler: bundler input filesystem', () => {
+  it('reads the sourcemap through loaderContext.fs when provided', async () => {
+    // The virtual map does NOT exist on the real filesystem: getting its
+    // content back proves the read went through the input filesystem, and
+    // getting the empty-map fallback would prove it fell through to raw fs.
+    const resourcePath = fixturePath('server-actions-dangling-map.js');
+    const virtualMapPath = fixturePath('server-actions-dangling-map.js.map');
+    const virtualMap = '{"version":3,"sources":["virtual.ts"],"names":[],"mappings":"AAAA"}';
+    const inputFs = createInputFs({ [virtualMapPath]: virtualMap });
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-dangling-map.js'),
+      { fs: inputFs }
+    );
+
+    const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
+
+    expect(result.source).toBe(virtualMap);
+    expect(inputFs.readFile).toHaveBeenCalledWith(virtualMapPath, expect.any(Function));
+    expect(context.addDependency).toHaveBeenCalledWith(virtualMapPath);
+    expect(context.addMissingDependency).not.toHaveBeenCalled();
+  });
+
+  it('reads other module URLs through loaderContext.fs when provided', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const virtualModulePath = fixturePath('virtual-only-module.js');
+    const virtualModule = 'export const virtualOnly = true;\n';
+    const inputFs = createInputFs({ [virtualModulePath]: virtualModule });
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js'),
+      { fs: inputFs }
+    );
+
+    const result = await handler(pathToFileURL(virtualModulePath).href, MODULE_REQUEST);
+
+    expect(result).toEqual({ format: 'module', source: virtualModule });
+    expect(inputFs.readFile).toHaveBeenCalledWith(virtualModulePath, expect.any(Function));
+    expect(context.addDependency).toHaveBeenCalledWith(virtualModulePath);
+  });
+
+  it('keeps the missing-map fallback when the input filesystem errors', async () => {
+    const resourcePath = fixturePath('server-actions-dangling-map.js');
+    const inputFs = createInputFs({}); // errors for every path
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-dangling-map.js'),
+      { fs: inputFs }
+    );
+
+    const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(context.addMissingDependency).toHaveBeenCalledWith(
+      fixturePath('server-actions-dangling-map.js.map')
+    );
   });
 });
 

@@ -14,13 +14,16 @@
  * https://github.com/shakacode/react_on_rails_rsc/blob/main/LICENSE.md
  */
 
-import { readFile } from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import type { LoaderContext, LoaderDefinition } from 'webpack';
 import { hasUseClientDirective } from './clientReferences';
 import { transformClientModule } from './clientModuleTransform';
-import { createExportAllResolver, loaderParserPlugins } from './loaderExportScan';
+import {
+  createExportAllResolver,
+  loaderParserPlugins,
+  readResolvedSource,
+} from './loaderExportScan';
 import { recordDiscoveredClientReferenceIfNeeded } from './RSCReferenceDiscoveryPlugin';
 
 const LOADER_NAME = 'react-on-rails-rsc/WebpackLoader';
@@ -51,10 +54,23 @@ const EMPTY_SOURCE_MAP = '{"version":3,"sources":[],"names":[],"mappings":""}';
 /**
  * The subset of the webpack loader context the load-request handler uses.
  * `addMissingDependency` is optional-called: webpack 5 and rspack both expose
- * it, but a minimal loader-context implementation may not.
+ * it, but a minimal loader-context implementation may not. `fs` is the
+ * bundler's input filesystem, duck-typed by `readResolvedSource`.
  */
 type LoadRequestLoaderContext = Pick<LoaderContext<unknown>, 'resourcePath' | 'addDependency'> &
-  Partial<Pick<LoaderContext<unknown>, 'addMissingDependency'>>;
+  Partial<Pick<LoaderContext<unknown>, 'addMissingDependency'>> & { fs?: unknown };
+
+/**
+ * Read a file the way the `"use client"` export-all pass does: through the
+ * bundler's input filesystem when the loader context provides one (virtual and
+ * cached filesystems included), falling back to the real filesystem.
+ * `readResolvedSource` only touches `loaderContext.fs` and duck-types it, so
+ * narrowing the context here is safe.
+ */
+const readThroughInputFs = (
+  loaderContext: LoadRequestLoaderContext,
+  filePath: string
+): Promise<string> => readResolvedSource(loaderContext as unknown as LoaderContext<unknown>, filePath);
 
 type LoadRequestContext = { format?: string } | null;
 
@@ -132,7 +148,7 @@ const loadSourceMap = async (
   }
 
   try {
-    const mapSource = await readFile(mapPath, 'utf8');
+    const mapSource = await readThroughInputFs(loaderContext, mapPath);
     loaderContext.addDependency(mapPath); // Rebuild when the map changes.
     return mapSource;
   } catch {
@@ -160,8 +176,8 @@ const loadSourceMap = async (
  * 2. The module's own `fileUrl` (or no URL at all) — serve the source webpack
  *    gave us, unchanged.
  * 3. Any other module URL (the stock loader resolves `export * from` chains in
- *    directive files by loading the referenced module) — read that file from
- *    disk.
+ *    directive files by loading the referenced module) — read that file
+ *    through the bundler's input filesystem.
  *
  * Exported for unit tests; not part of the package's public API.
  */
@@ -181,7 +197,7 @@ export const createLoadRequestHandler = (
       return { format: 'module', source };
     }
     const modulePath = fileURLToPath(url);
-    const moduleSource = await readFile(modulePath, 'utf8');
+    const moduleSource = await readThroughInputFs(loaderContext, modulePath);
     loaderContext.addDependency(modulePath); // Rebuild when the re-export target changes.
     return { format: 'module', source: moduleSource };
   };

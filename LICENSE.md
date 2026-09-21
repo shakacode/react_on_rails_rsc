@@ -1,13 +1,14 @@
 # react-on-rails-rsc License
 
 Beginning with version `19.2.1`, the `react-on-rails-rsc` npm package is a
-commercially licensed related component of React on Rails Pro. It is governed
-by The React on Rails Pro License, version 3.0, reproduced below: free in
-development, test, CI, and staging for everyone; free in production for small
-organizations, charities, educational institutions, and hospitals; a
-subscription for other production use. No license key is needed to run it.
-This package does not generate or insert the Generated Attribution and has no
-independent obligation to insert one (Section 8).
+commercially licensed related component of React on Rails Pro. Releases that
+include this license file are governed by The React on Rails Pro License,
+version 3.0, reproduced below: free in development, test, CI, and staging for
+everyone; free in production for small organizations, charities, educational
+institutions, and hospitals; a subscription for other production use. No
+license key is needed to run it. This package does not generate or insert the
+Generated Attribution and has no independent obligation to insert one (Section
+8). Earlier releases retain the terms included in their packages.
 
 The package includes portions of Meta's `ReactFlightWebpackPlugin` in
 `src/webpack/RSCWebpackPlugin.ts`. Those portions remain governed by the Meta

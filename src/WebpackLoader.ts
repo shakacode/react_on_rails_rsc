@@ -48,8 +48,13 @@ const rewriteStockServerImport = (source: string | Buffer) => {
  */
 const EMPTY_SOURCE_MAP = '{"version":3,"sources":[],"names":[],"mappings":""}';
 
-/** The subset of the webpack loader context the load-request handler uses. */
-type LoadRequestLoaderContext = Pick<LoaderContext<unknown>, 'resourcePath' | 'addDependency'>;
+/**
+ * The subset of the webpack loader context the load-request handler uses.
+ * `addMissingDependency` is optional-called: webpack 5 and rspack both expose
+ * it, but a minimal loader-context implementation may not.
+ */
+type LoadRequestLoaderContext = Pick<LoaderContext<unknown>, 'resourcePath' | 'addDependency'> &
+  Partial<Pick<LoaderContext<unknown>, 'addMissingDependency'>>;
 
 type LoadRequestContext = { format?: string } | null;
 
@@ -120,11 +125,19 @@ const loadSourceMap = async (
     mapPath = path.resolve(path.dirname(loaderContext.resourcePath), url);
   }
 
+  if (mapPath === loaderContext.resourcePath) {
+    // A self-referential pointer: serving the module's own JavaScript as a
+    // sourcemap would recreate the JSON.parse crash this handler exists to fix.
+    return EMPTY_SOURCE_MAP;
+  }
+
   try {
     const mapSource = await readFile(mapPath, 'utf8');
     loaderContext.addDependency(mapPath); // Rebuild when the map changes.
     return mapSource;
   } catch {
+    // Track the absent path so watch mode rebuilds if the map appears later.
+    loaderContext.addMissingDependency?.(mapPath);
     return EMPTY_SOURCE_MAP;
   }
 };
@@ -136,15 +149,16 @@ const loadSourceMap = async (
  * The stock loader calls the handler back for everything it needs, not just
  * the module being loaded (react_on_rails#5079):
  *
- * 1. The module's own `fileUrl` (or no URL at all) — serve the source webpack
- *    gave us, unchanged.
- * 2. A sourcemap request (`context.format === 'json'`) — serve the real map
+ * 1. A sourcemap request (`context.format === 'json'`) — serve the real map
  *    file, an inline `data:` map, or a valid empty map (`loadSourceMap`). The
  *    parameterless stub this replaces answered every request with the module's
  *    own JavaScript source, so the stock loader's `JSON.parse` failed the
  *    build (`SyntaxError: Unexpected token '/' ... is not valid JSON`) for any
  *    directive-carrying file ending in a `//# sourceMappingURL=` comment —
- *    the exact shape npm packages publish.
+ *    the exact shape npm packages publish. Checked first so that even a
+ *    sourceMappingURL resolving to the module's own URL is answered as a map.
+ * 2. The module's own `fileUrl` (or no URL at all) — serve the source webpack
+ *    gave us, unchanged.
  * 3. Any other module URL (the stock loader resolves `export * from` chains in
  *    directive files by loading the referenced module) — read that file from
  *    disk.
@@ -160,11 +174,11 @@ export const createLoadRequestHandler = (
   // stock loader's declared parameterless `nextLoad` type; the loader always
   // passes them at runtime.
   return async (url?: string, context?: LoadRequestContext): Promise<LoadRequestResult> => {
+    if (url !== undefined && context?.format === 'json') {
+      return { format: 'json', source: await loadSourceMap(loaderContext, url) };
+    }
     if (url === undefined || url === fileUrl) {
       return { format: 'module', source };
-    }
-    if (context?.format === 'json') {
-      return { format: 'json', source: await loadSourceMap(loaderContext, url) };
     }
     const modulePath = fileURLToPath(url);
     const moduleSource = await readFile(modulePath, 'utf8');

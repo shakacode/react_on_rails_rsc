@@ -34,11 +34,13 @@ const EMPTY_SOURCE_MAP = { version: 3, sources: [], names: [], mappings: '' };
 interface FakeLoaderContext {
   resourcePath: string;
   addDependency: jest.Mock;
+  addMissingDependency: jest.Mock;
 }
 
 const createLoaderContext = (resourcePath: string): FakeLoaderContext => ({
   resourcePath,
   addDependency: jest.fn(),
+  addMissingDependency: jest.fn(),
 });
 
 /** Build a handler for `resourcePath` the way the loader does. */
@@ -89,6 +91,7 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     expect(context.addDependency).toHaveBeenCalledWith(
       fixturePath('server-actions-with-map.js.map')
     );
+    expect(context.addMissingDependency).not.toHaveBeenCalled();
   });
 
   it('serves the map through a file: URL sourceMappingURL', async () => {
@@ -116,6 +119,50 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
 
     expect(result.format).toBe('json');
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(context.addDependency).not.toHaveBeenCalled();
+    // The absent map is tracked so watch mode rebuilds if it appears later.
+    expect(context.addMissingDependency).toHaveBeenCalledWith(
+      fixturePath('server-actions-dangling-map.js.map')
+    );
+  });
+
+  it('works without addMissingDependency on the loader context', async () => {
+    // Minimal loader-context implementations may not expose it; the optional
+    // call must not throw and the fallback must still be served.
+    const resourcePath = fixturePath('server-actions-dangling-map.js');
+    const fileUrl = pathToFileURL(resourcePath).href;
+    const handler = createLoadRequestHandler(
+      { resourcePath, addDependency: jest.fn() },
+      fileUrl,
+      readFixture('server-actions-dangling-map.js')
+    );
+
+    const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+  });
+
+  it('answers a json request for the module’s own URL with a map, never module source', async () => {
+    // The json check runs before the own-module check: a sourceMappingURL that
+    // resolves to the module's own URL must not be served as JavaScript.
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const source = readFixture('server-actions-with-map.js');
+    const { handler, fileUrl } = handlerFor(resourcePath, source);
+
+    const result = await handler(fileUrl, JSON_REQUEST);
+
+    expect(result.format).toBe('json');
+    expect(result.source).not.toBe(source);
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+  });
+
+  it('falls back to the empty map for a relative pointer naming the module itself', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+
+    const result = await handler('server-actions-with-map.js', JSON_REQUEST);
+
     expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
     expect(context.addDependency).not.toHaveBeenCalled();
   });

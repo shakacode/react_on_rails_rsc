@@ -2,6 +2,11 @@
 
 All notable changes to this package will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Fixed `react-on-rails-rsc/WebpackLoader` failing RSC bundle builds with `SyntaxError: Unexpected token '/' ... is not valid JSON` when a `"use server"` (or other stock-path directive) module ends with a `//# sourceMappingURL=` comment — the shape npm packages publish. The loader now answers the stock node-loader's requests honestly: it serves the real sibling `.map` file when it exists (registered as a watch dependency), decodes inline `data:` sourcemap URIs, falls back to a valid empty map for dangling pointers, and reads other requested modules (`export *` resolution) from disk. ([#236])
+
 ## [19.3.1-rc.0] - 2026-09-19
 
 ### Breaking Changes
@@ -103,6 +108,7 @@ All notable changes to this package will be documented in this file.
 
 [#203]: https://github.com/shakacode/react_on_rails_rsc/pull/203
 [#235]: https://github.com/shakacode/react_on_rails_rsc/pull/235
+[#236]: https://github.com/shakacode/react_on_rails_rsc/pull/236
 [#207]: https://github.com/shakacode/react_on_rails_rsc/pull/207
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
 [#140]: https://github.com/shakacode/react_on_rails_rsc/pull/140

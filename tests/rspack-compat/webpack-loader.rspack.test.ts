@@ -375,3 +375,90 @@ describe('RSCWebpackLoader export enumeration under rspack (issue #206)', () => 
     expect(bundle).toContain('Hello, ');
   });
 });
+
+/**
+ * react_on_rails#5079: the loader's callback to the stock node-loader's
+ * `load()` answered every request with the current module's JavaScript source.
+ * For a directive file ending in `//# sourceMappingURL=...` (the shape npm
+ * packages publish), the stock loader fetches that sourcemap through the
+ * callback and JSON.parses the result, so the build died with
+ * `SyntaxError: Unexpected token '/' ... is not valid JSON`. These cases run
+ * the fixed loader through a real bundler build, which exercises the dynamic
+ * ESM import() path Jest cannot run in-process.
+ */
+describe('RSCWebpackLoader sourcemap requests on the stock path (react_on_rails#5079)', () => {
+  const LOAD_FIXTURES = path.resolve(__dirname, '../fixtures/load-requests');
+
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+
+  afterEach(() => {
+    cleanupTmpDir(tmpDir);
+  });
+
+  const compileFixture = (fixture: string): RspackResult =>
+    runRspack(
+      {
+        mode: 'development',
+        target: 'node',
+        entry: path.join(LOAD_FIXTURES, fixture),
+        output: {
+          path: tmpDir,
+          filename: 'bundle.js',
+          library: { type: 'commonjs2' },
+        },
+        devtool: false,
+        module: {
+          rules: [{ test: /\.[jt]sx?$/, use: [{ loader: DIST_LOADER }] }],
+        },
+        externals: {
+          'react-on-rails-rsc/server': 'commonjs2 react-on-rails-rsc/server',
+          'react-server-dom-webpack/server': 'commonjs2 react-server-dom-webpack/server',
+          'react/jsx-runtime': 'commonjs2 react/jsx-runtime',
+        },
+      },
+      tmpDir,
+    );
+
+  const readBundle = (result: RspackResult): string => {
+    if (!result.ok) {
+      throw new Error(`rspack build failed:\n${(result.errors || []).join('\n')}`);
+    }
+    return fs.readFileSync(path.join(tmpDir, 'bundle.js'), 'utf8');
+  };
+
+  it('builds a "use server" module whose sourceMappingURL points at a missing .map', () => {
+    // Before the fix this build failed with the JSON.parse SyntaxError above.
+    const bundle = readBundle(compileFixture('server-actions-dangling-map.js'));
+
+    expect(bundle).toContain('registerServerReference');
+    expect(bundle).toContain('Hello from dangling, ');
+  });
+
+  it('builds a "use server" module whose sourceMappingURL names a real sibling .map', () => {
+    const bundle = readBundle(compileFixture('server-actions-with-map.js'));
+
+    expect(bundle).toContain('registerServerReference');
+    expect(bundle).toContain('Hello from mapped, ');
+  });
+
+  it('transforms the published-npm-shape "use client" fixture into client references', () => {
+    const bundle = readBundle(compileFixture('published-client-component.js'));
+
+    expect(bundle).toContain('registerClientReference');
+    expect(bundle).toContain('"useCurrentRSCRoute"');
+    expect(bundle).toContain('"default"');
+  });
+
+  it('leaves a directive-less module with a dangling map pointer untouched', () => {
+    const bundle = readBundle(compileFixture('plain-module-with-map-pointer.js'));
+
+    expect(bundle).not.toContain('registerServerReference');
+    expect(bundle).not.toContain('registerClientReference');
+    // The original implementation must survive unchanged.
+    expect(bundle).toContain('plain:');
+  });
+});

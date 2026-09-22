@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const expectedCanonicalEulaSha256 =
-  '30e88be7ca94b153822c017bd147dfa236e223c8d7af5240a69fa3cd881122b8';
-const expectedEulaVersionMarker = '_Version 2.3 — 2026-07-14_';
+const expectedCanonicalLicenseSha256 =
+  '8b1ae877b9d415e677f520ca9791a6eeb70ef4fec3314a2dd318849398371a70';
+const expectedLicenseVersionMarker = 'The React on Rails Pro License, version 3.0';
 const headerLines = ` * Copyright (c) 2025-2026 ShakaCode LLC - React on Rails RSC (commercial license)
  *
  * This file is NOT licensed under the MIT (open source) license. It is part of
@@ -54,8 +54,8 @@ function requiredHeaderLinesForContent(content) {
 
 module.exports = {
   collectCodeFiles,
-  expectedCanonicalEulaSha256,
-  expectedEulaVersionMarker,
+  expectedCanonicalLicenseSha256,
+  expectedLicenseVersionMarker,
   headerLines,
   requiredHeaderLinesForContent,
   thirdPartyHeaderLines,

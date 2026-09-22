@@ -39,12 +39,16 @@ Maintainer policy lives in [`internal/docs/versioning.md`](internal/docs/version
 
 ## License
 
-Starting with version `19.2.1`, this package is offered as a related software
-component of React on Rails Pro under commercial terms. Production Use requires
-an appropriate paid subscription or Complimentary OSS License; the license also
-permits the free non-commercial, educational, and demo uses it defines. See
+Starting with version `19.2.1`, this package is offered as a commercially
+licensed related software component of React on Rails Pro. Releases that
+include The React on Rails Pro License, version 3.0, follow these terms: free
+in development, test, CI, and staging for everyone, free in production for
+small organizations, charities, educational institutions, and hospitals,
+and a subscription for other production use ($1,800 per year per organization,
+see https://reactonrails.com/pricing/). No license key is needed to run it. See
 [LICENSE.md](LICENSE.md) for the exact terms and the Meta notice that applies to
-the derived Webpack plugin portions.
+the derived Webpack plugin portions. Earlier releases retain the terms included
+in their packages.
 
 ## Releasing
 

@@ -98,8 +98,8 @@ const path = require('path');
 const crypto = require('crypto');
 const {
   collectCodeFiles,
-  expectedCanonicalEulaSha256,
-  expectedEulaVersionMarker,
+  expectedCanonicalLicenseSha256,
+  expectedLicenseVersionMarker,
   requiredHeaderLinesForContent,
 } = require(process.argv[3]);
 
@@ -120,8 +120,8 @@ if (!fs.existsSync(licensePath)) {
 const licenseText = fs.readFileSync(licensePath, 'utf8');
 for (const requiredText of [
   'react-on-rails-rsc',
-  'ShakaCode React on Rails Pro – End User License Agreement (EULA)',
-  expectedEulaVersionMarker,
+  '# The React on Rails Pro License',
+  expectedLicenseVersionMarker,
   'Third-Party Notices',
 ]) {
   if (!licenseText.includes(requiredText)) {
@@ -129,18 +129,16 @@ for (const requiredText of [
   }
 }
 
-const canonicalEulaStart = licenseText.indexOf(
-  '# ShakaCode React on Rails Pro – End User License Agreement (EULA)'
-);
+const canonicalLicenseStart = licenseText.indexOf('# The React on Rails Pro License');
 const thirdPartyNoticesStart = licenseText.indexOf('\n## Third-Party Notices\n');
-if (canonicalEulaStart < 0 || thirdPartyNoticesStart <= canonicalEulaStart) {
-  throw new Error('Packed LICENSE.md does not contain a bounded canonical EULA block');
+if (canonicalLicenseStart < 0 || thirdPartyNoticesStart <= canonicalLicenseStart) {
+  throw new Error('Packed LICENSE.md does not contain a bounded canonical license block');
 }
-const canonicalEula = licenseText.slice(canonicalEulaStart, thirdPartyNoticesStart);
-const canonicalEulaSha256 = crypto.createHash('sha256').update(canonicalEula).digest('hex');
-if (canonicalEulaSha256 !== expectedCanonicalEulaSha256) {
+const canonicalLicense = licenseText.slice(canonicalLicenseStart, thirdPartyNoticesStart);
+const canonicalLicenseSha256 = crypto.createHash('sha256').update(canonicalLicense).digest('hex');
+if (canonicalLicenseSha256 !== expectedCanonicalLicenseSha256) {
   throw new Error(
-    `Canonical EULA SHA-256 expected ${expectedCanonicalEulaSha256}, got ${canonicalEulaSha256}`
+    `Canonical license SHA256 expected ${expectedCanonicalLicenseSha256}, got ${canonicalLicenseSha256}`
   );
 }
 
@@ -168,7 +166,7 @@ if (!webpackPluginText.includes('Copyright (c) Meta Platforms, Inc. and affiliat
 }
 
 console.log(
-  `  - Verified ${expectedLicense} metadata, canonical EULA ${canonicalEulaSha256}, packed LICENSE.md, ${publishedCodeFiles.length} code headers, and the Webpack plugin copyright notice`
+  `  Verified ${expectedLicense} metadata, canonical license ${canonicalLicenseSha256}, packed LICENSE.md, ${publishedCodeFiles.length} code headers, and the Webpack plugin copyright notice`
 );
 NODE
 

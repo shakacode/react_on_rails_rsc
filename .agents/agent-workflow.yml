@@ -4,7 +4,7 @@ version: 1
 base_branch: main
 review:
   required: none
-  reviewers:
+  local_review_agents:
     - provider: anthropic
       model_family: claude
     - provider: openai

@@ -9,7 +9,7 @@ All notable changes to this package will be documented in this file.
 * License: `react-on-rails-rsc` is governed by The React on Rails Pro License 3.0 (based on trust, free for small organizations; replaces EULA 2.3).
 
 ### Fixed
-- Fixed `react-on-rails-rsc/WebpackLoader` failing RSC bundle builds with `SyntaxError: Unexpected token '/' ... is not valid JSON` when a `"use server"` (or other stock-path directive) module ends with a `//# sourceMappingURL=` comment — the shape npm packages publish. The loader now answers the stock node-loader's requests honestly: it serves the real sibling `.map` file when it exists (registered as a watch dependency), decodes inline `data:` sourcemap URIs, falls back to a valid empty map for dangling pointers, and defensively serves any other requested module URL from the input filesystem (unreachable via the stock node-loader wiring today). ([#236])
+- Fixed `react-on-rails-rsc/WebpackLoader` failing RSC bundle builds with `SyntaxError: Unexpected token '/' ... is not valid JSON` when a `"use server"` (or other stock-path directive) module ends with a `//# sourceMappingURL=` comment — the shape npm packages publish. The loader now routes the stock node-loader's requests instead of answering every one with the module's own source: a sourcemap request is always answered with a valid empty map (real `.map`/inline-map passthrough is deliberately not implemented — tracked in [#239]), and any other requested module URL (`export *` resolution) is served from the bundler's input filesystem. ([#236])
 
 ## [19.3.1-rc.0] - 2026-09-19
 
@@ -114,6 +114,7 @@ All notable changes to this package will be documented in this file.
 [#203]: https://github.com/shakacode/react_on_rails_rsc/pull/203
 [#235]: https://github.com/shakacode/react_on_rails_rsc/pull/235
 [#236]: https://github.com/shakacode/react_on_rails_rsc/pull/236
+[#239]: https://github.com/shakacode/react_on_rails_rsc/issues/239
 [#207]: https://github.com/shakacode/react_on_rails_rsc/pull/207
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
 [#140]: https://github.com/shakacode/react_on_rails_rsc/pull/140

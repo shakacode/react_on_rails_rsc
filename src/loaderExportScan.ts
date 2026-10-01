@@ -121,7 +121,11 @@ export const loaderParserPlugins = (
     typeof loaderContext.getOptions === 'function'
       ? (loaderContext.getOptions() as { parserPlugins?: unknown } | undefined)
       : {};
-  const plugins = options?.parserPlugins;
+  return normalizeParserPlugins(options?.parserPlugins, loaderName);
+};
+
+/** Shared option validation for the loaders and both plugin constructors. */
+export const normalizeParserPlugins = (plugins: unknown, loaderName: string): ParserPlugin[] => {
   if (plugins === undefined) return [];
   if (
     !Array.isArray(plugins) ||

@@ -48,9 +48,8 @@ interface Options {
   key?: string;
   /**
    * Same meaning as `react-on-rails-rsc/WebpackLoader`'s option: extra
-   * `@babel/parser` plugins for proposal syntax. Neither plugin currently
-   * passes options to this loader (it is requested inline, with no query), so
-   * this exists for parity and for direct loader use.
+   * `@babel/parser` plugins for proposal syntax. Both plugins pass these
+   * options through their generated inline wrapper-loader requests.
    */
   parserPlugins?: ParserPlugin[];
 }

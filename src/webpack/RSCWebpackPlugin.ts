@@ -63,6 +63,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
 import webpack = require('webpack');
+import type { ParserPlugin } from '@babel/parser';
+import { normalizeParserPlugins } from '../loaderExportScan';
+import { cssWrapperRequest } from './cssWrapperRequest';
 import {
   hasUseClientDirective,
   isCssWrapperOriginalResource,
@@ -215,6 +218,8 @@ export type Options = {
    * to the RSC/react-server build, so client references keep their metadata.
    */
   cssWrapper?: boolean;
+  /** Extra @babel/parser plugins for raw client-module export scans in CSS wrappers. */
+  parserPlugins?: ParserPlugin[];
 };
 
 const DEFAULT_CHUNK_GROUP_WARNING_THRESHOLD = 4;
@@ -525,6 +530,7 @@ export class RSCWebpackPlugin {
   readonly entryClientReferencesFilename: string | false | undefined;
 
   readonly cssWrapper: boolean;
+  readonly parserPlugins: ParserPlugin[];
 
   static __internal_isReactOnRailsRSCRuntimeResource = isReactOnRailsRSCRuntimeResource;
 
@@ -570,6 +576,7 @@ export class RSCWebpackPlugin {
     this.clientReferenceDiagnosticsFilename = options.clientReferenceDiagnosticsFilename;
     this.entryClientReferencesFilename = options.entryClientReferencesFilename;
     this.cssWrapper = options.cssWrapper === true;
+    this.parserPlugins = normalizeParserPlugins(options.parserPlugins, 'RSCWebpackPlugin');
   }
 
   apply(compiler: webpack.Compiler): void {
@@ -645,7 +652,11 @@ export class RSCWebpackPlugin {
             let blockDep: ClientReferenceDependency = dep;
             let blockRequest = dep.request;
             if (this.cssWrapper) {
-              blockRequest = `!!${RSC_CSS_WRAPPER_LOADER}!${dep.request}`;
+              blockRequest = cssWrapperRequest(
+                RSC_CSS_WRAPPER_LOADER,
+                dep.request,
+                this.parserPlugins
+              );
               blockDep = new ClientReferenceDependency(blockRequest);
               blockDep.userRequest = dep.userRequest;
               // Record the original client file this wrapper stands in for, so

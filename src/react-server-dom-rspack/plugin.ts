@@ -37,6 +37,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
+import type { ParserPlugin } from '@babel/parser';
+import { normalizeParserPlugins } from '../loaderExportScan';
 import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
@@ -274,6 +276,8 @@ export interface Options {
    * the component, so React natively prevents CSS FOUC (issue #4598).
    */
   cssWrapper?: boolean;
+  /** Extra @babel/parser plugins for raw client-module export scans in CSS wrappers. */
+  parserPlugins?: ParserPlugin[];
 }
 
 // Legacy rule export kept for consumers that imported the historical symbol.
@@ -290,12 +294,14 @@ export class RSCRspackPlugin {
   private readonly options: Options;
   private readonly clientReferences: (string | ClientReferenceSearchPath)[];
   private readonly chunkName: string;
+  private readonly parserPlugins: ParserPlugin[];
 
   constructor(options: Options) {
     if (!options || typeof options.isServer !== 'boolean') {
       throw new Error('RSCRspackPlugin: You must specify the `isServer` option as a boolean.');
     }
     this.options = options;
+    this.parserPlugins = normalizeParserPlugins(options.parserPlugins, 'RSCRspackPlugin');
 
     // Normalize clientReferences exactly like the webpack plugin.
     // Default: scan the context directory for JS/TS files, but skip dependency
@@ -360,7 +366,8 @@ export class RSCRspackPlugin {
             compiler,
             discoveredClientFiles,
             this.chunkName,
-            this.options.cssWrapper === true
+            this.options.cssWrapper === true,
+            this.parserPlugins
           );
           callback();
         } catch (err) {

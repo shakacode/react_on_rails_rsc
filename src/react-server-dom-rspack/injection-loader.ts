@@ -31,12 +31,15 @@
  */
 
 import type { LoaderDefinition } from 'webpack';
+import type { ParserPlugin } from '@babel/parser';
+import { cssWrapperRequest } from '../webpack/cssWrapperRequest';
 import { getGeneratedChunkName } from './shared';
 
 export let _discoveredClientFiles: string[] = [];
 export let _chunkName = 'client[index]';
 export let _generatedChunkNames: Set<string> = new Set();
 let _cssWrapper = false;
+let _parserPlugins: ParserPlugin[] = [];
 
 type CompilerKey = object;
 
@@ -49,6 +52,7 @@ export type InjectionState = {
   chunkName: string;
   generatedChunkNames: Set<string>;
   cssWrapper: boolean;
+  parserPlugins: ParserPlugin[];
 };
 
 const compilerInjectionState = new WeakMap<CompilerKey, InjectionState>();
@@ -60,6 +64,7 @@ const emptyInjectionState = (): InjectionState => ({
   chunkName: _chunkName,
   generatedChunkNames: new Set(),
   cssWrapper: _cssWrapper,
+  parserPlugins: [],
 });
 
 const fallbackInjectionState = (): InjectionState => ({
@@ -67,6 +72,7 @@ const fallbackInjectionState = (): InjectionState => ({
   chunkName: _chunkName,
   generatedChunkNames: _generatedChunkNames,
   cssWrapper: _cssWrapper,
+  parserPlugins: _parserPlugins,
 });
 
 export function setInjectionStateForCompiler(
@@ -74,18 +80,21 @@ export function setInjectionStateForCompiler(
   discoveredClientFiles: string[],
   chunkName: string,
   cssWrapper = false,
+  parserPlugins: ParserPlugin[] = [],
 ): void {
   const nextDiscoveredClientFiles = discoveredClientFiles.slice();
   _discoveredClientFiles = nextDiscoveredClientFiles;
   _chunkName = chunkName;
   _generatedChunkNames = new Set();
   _cssWrapper = cssWrapper;
+  _parserPlugins = parserPlugins;
 
   compilerInjectionState.set(compiler, {
     discoveredClientFiles: nextDiscoveredClientFiles,
     chunkName,
     generatedChunkNames: new Set(),
     cssWrapper,
+    parserPlugins,
   });
 }
 
@@ -122,6 +131,7 @@ export function setGeneratedChunkNamesForCompiler(
     chunkName: _chunkName,
     generatedChunkNames: nextGeneratedChunkNames,
     cssWrapper: _cssWrapper,
+    parserPlugins: [],
   });
 }
 
@@ -164,7 +174,8 @@ const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
     );
   }
 
-  const { discoveredClientFiles, chunkName, cssWrapper } = getInjectionStateForCompiler(compiler);
+  const { discoveredClientFiles, chunkName, cssWrapper, parserPlugins } =
+    getInjectionStateForCompiler(compiler);
 
   if (!discoveredClientFiles.length) {
     setGeneratedChunkNamesForCompiler(compiler, []);
@@ -177,7 +188,9 @@ const InjectionLoader: LoaderDefinition = function InjectionLoader(source) {
     names.push(name);
     // With cssWrapper, import the generated wrapper (which renders the client
     // component's CSS <link precedence>) instead of the client file directly.
-    const request = cssWrapper ? `!!${RSC_CSS_WRAPPER_LOADER}!${file}` : file;
+    const request = cssWrapper
+      ? cssWrapperRequest(RSC_CSS_WRAPPER_LOADER, file, parserPlugins)
+      : file;
     // Rspack must see the import to emit the chunk; Flight loads it on demand in browsers.
     return `if (globalThis.window === undefined) import(/* webpackChunkName: ${JSON.stringify(name)} */ ${JSON.stringify(request)});`;
   });

@@ -16,7 +16,7 @@ const runtime = require.resolve('react-server-dom-webpack/client.node');
 fs.writeFileSync(path.join(context, 'entry.js'),
   `require(${JSON.stringify(runtime)}); exports.load = __webpack_require__;\n`);
 if (configured === 'true') {
-  options.parserPlugins = [['pipelineOperator', { proposal: 'hack', topicToken: '#', note: '?!#' }]];
+  options.parserPlugins = [['pipelineOperator', { proposal: 'hack', topicToken: '#' }]];
 }
 const compiler = webpack({
   mode: 'development',
@@ -25,7 +25,7 @@ const compiler = webpack({
   entry: './entry.js',
   output: { path: path.join(context, 'output'), filename: 'main.js', publicPath: '/assets/', library: { type: 'commonjs2' } },
   resolve: { modules: [path.join(root, 'node_modules'), 'node_modules'] },
-  module: { rules: [{ test: /Client\.js$/, use: path.join(__dirname, 'proposalSyntaxLoader.js') }] },
+  module: { rules: [{ test: /(?:Client|Target)\.js$/, use: path.join(__dirname, 'proposalSyntaxLoader.js') }] },
   optimization: { minimize: false, concatenateModules: false },
   plugins: [new Plugin(options)],
 });

@@ -3,10 +3,15 @@ import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import type { ParserPlugin } from '@babel/parser';
+import { pathToFileURL } from 'url';
 import { RSCWebpackPlugin } from '../src/WebpackPlugin';
 import { RSCRspackPlugin } from '../src/react-server-dom-rspack/plugin';
 import { cssWrapperRequest } from '../src/webpack/cssWrapperRequest';
-import { getInjectionStateForCompiler, setInjectionStateForCompiler } from '../src/react-server-dom-rspack/injection-loader';
+import {
+  getInjectionStateForCompiler,
+  setInjectionStateForCompiler,
+  setGeneratedChunkNamesForCompiler,
+} from '../src/react-server-dom-rspack/injection-loader';
 
 jest.setTimeout(120_000);
 
@@ -29,6 +34,7 @@ it('keeps parser configuration isolated between rspack compilers', () => {
   const second = {};
   setInjectionStateForCompiler(first, ['a.js'], 'a', true, ['decorators']);
   setInjectionStateForCompiler(second, ['b.js'], 'b', true, []);
+  setGeneratedChunkNamesForCompiler(first, ['a0']);
   expect(getInjectionStateForCompiler(first).parserPlugins).toEqual(['decorators']);
   expect(getInjectionStateForCompiler(second).parserPlugins).toEqual([]);
   expect(getInjectionStateForCompiler({}).parserPlugins).toEqual([]);
@@ -40,7 +46,9 @@ describe.each(['webpack', 'rspack'])('%s wrapper proposal syntax', (bundler) => 
     try {
       fs.writeFileSync(path.join(context, 'Client.js'),
         '"use client";\nconst value = 1 |> # + 1;\nexport default function Default() { return value; }\n' +
-        (named ? 'export function Named() { return value; }\n' : ''));
+        (named ? 'export * from "./Target.js";\n' : ''));
+      if (named) fs.writeFileSync(path.join(context, 'Target.js'),
+        'const value = 1 |> # + 1;\nexport function Named() { return value; }\n');
       const run = (configured: boolean) => JSON.parse(execFileSync(process.execPath, [
         path.join(__dirname, 'helpers/runWrapperProposal.js'), bundler, context, String(configured),
       ], { encoding: 'utf8' }));
@@ -53,7 +61,9 @@ describe.each(['webpack', 'rspack'])('%s wrapper proposal syntax', (bundler) => 
       expect(result.wrappers[0].source.includes('export var Named')).toBe(named);
       expect(result.exports).toEqual(named ? ['Named', 'default'] : ['default']);
       expect(result.values).toEqual(named ? { Named: 2, default: 2 } : { default: 2 });
-      expect(Object.keys(result.manifest.filePathToModuleMetadata)).toHaveLength(1);
+      expect(Object.keys(result.manifest.filePathToModuleMetadata)).toEqual([
+        pathToFileURL(fs.realpathSync(path.join(context, 'Client.js'))).href,
+      ]);
       // Reserved request delimiters must survive as JSON values, never become loader separators.
       expect(result.wrappers[0].request).toContain('pipelineOperator');
     } finally {

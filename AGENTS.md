@@ -198,7 +198,7 @@ run `yarn verify:artifacts` before `yarn release` on that fallback path. See
 
 For small, focused PRs (roughly 5 files changed or fewer and one clear purpose):
 
-- Use at most one GitHub AI reviewer that leaves inline comments. Additional GitHub AI tools should be summary-only. The seam `review.reviewers` list is Shaka's local preference order, not extra hosted bots.
+- Use at most one GitHub AI reviewer that leaves inline comments. Additional GitHub AI tools should be summary-only. The seam `review.local_review_agents` list is Shaka's local preference order, not extra hosted bots.
 - Wait for the first full review pass to finish before pushing follow-up commits.
 - Treat as blocking only: correctness bugs, failing tests, regressions, and clear inconsistencies with
   adjacent code. Nits and style suggestions are optional unless a maintainer asks for them.

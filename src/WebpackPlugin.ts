@@ -15,6 +15,7 @@
  */
 
 import { Compiler } from "webpack";
+import type { ParserPlugin } from '@babel/parser';
 import {
   DEFAULT_CLIENT_REFERENCES_EXCLUDE,
   DEFAULT_CLIENT_REFERENCES_INCLUDE,
@@ -39,6 +40,9 @@ export type Options = {
   serverConsumerManifestFilename?: string,
   clientReferenceDiagnosticsFilename?: string | false,
   entryClientReferencesFilename?: string | false,
+  cssWrapper?: boolean,
+  /** Extra parser plugins for the CSS wrapper's raw client-module export scan. */
+  parserPlugins?: ParserPlugin[],
 };
 
 export class RSCWebpackPlugin {

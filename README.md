@@ -27,6 +27,16 @@ documentation boundary and links to package-maintainer runbooks.
 
 ## Package Contents
 
+When enabling `cssWrapper` on `RSCWebpackPlugin` or `RSCRspackPlugin`, maintainers
+can set `parserPlugins` to the same extra `@babel/parser` plugins used by the RSC
+loader's export scan. For example, use
+`parserPlugins: [['pipelineOperator', { proposal: 'hack', topicToken: '#' }]]`
+for pipeline syntax. Plugin names and exact `[name, options]` tuples are accepted;
+omitting the option preserves the default parser configuration. This option only
+controls parsing of raw client modules, including star re-export targets; the
+application still needs its own Babel/SWC transform to compile proposal syntax.
+Configure the loader and plugin consistently so their export scans agree.
+
 This package provides internal tooling for React Server Components integration:
 - Webpack plugin for manifesting client components
 - Webpack loader for bundling server components

@@ -124,7 +124,7 @@
     "publint": "0.3.24",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "release-it": "21.0.2",
+    "release-it": "21.1.0",
     "ts-jest": "^29.4.5",
     "typescript": "^5.4.3",
     "webpack": "^5.98.0"

@@ -13,13 +13,11 @@
  * For licensing terms:
  * https://github.com/shakacode/react_on_rails_rsc/blob/main/LICENSE.md
  */
-import type { ParserPlugin } from '@babel/parser';
-
 /** JSON loader queries work in both bundlers. Escape request delimiters inside JSON strings. */
 export const cssWrapperRequest = (
   loader: string,
   resource: string,
-  parserPlugins: ParserPlugin[]
+  parserPlugins: import('@babel/parser').ParserPlugin[]
 ): string => {
   if (!parserPlugins.length) return `!!${loader}!${resource}`;
   const query = JSON.stringify({ parserPlugins }).replace(/[!?#\u0000\u200b]/g, (character) =>

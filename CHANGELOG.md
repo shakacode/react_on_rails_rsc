@@ -9,7 +9,7 @@ All notable changes to this package will be documented in this file.
 * License: `react-on-rails-rsc` is governed by The React on Rails Pro License 3.0 (based on trust, free for small organizations; replaces EULA 2.3).
 
 ### Fixed
-- Fixed CSS wrapper builds for client modules using configured proposal syntax by passing `parserPlugins` from both RSC plugins to the wrapper export scan.
+- Fixed CSS wrapper builds for client modules using configured proposal syntax by passing `parserPlugins` from both RSC plugins to the wrapper export scan. ([#240])
 - Fixed `react-on-rails-rsc/WebpackLoader` failing RSC bundle builds with `SyntaxError: Unexpected token '/' ... is not valid JSON` when a `"use server"` (or other stock-path directive) module ends with a `//# sourceMappingURL=` comment — the shape npm packages publish. The loader now routes the stock node-loader's requests instead of answering every one with the module's own source: a sourcemap request is always answered with a valid empty map (real `.map`/inline-map passthrough is deliberately not implemented — tracked in [#239]), and any other requested module URL (`export *` resolution) is served from the bundler's input filesystem. ([#236])
 
 ## [19.3.1-rc.0] - 2026-09-19
@@ -163,3 +163,4 @@ All notable changes to this package will be documented in this file.
 [#223]: https://github.com/shakacode/react_on_rails_rsc/pull/223
 [#228]: https://github.com/shakacode/react_on_rails_rsc/pull/228
 [#230]: https://github.com/shakacode/react_on_rails_rsc/pull/230
+[#240]: https://github.com/shakacode/react_on_rails_rsc/pull/240

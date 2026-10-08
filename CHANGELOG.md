@@ -4,17 +4,7 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
-## [19.3.1-rc.1] - 2026-10-07
-
-### Changed
-
-* License: `react-on-rails-rsc` is governed by The React on Rails Pro License 3.0 (based on trust, free for small organizations; replaces EULA 2.3).
-
-### Fixed
-- Fixed CSS wrapper builds for client modules using configured proposal syntax by passing `parserPlugins` from both RSC plugins to the wrapper export scan. ([#240])
-- Fixed `react-on-rails-rsc/WebpackLoader` failing RSC bundle builds with `SyntaxError: Unexpected token '/' ... is not valid JSON` when a `"use server"` (or other stock-path directive) module ends with a `//# sourceMappingURL=` comment — the shape npm packages publish. The loader now routes the stock node-loader's requests instead of answering every one with the module's own source: a sourcemap request is always answered with a valid empty map (real `.map`/inline-map passthrough is deliberately not implemented — tracked in [#239]), and any other requested module URL (`export *` resolution) is served from the bundler's input filesystem. ([#236])
-
-## [19.3.1-rc.0] - 2026-09-19
+## [19.3.1] - 2026-10-08
 
 ### Breaking Changes
 - Opened the React 19.3 Flight line by depending on stock `react-server-dom-webpack@~19.3.0` and raising the `react` and `react-dom` peer floors to `^19.3.0`. Published `19.3.0` remains the React 19.2.8 line; apps still on React 19.2.8 must pin exact `react-on-rails-rsc@19.3.0` instead of taking this patch. ([#235])
@@ -22,7 +12,14 @@ All notable changes to this package will be documented in this file.
   **Migration Guide:**
 
   1. Upgrade application `react`, `react-dom`, and `react-server-dom-webpack` together to 19.3.0 so the nested Flight runtime matches React and a second Flight copy is not installed.
-  2. Keep exact `react-on-rails-rsc@19.3.0` while the app remains on React 19.2.8. Do not treat `19.3.1-rc.0` as a drop-in patch for that line. This candidate publishes to npm `next` only; `latest` stays on `19.3.0` until the downstream gate accepts the final.
+  2. Keep exact `react-on-rails-rsc@19.3.0` while the app remains on React 19.2.8. Do not treat `19.3.1` as a drop-in patch for that line: a caret or tilde range such as `^19.3.0` or `~19.3.0` now resolves to `19.3.1`, which requires React 19.3.0.
+
+### Changed
+- License: `react-on-rails-rsc` is governed by The React on Rails Pro License 3.0 (based on trust, free for small organizations; replaces EULA 2.3). ([#237])
+
+### Fixed
+- Fixed CSS wrapper builds for client modules using configured proposal syntax by passing `parserPlugins` from both RSC plugins to the wrapper export scan. ([#240])
+- Fixed `react-on-rails-rsc/WebpackLoader` failing RSC bundle builds with `SyntaxError: Unexpected token '/' ... is not valid JSON` when a `"use server"` (or other stock-path directive) module ends with a `//# sourceMappingURL=` comment — the shape npm packages publish. The loader now routes the stock node-loader's requests instead of answering every one with the module's own source: a sourcemap request is always answered with a valid empty map (real `.map`/inline-map passthrough is deliberately not implemented — tracked in [#239]), and any other requested module URL (`export *` resolution) is served from the bundler's input filesystem. ([#236])
 
 ## [19.3.0] - 2026-09-16
 
@@ -107,9 +104,8 @@ All notable changes to this package will be documented in this file.
 ### Security
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
-[Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.1-rc.1...HEAD
-[19.3.1-rc.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.1-rc.0...19.3.1-rc.1
-[19.3.1-rc.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0...19.3.1-rc.0
+[Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.1...HEAD
+[19.3.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0...19.3.1
 [19.3.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1...19.3.0
 [19.2.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.0...19.2.1
 [19.2.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0
@@ -118,6 +114,7 @@ All notable changes to this package will be documented in this file.
 [#203]: https://github.com/shakacode/react_on_rails_rsc/pull/203
 [#235]: https://github.com/shakacode/react_on_rails_rsc/pull/235
 [#236]: https://github.com/shakacode/react_on_rails_rsc/pull/236
+[#237]: https://github.com/shakacode/react_on_rails_rsc/pull/237
 [#239]: https://github.com/shakacode/react_on_rails_rsc/issues/239
 [#207]: https://github.com/shakacode/react_on_rails_rsc/pull/207
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120

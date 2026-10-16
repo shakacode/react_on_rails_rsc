@@ -224,7 +224,13 @@ export const createLoadRequestHandler = (
     if (url === undefined || url === fileUrl) {
       return { format: 'module', source };
     }
-    const modulePath = fileURLToPath(url);
+    let modulePath: string;
+    try {
+      modulePath = fileURLToPath(url);
+    } catch {
+      // Non-file: URL — return the source unchanged rather than crashing.
+      return { format: 'module', source };
+    }
     const moduleSource = await readThroughInputFs(loaderContext, modulePath);
     loaderContext.addDependency(modulePath); // Rebuild when the re-export target changes.
     return { format: 'module', source: moduleSource };

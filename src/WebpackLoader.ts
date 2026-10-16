@@ -14,8 +14,10 @@
  * https://github.com/shakacode/react_on_rails_rsc/blob/main/LICENSE.md
  */
 
+import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import type { LoaderContext, LoaderDefinition } from 'webpack';
+import type { RawSourceMap } from 'webpack-sources';
 import { hasUseClientDirective } from './clientReferences';
 import { transformClientModule } from './clientModuleTransform';
 import {
@@ -42,23 +44,23 @@ const rewriteStockServerImport = (source: string | Buffer) => {
 };
 
 /**
- * A valid, empty source map: the answer to EVERY sourcemap request. The stock
- * node-loader `JSON.parse`s whatever it is handed, and npm packages routinely
- * publish compiled files whose `//# sourceMappingURL=` pointers name `.map`
- * files that are not in the package (react-on-rails-pro's `lib/*.js` do
- * exactly this — react_on_rails#5079), so serving anything file-derived here
- * needs real machinery. The loader deliberately does not read `.map` files,
- * inline `data:` maps, or `file:` map URLs: a sourcemap is a debugging aid,
- * never a build-correctness input, and the empty map keeps every build green.
- * Real sourcemap passthrough is tracked in issue #239.
+ * Returned when no real sourcemap is available (missing `.map` file, corrupt
+ * content, path-traversal rejection, or self-referential pointer). The stock
+ * node-loader `JSON.parse`s whatever it receives; `JSON.parse('null')` yields
+ * `null`, which triggers the loader's identity-map fallback — each exported
+ * server reference gets its correct compiled-source line number instead of
+ * the broken `originalSource: -1` that an empty-object map produces.
  */
-const EMPTY_SOURCE_MAP = '{"version":3,"sources":[],"names":[],"mappings":""}';
+const NULL_SOURCE_MAP = 'null';
 
 /**
  * The subset of the webpack loader context the load-request handler uses.
- * `fs` is the bundler's input filesystem, duck-typed by `readResolvedSource`.
+ * `addMissingDependency` is optional-called: webpack 5 and rspack both expose
+ * it, but a minimal loader-context implementation may not. `fs` is the
+ * bundler's input filesystem, duck-typed by `readResolvedSource`.
  */
-type LoadRequestLoaderContext = Pick<LoaderContext<unknown>, 'addDependency'> & { fs?: unknown };
+type LoadRequestLoaderContext = Pick<LoaderContext<unknown>, 'resourcePath' | 'addDependency'> &
+  Partial<Pick<LoaderContext<unknown>, 'addMissingDependency'>> & { fs?: unknown };
 
 /**
  * Read a file the way the `"use client"` export-all pass does: through the
@@ -80,21 +82,178 @@ interface LoadRequestResult {
 }
 
 /**
+ * Decode an inline `data:` sourcemap URI (`data:[<mediatype>][;base64],<data>`).
+ * Returns null when the payload cannot be decoded.
+ */
+const decodeSourceMapDataUri = (url: string): string | null => {
+  const comma = url.indexOf(',');
+  if (comma === -1) return null;
+  const params = url.slice('data:'.length, comma).split(';');
+  const data = url.slice(comma + 1);
+  try {
+    return params.some((param) => param.trim().toLowerCase() === 'base64')
+      ? Buffer.from(data, 'base64').toString('utf8')
+      : decodeURIComponent(data);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Extract an inline base64 sourcemap from the end of a loader output string.
+ * The stock node-loader appends `//# sourceMappingURL=data:application/json;
+ * charset=utf-8;base64,<payload>` after its transform. Webpack does not read
+ * inline maps from loader output — it only accepts them via the explicit
+ * `this.callback(null, source, sourceMap)` protocol. This helper decodes the
+ * inline map so the caller can forward it through that protocol.
+ *
+ * Returns `null` when the source has no trailing inline map or the payload is
+ * not a valid sourcemap object.
+ */
+export const extractInlineSourceMap = (
+  source: string
+): { cleanSource: string; sourceMap: RawSourceMap } | null => {
+  const match = source.match(
+    /\/\/# sourceMappingURL=data:application\/json[^,]*;base64,([A-Za-z0-9+/=]+)\s*$/
+  );
+  if (!match || !match[1]) return null;
+  try {
+    const decoded = Buffer.from(match[1], 'base64').toString('utf8');
+    const parsed = JSON.parse(decoded);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    // Replace the comment with a newline to preserve the line count.
+    const cleanSource = source.slice(0, match.index) + '\n';
+    return { cleanSource, sourceMap: parsed as RawSourceMap };
+  } catch {
+    return null;
+  }
+};
+
+/** Matches URLs with an explicit scheme. Two+ chars, so a `C:\...` path stays a path. */
+const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]+:/;
+
+/**
+ * Serve the sourcemap named by a module's `sourceMappingURL` comment. The URL
+ * is the raw text after `sourceMappingURL=` — usually a sibling-relative file
+ * name like `RSCRoute.js.map`, sometimes an inline `data:` URI. Falls back to
+ * `null` instead of failing the build, because published packages ship
+ * dangling pointers (see NULL_SOURCE_MAP above).
+ */
+const loadSourceMap = async (
+  loaderContext: LoadRequestLoaderContext,
+  url: string
+): Promise<string> => {
+  if (url.startsWith('data:')) {
+    // Inline map — decode it rather than treating it as a file path. Validate
+    // the decode produced JSON, because the caller JSON.parses the result.
+    const decoded = decodeSourceMapDataUri(url);
+    if (decoded !== null) {
+      try {
+        const parsed = JSON.parse(decoded);
+        // A sourcemap must be a plain object. Primitives (`true`, `42`,
+        // `"str"`) crash the stock loader's `sourceMap.mappings = ...`
+        // assignment (TypeError in ESM strict mode), and arrays produce
+        // garbage output.
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return decoded;
+        }
+      } catch {
+        // Fall through to the null map.
+      }
+    }
+    return NULL_SOURCE_MAP;
+  }
+
+  let mapPath: string;
+  if (url.startsWith('file:')) {
+    try {
+      mapPath = fileURLToPath(url);
+    } catch {
+      return NULL_SOURCE_MAP;
+    }
+  } else if (URL_SCHEME.test(url)) {
+    // http(s): or another remote scheme — nothing to read locally.
+    return NULL_SOURCE_MAP;
+  } else {
+    // The usual shape: a name resolved against the module's own directory.
+    // Percent-decode for parity with the file: branch (sourceMappingURL is a
+    // URL reference, so spaces and reserved chars may be encoded).
+    let decodedUrl: string;
+    try {
+      decodedUrl = decodeURIComponent(url);
+    } catch {
+      return NULL_SOURCE_MAP;
+    }
+    mapPath = path.resolve(path.dirname(loaderContext.resourcePath), decodedUrl);
+  }
+
+  // Reject paths that escape the module's own directory. A malicious npm
+  // package could craft a sourceMappingURL (relative or file: URL) that
+  // points to an arbitrary JSON file on the build host; the stock loader
+  // would embed its content as an inline data: URI in the output. Sibling
+  // .map files — the only legitimate shape — always resolve within the
+  // module's own directory.
+  const moduleDir = path.dirname(loaderContext.resourcePath);
+  // When moduleDir is a filesystem root (`/` on POSIX, `C:\` on Windows) it
+  // already ends with the separator, so appending another would produce `//`
+  // or `C:\\` and reject every sibling path.
+  const moduleDirPrefix = moduleDir.endsWith(path.sep) ? moduleDir : moduleDir + path.sep;
+  if (!mapPath.startsWith(moduleDirPrefix) && mapPath !== moduleDir) {
+    return NULL_SOURCE_MAP;
+  }
+
+  if (mapPath === loaderContext.resourcePath) {
+    // A self-referential pointer: serving the module's own JavaScript as a
+    // sourcemap would recreate the JSON.parse crash this handler exists to fix.
+    return NULL_SOURCE_MAP;
+  }
+
+  try {
+    const mapSource = await readThroughInputFs(loaderContext, mapPath);
+    try {
+      const parsed = JSON.parse(mapSource);
+      // A sourcemap must be a plain object. Primitives (`true`, `42`,
+      // `"str"`) crash the stock loader's `sourceMap.mappings = ...`
+      // assignment (TypeError in ESM strict mode), and arrays produce
+      // garbage output.
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        loaderContext.addDependency(mapPath);
+        return NULL_SOURCE_MAP;
+      }
+    } catch {
+      // File exists but is not valid JSON (truncated, corrupt, or not a
+      // sourcemap at all). Track it so a fix triggers a rebuild, and fall
+      // back to the null map instead of letting the stock loader's
+      // JSON.parse crash the build.
+      loaderContext.addDependency(mapPath);
+      return NULL_SOURCE_MAP;
+    }
+    loaderContext.addDependency(mapPath); // Rebuild when the map changes.
+    return mapSource;
+  } catch {
+    // Track the absent path so watch mode rebuilds if the map appears later.
+    loaderContext.addMissingDependency?.(mapPath);
+    return NULL_SOURCE_MAP;
+  }
+};
+
+/**
  * Build the request handler the loader hands to the stock node-loader's
  * `load(url, context, defaultLoad)`.
  *
  * The stock loader calls the handler back for everything it needs, not just
  * the module being loaded (react_on_rails#5079):
  *
- * 1. A sourcemap request (`context.format === 'json'`) — always answered with
- *    a valid empty map (see EMPTY_SOURCE_MAP; real map passthrough is issue
- *    #239). The parameterless stub this replaces answered every request with
- *    the module's own JavaScript source, so the stock loader's `JSON.parse`
- *    failed the build (`SyntaxError: Unexpected token '/' ... is not valid
- *    JSON`) for any directive-carrying file ending in a
- *    `//# sourceMappingURL=` comment — the exact shape npm packages publish.
- *    Checked first so that even a sourceMappingURL resolving to the module's
- *    own URL is answered as a map, never as JavaScript.
+ * 1. A sourcemap request (`context.format === 'json'`) — serve the real map
+ *    file, an inline `data:` map, or `null` (`loadSourceMap`). The
+ *    parameterless stub this replaces answered every request with the module's
+ *    own JavaScript source, so the stock loader's `JSON.parse` failed the
+ *    build (`SyntaxError: Unexpected token '/' ... is not valid JSON`) for any
+ *    directive-carrying file ending in a `//# sourceMappingURL=` comment —
+ *    the exact shape npm packages publish. Checked first so that even a
+ *    sourceMappingURL resolving to the module's own URL is answered as a map.
  * 2. The module's own `fileUrl` (or no URL at all) — serve the source webpack
  *    gave us, unchanged.
  * 3. Any other module URL (the stock loader resolves `export * from` chains in
@@ -113,12 +272,18 @@ export const createLoadRequestHandler = (
   // passes them at runtime.
   return async (url?: string, context?: LoadRequestContext): Promise<LoadRequestResult> => {
     if (url !== undefined && context?.format === 'json') {
-      return { format: 'json', source: EMPTY_SOURCE_MAP };
+      return { format: 'json', source: await loadSourceMap(loaderContext, url) };
     }
     if (url === undefined || url === fileUrl) {
       return { format: 'module', source };
     }
-    const modulePath = fileURLToPath(url);
+    let modulePath: string;
+    try {
+      modulePath = fileURLToPath(url);
+    } catch {
+      // Non-file: URL — return the source unchanged rather than crashing.
+      return { format: 'module', source };
+    }
     const moduleSource = await readThroughInputFs(loaderContext, modulePath);
     loaderContext.addDependency(modulePath); // Rebuild when the re-export target changes.
     return { format: 'module', source: moduleSource };
@@ -153,6 +318,15 @@ const RSCWebpackLoader: LoaderDefinition = async function RSCWebpackLoader(sourc
   const { load } = await import('react-server-dom-webpack/node-loader');
   const result = await load(fileUrl, null, createLoadRequestHandler(this, fileUrl, source));
   return rewriteStockServerImport(result.source);
+
+  // NOTE: The stock loader embeds its sourcemap as an inline data: URI at the
+  // end of the output. Webpack does not read inline maps from loader output
+  // strings — it only accepts them via the explicit `this.callback(null,
+  // source, sourceMap)` protocol. Forwarding the inline map to webpack so it
+  // composes into the bundle-level .map requires switching from an async
+  // function to a sync wrapper with `this.async()`, which is incompatible with
+  // rspack's async loader handling. This is tracked as a follow-up improvement.
+  // The `extractInlineSourceMap` helper is ready for that follow-up.
 };
 
 export default RSCWebpackLoader;

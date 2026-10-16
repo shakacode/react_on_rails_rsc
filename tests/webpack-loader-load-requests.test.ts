@@ -192,6 +192,39 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     expect(context.addDependency).not.toHaveBeenCalled();
   });
 
+  it('rejects a relative sourceMappingURL that traverses above the module directory', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+
+    // ../../../package.json would climb out of the fixtures directory.
+    const result = await handler('../../../package.json', JSON_REQUEST);
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(context.addDependency).not.toHaveBeenCalled();
+  });
+
+  it('rejects an absolute path in sourceMappingURL', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+
+    const result = await handler('/etc/passwd', JSON_REQUEST);
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+  });
+
+  it('percent-decodes a relative sourceMappingURL for parity with file: URLs', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const mapPath = fixturePath('server-actions-with-map.js.map');
+    // Encode the filename the way a URL reference would
+    const encoded = 'server-actions-with-map.js.map'.replace(/-/g, '%2D');
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+
+    const result = await handler(encoded, JSON_REQUEST);
+
+    expect(result.source).toBe(readFixture('server-actions-with-map.js.map'));
+    expect(context.addDependency).toHaveBeenCalledWith(mapPath);
+  });
+
   it('never answers a sourcemap request with the module\u2019s JavaScript source (the #5079 bug)', async () => {
     const source = readFixture('server-actions-dangling-map.js');
     const { handler } = handlerFor(fixturePath('server-actions-dangling-map.js'), source);

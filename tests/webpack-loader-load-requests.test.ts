@@ -22,7 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import type { LoaderContext } from 'webpack';
-import RSCWebpackLoader, { createLoadRequestHandler } from '../src/WebpackLoader';
+import RSCWebpackLoader, { createLoadRequestHandler, extractInlineSourceMap } from '../src/WebpackLoader';
 
 const FIXTURES = path.join(__dirname, 'fixtures', 'load-requests');
 
@@ -468,5 +468,58 @@ describe('RSCWebpackLoader on the published npm file shape (react_on_rails#5079)
     expect(output).toContain('"default"');
     // The component body must not survive into the server bundle.
     expect(output).not.toContain('jsx-runtime');
+  });
+});
+
+describe('extractInlineSourceMap', () => {
+  const makeInlineMap = (obj: unknown): string => {
+    const json = JSON.stringify(obj);
+    const b64 = Buffer.from(json, 'utf8').toString('base64');
+    return `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${b64}`;
+  };
+
+  it('extracts and decodes a valid inline sourcemap from the end of the source', () => {
+    const map = { version: 3, sources: ['actions.ts'], names: [], mappings: 'AAAA' };
+    const source = `'use server';\nexport function greet() {}\n${makeInlineMap(map)}`;
+
+    const result = extractInlineSourceMap(source);
+
+    expect(result).not.toBeNull();
+    expect(result!.sourceMap).toEqual(map);
+    expect(result!.cleanSource).toBe("'use server';\nexport function greet() {}\n\n");
+    expect(result!.cleanSource).not.toContain('sourceMappingURL');
+  });
+
+  it('returns null when the source has no inline sourcemap', () => {
+    const source = "'use server';\nexport function greet() {}";
+
+    expect(extractInlineSourceMap(source)).toBeNull();
+  });
+
+  it('returns null when the base64 payload is not valid JSON', () => {
+    const badB64 = Buffer.from('not json at all', 'utf8').toString('base64');
+    const source = `code;\n//# sourceMappingURL=data:application/json;base64,${badB64}`;
+
+    expect(extractInlineSourceMap(source)).toBeNull();
+  });
+
+  it('returns null when the parsed JSON is a primitive (not a sourcemap object)', () => {
+    const source = `code;\n${makeInlineMap(true)}`;
+    expect(extractInlineSourceMap(source)).toBeNull();
+  });
+
+  it('returns null when the parsed JSON is an array', () => {
+    const source = `code;\n${makeInlineMap([1, 2, 3])}`;
+    expect(extractInlineSourceMap(source)).toBeNull();
+  });
+
+  it('preserves a trailing newline in cleanSource for line-count stability', () => {
+    const map = { version: 3, sources: [], names: [], mappings: '' };
+    const source = `line1\nline2\n${makeInlineMap(map)}`;
+
+    const result = extractInlineSourceMap(source);
+
+    expect(result).not.toBeNull();
+    expect(result!.cleanSource.endsWith('\n')).toBe(true);
   });
 });

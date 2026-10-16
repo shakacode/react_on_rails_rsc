@@ -4,6 +4,9 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- `react-on-rails-rsc/WebpackLoader` now serves real sourcemaps for `"use server"` modules instead of always returning an empty map. Sibling `.map` files are read through the bundler's input filesystem and validated as JSON before serving; inline `data:` maps are decoded; dangling pointers and corrupt maps fall back to the empty map without crashing the build. This restores original-source file and line information in server-action error stacks. ([#239])
+
 ## [19.3.1] - 2026-10-08
 
 ### Breaking Changes
@@ -164,3 +167,4 @@ All notable changes to this package will be documented in this file.
 [#228]: https://github.com/shakacode/react_on_rails_rsc/pull/228
 [#230]: https://github.com/shakacode/react_on_rails_rsc/pull/230
 [#240]: https://github.com/shakacode/react_on_rails_rsc/pull/240
+[#239]: https://github.com/shakacode/react_on_rails_rsc/pull/239

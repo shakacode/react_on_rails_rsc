@@ -38,6 +38,7 @@ interface FakeInputFs {
 interface FakeLoaderContext {
   resourcePath: string;
   addDependency: jest.Mock;
+  addMissingDependency: jest.Mock;
   fs?: FakeInputFs;
 }
 
@@ -47,6 +48,7 @@ const createLoaderContext = (
 ): FakeLoaderContext => ({
   resourcePath,
   addDependency: jest.fn(),
+  addMissingDependency: jest.fn(),
   ...overrides,
 });
 
@@ -99,12 +101,40 @@ describe('createLoadRequestHandler: the module’s own URL', () => {
 });
 
 describe('createLoadRequestHandler: sourcemap (json) requests', () => {
-  // Every sourcemap request is answered with the valid empty map: the loader
-  // deliberately does not read real .map files, inline data: maps, or file:
-  // map URLs (passthrough is tracked in issue #239). What matters for
-  // react_on_rails#5079 is that a json request is NEVER answered with
-  // JavaScript, so the stock loader's JSON.parse always succeeds.
-  it('serves the valid empty map for a dangling sourceMappingURL', async () => {
+  it('serves the sibling .map file named by a relative sourceMappingURL', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+
+    const result = await handler('server-actions-with-map.js.map', JSON_REQUEST);
+
+    expect(result.format).toBe('json');
+    expect(result.source).toBe(readFixture('server-actions-with-map.js.map'));
+    expect(JSON.parse(result.source as string).sources).toEqual([
+      'server-actions-with-map.source.ts',
+    ]);
+    // The map participates in watch mode: a change must trigger a rebuild.
+    expect(context.addDependency).toHaveBeenCalledWith(
+      fixturePath('server-actions-with-map.js.map')
+    );
+    expect(context.addMissingDependency).not.toHaveBeenCalled();
+  });
+
+  it('serves the map through a file: URL sourceMappingURL', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const mapUrl = pathToFileURL(fixturePath('server-actions-with-map.js.map')).href;
+
+    const result = await handler(mapUrl, JSON_REQUEST);
+
+    expect(result.source).toBe(readFixture('server-actions-with-map.js.map'));
+    expect(context.addDependency).toHaveBeenCalledWith(
+      fixturePath('server-actions-with-map.js.map')
+    );
+  });
+
+  it('falls back to a valid empty map when the pointed-at .map does not exist', async () => {
+    // react-on-rails-pro publishes sourceMappingURL pointers but zero .map
+    // files, so the missing-map case is the published norm, not an edge.
     const resourcePath = fixturePath('server-actions-dangling-map.js');
     const { handler, context } = handlerFor(
       resourcePath,
@@ -116,16 +146,26 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     expect(result.format).toBe('json');
     expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
     expect(context.addDependency).not.toHaveBeenCalled();
+    // The absent map is tracked so watch mode rebuilds if it appears later.
+    expect(context.addMissingDependency).toHaveBeenCalledWith(
+      fixturePath('server-actions-dangling-map.js.map')
+    );
   });
 
-  it('serves the empty map even when the pointed-at sibling .map exists on disk', async () => {
-    const resourcePath = fixturePath('server-actions-with-map.js');
-    const { handler } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+  it('works without addMissingDependency on the loader context', async () => {
+    // Minimal loader-context implementations may not expose it; the optional
+    // call must not throw and the fallback must still be served.
+    const resourcePath = fixturePath('server-actions-dangling-map.js');
+    const fileUrl = pathToFileURL(resourcePath).href;
+    const handler = createLoadRequestHandler(
+      { resourcePath, addDependency: jest.fn() },
+      fileUrl,
+      readFixture('server-actions-dangling-map.js')
+    );
 
-    const result = await handler('server-actions-with-map.js.map', JSON_REQUEST);
+    const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
 
     expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
-    expect(result.source).not.toBe(readFixture('server-actions-with-map.js.map'));
   });
 
   it('answers a json request for the module\u2019s own URL with a map, never module source', async () => {
@@ -142,6 +182,16 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
   });
 
+  it('falls back to the empty map for a relative pointer naming the module itself', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+
+    const result = await handler('server-actions-with-map.js', JSON_REQUEST);
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(context.addDependency).not.toHaveBeenCalled();
+  });
+
   it('never answers a sourcemap request with the module\u2019s JavaScript source (the #5079 bug)', async () => {
     const source = readFixture('server-actions-dangling-map.js');
     const { handler } = handlerFor(fixturePath('server-actions-dangling-map.js'), source);
@@ -152,9 +202,158 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     // The stock loader JSON.parses whatever comes back; this must not throw.
     expect(() => JSON.parse(result.source as string)).not.toThrow();
   });
+
+  it('decodes a base64 data: URI inline map instead of treating it as a path', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const inlineMap = '{"version":3,"sources":["inline.ts"],"names":[],"mappings":"AAAA"}';
+    const dataUri = `data:application/json;charset=utf-8;base64,${Buffer.from(
+      inlineMap,
+      'utf8'
+    ).toString('base64')}`;
+
+    const result = await handler(dataUri, JSON_REQUEST);
+
+    expect(result.format).toBe('json');
+    expect(result.source).toBe(inlineMap);
+    expect(context.addDependency).not.toHaveBeenCalled();
+  });
+
+  it('decodes a URL-encoded (non-base64) data: URI inline map', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const inlineMap = '{"version":3,"sources":[],"names":[],"mappings":""}';
+
+    const result = await handler(
+      `data:application/json,${encodeURIComponent(inlineMap)}`,
+      JSON_REQUEST
+    );
+
+    expect(result.source).toBe(inlineMap);
+  });
+
+  it('falls back to the empty map for a data: URI that does not decode to JSON', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+
+    const result = await handler('data:application/json;base64,%%%not-base64-json', JSON_REQUEST);
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+  });
+
+  it('falls back to the empty map for a remote (http) sourceMappingURL', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+
+    const result = await handler('https://example.com/app.js.map', JSON_REQUEST);
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(context.addDependency).not.toHaveBeenCalled();
+  });
+});
+
+describe('createLoadRequestHandler: corrupt sourcemap files', () => {
+  it('falls back to the empty map when a .map file contains invalid JSON', async () => {
+    const resourcePath = fixturePath('corrupt-map.js');
+    const { handler, context } = handlerFor(resourcePath, readFixture('corrupt-map.js'));
+
+    const result = await handler('corrupt-map.js.map', JSON_REQUEST);
+
+    expect(result.format).toBe('json');
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    // The file exists \u2014 track it so a fix triggers a rebuild.
+    expect(context.addDependency).toHaveBeenCalledWith(fixturePath('corrupt-map.js.map'));
+    expect(context.addMissingDependency).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the empty map when the .map file is empty', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const emptyMapPath = fixturePath('empty-map-content.js.map');
+    const inputFs = createInputFs({ [emptyMapPath]: '' });
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'), {
+      fs: inputFs,
+    });
+
+    const result = await handler(
+      pathToFileURL(emptyMapPath).href,
+      JSON_REQUEST,
+    );
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(context.addDependency).toHaveBeenCalledWith(emptyMapPath);
+  });
+
+  it('falls back to the empty map when the .map file has a UTF-8 BOM', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const bomMapPath = fixturePath('bom-map.js.map');
+    const validContent = '{"version":3,"sources":["bom.ts"],"names":[],"mappings":"AAAA"}';
+    const inputFs = createInputFs({ [bomMapPath]: '\ufeff' + validContent });
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'), {
+      fs: inputFs,
+    });
+
+    const result = await handler(
+      pathToFileURL(bomMapPath).href,
+      JSON_REQUEST,
+    );
+
+    // BOM breaks JSON.parse \u2014 falls back to empty map.
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(context.addDependency).toHaveBeenCalledWith(bomMapPath);
+  });
+
+  it('never returns content that crashes JSON.parse (the stock loader contract)', async () => {
+    const resourcePath = fixturePath('corrupt-map.js');
+    const { handler } = handlerFor(resourcePath, readFixture('corrupt-map.js'));
+
+    const result = await handler('corrupt-map.js.map', JSON_REQUEST);
+
+    // This is the fundamental safety property: whatever the handler returns
+    // for a json request MUST be parseable by JSON.parse.
+    expect(() => JSON.parse(result.source as string)).not.toThrow();
+  });
 });
 
 describe('createLoadRequestHandler: bundler input filesystem', () => {
+  it('reads the sourcemap through loaderContext.fs when provided', async () => {
+    // The virtual map does NOT exist on the real filesystem: getting its
+    // content back proves the read went through the input filesystem, and
+    // getting the empty-map fallback would prove it fell through to raw fs.
+    const resourcePath = fixturePath('server-actions-dangling-map.js');
+    const virtualMapPath = fixturePath('server-actions-dangling-map.js.map');
+    const virtualMap = '{"version":3,"sources":["virtual.ts"],"names":[],"mappings":"AAAA"}';
+    const inputFs = createInputFs({ [virtualMapPath]: virtualMap });
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-dangling-map.js'),
+      { fs: inputFs }
+    );
+
+    const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
+
+    expect(result.source).toBe(virtualMap);
+    expect(inputFs.readFile).toHaveBeenCalledWith(virtualMapPath, expect.any(Function));
+    expect(context.addDependency).toHaveBeenCalledWith(virtualMapPath);
+    expect(context.addMissingDependency).not.toHaveBeenCalled();
+  });
+
+  it('keeps the missing-map fallback when the input filesystem errors', async () => {
+    const resourcePath = fixturePath('server-actions-dangling-map.js');
+    const inputFs = createInputFs({}); // errors for every path
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-dangling-map.js'),
+      { fs: inputFs }
+    );
+
+    const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(context.addMissingDependency).toHaveBeenCalledWith(
+      fixturePath('server-actions-dangling-map.js.map')
+    );
+  });
+
   it('reads other module URLs through loaderContext.fs when provided', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
     const virtualModulePath = fixturePath('virtual-only-module.js');

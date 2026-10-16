@@ -146,17 +146,18 @@ const loadSourceMap = async (
     } catch {
       return EMPTY_SOURCE_MAP;
     }
-    const moduleDir = path.dirname(loaderContext.resourcePath);
-    mapPath = path.resolve(moduleDir, decodedUrl);
+    mapPath = path.resolve(path.dirname(loaderContext.resourcePath), decodedUrl);
+  }
 
-    // Reject paths that escape the module's own directory. A malicious npm
-    // package could craft `sourceMappingURL=../../../package.json` to
-    // exfiltrate arbitrary JSON files into the build output (the stock
-    // loader embeds the map as an inline data: URI). Sibling .map files —
-    // the only legitimate shape — always resolve within the module's dir.
-    if (!mapPath.startsWith(moduleDir + path.sep) && mapPath !== moduleDir) {
-      return EMPTY_SOURCE_MAP;
-    }
+  // Reject paths that escape the module's own directory. A malicious npm
+  // package could craft a sourceMappingURL (relative or file: URL) that
+  // points to an arbitrary JSON file on the build host; the stock loader
+  // would embed its content as an inline data: URI in the output. Sibling
+  // .map files — the only legitimate shape — always resolve within the
+  // module's own directory.
+  const moduleDir = path.dirname(loaderContext.resourcePath);
+  if (!mapPath.startsWith(moduleDir + path.sep) && mapPath !== moduleDir) {
+    return EMPTY_SOURCE_MAP;
   }
 
   if (mapPath === loaderContext.resourcePath) {

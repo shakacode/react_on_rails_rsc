@@ -5,7 +5,7 @@ All notable changes to this package will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- `react-on-rails-rsc/WebpackLoader` now serves real sourcemaps for `"use server"` modules instead of always returning an empty map. Sibling `.map` files are read through the bundler's input filesystem and validated as JSON before serving; inline `data:` maps are decoded; dangling pointers and corrupt maps fall back to the empty map without crashing the build. This restores original-source file and line information in server-action error stacks. ([#239])
+- `react-on-rails-rsc/WebpackLoader` now serves real sourcemaps for `"use server"` modules instead of always returning an empty map. Sibling `.map` files are read through the bundler's input filesystem and validated as JSON objects before serving; inline `data:` maps are decoded; and dangling pointers, corrupt maps, and non-object JSON values fall back to `null`, which triggers the stock loader's identity-map fallback — giving line-level accuracy in the compiled JS instead of the broken `originalSource: -1` the empty map produced. ([#239])
 
 ## [19.3.1] - 2026-10-08
 
@@ -118,7 +118,7 @@ All notable changes to this package will be documented in this file.
 [#235]: https://github.com/shakacode/react_on_rails_rsc/pull/235
 [#236]: https://github.com/shakacode/react_on_rails_rsc/pull/236
 [#237]: https://github.com/shakacode/react_on_rails_rsc/pull/237
-[#239]: https://github.com/shakacode/react_on_rails_rsc/issues/239
+[#239]: https://github.com/shakacode/react_on_rails_rsc/pull/247
 [#207]: https://github.com/shakacode/react_on_rails_rsc/pull/207
 [#120]: https://github.com/shakacode/react_on_rails_rsc/pull/120
 [#140]: https://github.com/shakacode/react_on_rails_rsc/pull/140
@@ -167,4 +167,3 @@ All notable changes to this package will be documented in this file.
 [#228]: https://github.com/shakacode/react_on_rails_rsc/pull/228
 [#230]: https://github.com/shakacode/react_on_rails_rsc/pull/230
 [#240]: https://github.com/shakacode/react_on_rails_rsc/pull/240
-[#239]: https://github.com/shakacode/react_on_rails_rsc/pull/239

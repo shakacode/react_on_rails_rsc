@@ -29,7 +29,9 @@ const FIXTURES = path.join(__dirname, 'fixtures', 'load-requests');
 const fixturePath = (name: string): string => path.join(FIXTURES, name);
 const readFixture = (name: string): string => fs.readFileSync(fixturePath(name), 'utf8');
 
-const EMPTY_SOURCE_MAP = { version: 3, sources: [], names: [], mappings: '' };
+/** The fallback is the JSON string `"null"`. `JSON.parse('null')` yields `null`,
+ * which tells the stock loader to generate its own identity map. */
+const NULL_MAP_PARSED = null;
 
 interface FakeInputFs {
   readFile: jest.Mock;
@@ -144,7 +146,7 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
 
     expect(result.format).toBe('json');
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     expect(context.addDependency).not.toHaveBeenCalled();
     // The absent map is tracked so watch mode rebuilds if it appears later.
     expect(context.addMissingDependency).toHaveBeenCalledWith(
@@ -165,7 +167,7 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
     const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
 
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
   });
 
   it('answers a json request for the module\u2019s own URL with a map, never module source', async () => {
@@ -179,7 +181,7 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
     expect(result.format).toBe('json');
     expect(result.source).not.toBe(source);
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
   });
 
   it('falls back to the empty map for a relative pointer naming the module itself', async () => {
@@ -188,7 +190,7 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
     const result = await handler('server-actions-with-map.js', JSON_REQUEST);
 
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     expect(context.addDependency).not.toHaveBeenCalled();
   });
 
@@ -199,7 +201,7 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     // ../../../package.json would climb out of the fixtures directory.
     const result = await handler('../../../package.json', JSON_REQUEST);
 
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     expect(context.addDependency).not.toHaveBeenCalled();
   });
 
@@ -209,7 +211,7 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
     const result = await handler('/etc/passwd', JSON_REQUEST);
 
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
   });
 
   it('rejects a file: URL pointing outside the module directory', async () => {
@@ -219,8 +221,25 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     // fileURLToPath produces a valid absolute path.
     const result = await handler('file:///etc/passwd', JSON_REQUEST);
 
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     expect(context.addDependency).not.toHaveBeenCalled();
+  });
+
+  it('serves a sibling .map when the module lives at the filesystem root', async () => {
+    // path.dirname('/module.js') is '/'. The containment check must not
+    // double the separator ('//') or it rejects every sibling path.
+    const resourcePath = '/module.js';
+    const mapPath = '/module.js.map';
+    const mapContent = '{"version":3,"sources":["module.ts"],"names":[],"mappings":"AAAA"}';
+    const inputFs = createInputFs({ [mapPath]: mapContent });
+    const { handler, context } = handlerFor(resourcePath, '"use server";\nexport function f(){}', {
+      fs: inputFs,
+    });
+
+    const result = await handler('module.js.map', JSON_REQUEST);
+
+    expect(result.source).toBe(mapContent);
+    expect(context.addDependency).toHaveBeenCalledWith(mapPath);
   });
 
   it('percent-decodes a relative sourceMappingURL for parity with file: URLs', async () => {
@@ -282,7 +301,7 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
     const result = await handler('data:application/json;base64,%%%not-base64-json', JSON_REQUEST);
 
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
   });
 
   it('falls back to the empty map for a remote (http) sourceMappingURL', async () => {
@@ -291,7 +310,7 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
     const result = await handler('https://example.com/app.js.map', JSON_REQUEST);
 
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     expect(context.addDependency).not.toHaveBeenCalled();
   });
 });
@@ -304,7 +323,7 @@ describe('createLoadRequestHandler: corrupt sourcemap files', () => {
     const result = await handler('corrupt-map.js.map', JSON_REQUEST);
 
     expect(result.format).toBe('json');
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     // The file exists \u2014 track it so a fix triggers a rebuild.
     expect(context.addDependency).toHaveBeenCalledWith(fixturePath('corrupt-map.js.map'));
     expect(context.addMissingDependency).not.toHaveBeenCalled();
@@ -323,7 +342,7 @@ describe('createLoadRequestHandler: corrupt sourcemap files', () => {
       JSON_REQUEST,
     );
 
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     expect(context.addDependency).toHaveBeenCalledWith(emptyMapPath);
   });
 
@@ -342,7 +361,7 @@ describe('createLoadRequestHandler: corrupt sourcemap files', () => {
     );
 
     // BOM breaks JSON.parse \u2014 falls back to empty map.
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     expect(context.addDependency).toHaveBeenCalledWith(bomMapPath);
   });
 
@@ -392,7 +411,7 @@ describe('createLoadRequestHandler: bundler input filesystem', () => {
 
     const result = await handler('server-actions-dangling-map.js.map', JSON_REQUEST);
 
-    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     expect(context.addMissingDependency).toHaveBeenCalledWith(
       fixturePath('server-actions-dangling-map.js.map')
     );

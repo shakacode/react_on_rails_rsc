@@ -43,13 +43,14 @@ const rewriteStockServerImport = (source: string | Buffer) => {
 };
 
 /**
- * A valid, empty source map. Served when a module carries a
- * `//# sourceMappingURL=` pointer whose `.map` file does not exist on disk —
- * npm packages routinely publish compiled files with map pointers but without
- * the `.map` files themselves (react-on-rails-pro's `lib/*.js` do exactly
- * this), and the stock node-loader `JSON.parse`s whatever it is handed.
+ * Returned when no real sourcemap is available (missing `.map` file, corrupt
+ * content, path-traversal rejection, or self-referential pointer). The stock
+ * node-loader `JSON.parse`s whatever it receives; `JSON.parse('null')` yields
+ * `null`, which triggers the loader's identity-map fallback — each exported
+ * server reference gets its correct compiled-source line number instead of
+ * the broken `originalSource: -1` that an empty-object map produces.
  */
-const EMPTY_SOURCE_MAP = '{"version":3,"sources":[],"names":[],"mappings":""}';
+const NULL_SOURCE_MAP = 'null';
 
 /**
  * The subset of the webpack loader context the load-request handler uses.
@@ -104,8 +105,8 @@ const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]+:/;
  * Serve the sourcemap named by a module's `sourceMappingURL` comment. The URL
  * is the raw text after `sourceMappingURL=` — usually a sibling-relative file
  * name like `RSCRoute.js.map`, sometimes an inline `data:` URI. Falls back to
- * a valid empty map instead of failing the build, because published packages
- * ship dangling pointers (see EMPTY_SOURCE_MAP above).
+ * `null` instead of failing the build, because published packages ship
+ * dangling pointers (see NULL_SOURCE_MAP above).
  */
 const loadSourceMap = async (
   loaderContext: LoadRequestLoaderContext,
@@ -117,13 +118,19 @@ const loadSourceMap = async (
     const decoded = decodeSourceMapDataUri(url);
     if (decoded !== null) {
       try {
-        JSON.parse(decoded);
-        return decoded;
+        const parsed = JSON.parse(decoded);
+        // A sourcemap must be a plain object. Primitives (`true`, `42`,
+        // `"str"`) crash the stock loader's `sourceMap.mappings = ...`
+        // assignment (TypeError in ESM strict mode), and arrays produce
+        // garbage output.
+        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return decoded;
+        }
       } catch {
-        // Fall through to the empty map.
+        // Fall through to the null map.
       }
     }
-    return EMPTY_SOURCE_MAP;
+    return NULL_SOURCE_MAP;
   }
 
   let mapPath: string;
@@ -131,11 +138,11 @@ const loadSourceMap = async (
     try {
       mapPath = fileURLToPath(url);
     } catch {
-      return EMPTY_SOURCE_MAP;
+      return NULL_SOURCE_MAP;
     }
   } else if (URL_SCHEME.test(url)) {
     // http(s): or another remote scheme — nothing to read locally.
-    return EMPTY_SOURCE_MAP;
+    return NULL_SOURCE_MAP;
   } else {
     // The usual shape: a name resolved against the module's own directory.
     // Percent-decode for parity with the file: branch (sourceMappingURL is a
@@ -144,7 +151,7 @@ const loadSourceMap = async (
     try {
       decodedUrl = decodeURIComponent(url);
     } catch {
-      return EMPTY_SOURCE_MAP;
+      return NULL_SOURCE_MAP;
     }
     mapPath = path.resolve(path.dirname(loaderContext.resourcePath), decodedUrl);
   }
@@ -156,34 +163,46 @@ const loadSourceMap = async (
   // .map files — the only legitimate shape — always resolve within the
   // module's own directory.
   const moduleDir = path.dirname(loaderContext.resourcePath);
-  if (!mapPath.startsWith(moduleDir + path.sep) && mapPath !== moduleDir) {
-    return EMPTY_SOURCE_MAP;
+  // When moduleDir is a filesystem root (`/` on POSIX, `C:\` on Windows) it
+  // already ends with the separator, so appending another would produce `//`
+  // or `C:\\` and reject every sibling path.
+  const moduleDirPrefix = moduleDir.endsWith(path.sep) ? moduleDir : moduleDir + path.sep;
+  if (!mapPath.startsWith(moduleDirPrefix) && mapPath !== moduleDir) {
+    return NULL_SOURCE_MAP;
   }
 
   if (mapPath === loaderContext.resourcePath) {
     // A self-referential pointer: serving the module's own JavaScript as a
     // sourcemap would recreate the JSON.parse crash this handler exists to fix.
-    return EMPTY_SOURCE_MAP;
+    return NULL_SOURCE_MAP;
   }
 
   try {
     const mapSource = await readThroughInputFs(loaderContext, mapPath);
     try {
-      JSON.parse(mapSource);
+      const parsed = JSON.parse(mapSource);
+      // A sourcemap must be a plain object. Primitives (`true`, `42`,
+      // `"str"`) crash the stock loader's `sourceMap.mappings = ...`
+      // assignment (TypeError in ESM strict mode), and arrays produce
+      // garbage output.
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        loaderContext.addDependency(mapPath);
+        return NULL_SOURCE_MAP;
+      }
     } catch {
       // File exists but is not valid JSON (truncated, corrupt, or not a
       // sourcemap at all). Track it so a fix triggers a rebuild, and fall
-      // back to the empty map instead of letting the stock loader's
+      // back to the null map instead of letting the stock loader's
       // JSON.parse crash the build.
       loaderContext.addDependency(mapPath);
-      return EMPTY_SOURCE_MAP;
+      return NULL_SOURCE_MAP;
     }
     loaderContext.addDependency(mapPath); // Rebuild when the map changes.
     return mapSource;
   } catch {
     // Track the absent path so watch mode rebuilds if the map appears later.
     loaderContext.addMissingDependency?.(mapPath);
-    return EMPTY_SOURCE_MAP;
+    return NULL_SOURCE_MAP;
   }
 };
 
@@ -195,7 +214,7 @@ const loadSourceMap = async (
  * the module being loaded (react_on_rails#5079):
  *
  * 1. A sourcemap request (`context.format === 'json'`) — serve the real map
- *    file, an inline `data:` map, or a valid empty map (`loadSourceMap`). The
+ *    file, an inline `data:` map, or `null` (`loadSourceMap`). The
  *    parameterless stub this replaces answered every request with the module's
  *    own JavaScript source, so the stock loader's `JSON.parse` failed the
  *    build (`SyntaxError: Unexpected token '/' ... is not valid JSON`) for any

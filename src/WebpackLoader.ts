@@ -17,6 +17,7 @@
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import type { LoaderContext, LoaderDefinition } from 'webpack';
+import type { RawSourceMap } from 'webpack-sources';
 import { hasUseClientDirective } from './clientReferences';
 import { transformClientModule } from './clientModuleTransform';
 import {
@@ -93,6 +94,38 @@ const decodeSourceMapDataUri = (url: string): string | null => {
     return params.some((param) => param.trim().toLowerCase() === 'base64')
       ? Buffer.from(data, 'base64').toString('utf8')
       : decodeURIComponent(data);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Extract an inline base64 sourcemap from the end of a loader output string.
+ * The stock node-loader appends `//# sourceMappingURL=data:application/json;
+ * charset=utf-8;base64,<payload>` after its transform. Webpack does not read
+ * inline maps from loader output — it only accepts them via the explicit
+ * `this.callback(null, source, sourceMap)` protocol. This helper decodes the
+ * inline map so the caller can forward it through that protocol.
+ *
+ * Returns `null` when the source has no trailing inline map or the payload is
+ * not a valid sourcemap object.
+ */
+export const extractInlineSourceMap = (
+  source: string
+): { cleanSource: string; sourceMap: RawSourceMap } | null => {
+  const match = source.match(
+    /\/\/# sourceMappingURL=data:application\/json[^,]*;base64,([A-Za-z0-9+/=]+)\s*$/
+  );
+  if (!match || !match[1]) return null;
+  try {
+    const decoded = Buffer.from(match[1], 'base64').toString('utf8');
+    const parsed = JSON.parse(decoded);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    // Replace the comment with a newline to preserve the line count.
+    const cleanSource = source.slice(0, match.index) + '\n';
+    return { cleanSource, sourceMap: parsed as RawSourceMap };
   } catch {
     return null;
   }
@@ -285,6 +318,15 @@ const RSCWebpackLoader: LoaderDefinition = async function RSCWebpackLoader(sourc
   const { load } = await import('react-server-dom-webpack/node-loader');
   const result = await load(fileUrl, null, createLoadRequestHandler(this, fileUrl, source));
   return rewriteStockServerImport(result.source);
+
+  // NOTE: The stock loader embeds its sourcemap as an inline data: URI at the
+  // end of the output. Webpack does not read inline maps from loader output
+  // strings — it only accepts them via the explicit `this.callback(null,
+  // source, sourceMap)` protocol. Forwarding the inline map to webpack so it
+  // composes into the bundle-level .map requires switching from an async
+  // function to a sync wrapper with `this.async()`, which is incompatible with
+  // rspack's async loader handling. This is tracked as a follow-up improvement.
+  // The `extractInlineSourceMap` helper is ready for that follow-up.
 };
 
 export default RSCWebpackLoader;

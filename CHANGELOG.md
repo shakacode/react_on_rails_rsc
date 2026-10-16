@@ -5,39 +5,47 @@ All notable changes to this package will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+
 - Pinned the stock Flight runtime to `react-server-dom-webpack@~19.3.1` and raised the `react` and `react-dom` peer floors to `^19.3.1` to match that runtime's own peers. Apps still on React 19.3.0 should upgrade `react` and `react-dom` to 19.3.1; a fresh install already resolved Flight 19.3.1, which requires it. ([#249])
+- `react-on-rails-rsc/WebpackLoader` now serves real sourcemaps for `"use server"` modules instead of always returning an empty map. Sibling `.map` files are read through the bundler's input filesystem and validated as JSON before serving; inline `data:` maps are decoded; dangling pointers and corrupt maps fall back to the empty map without crashing the build. This restores original-source file and line information in server-action error stacks. ([#239])
 
 ## [19.3.1] - 2026-10-08
 
 ### Breaking Changes
+
 - Opened the React 19.3 Flight line by depending on stock `react-server-dom-webpack@~19.3.0` and raising the `react` and `react-dom` peer floors to `^19.3.0`. Published `19.3.0` remains the React 19.2.8 line; apps still on React 19.2.8 must pin exact `react-on-rails-rsc@19.3.0` instead of taking this patch. ([#235])
 
   **Migration Guide:**
-
   1. Upgrade application `react`, `react-dom`, and `react-server-dom-webpack` together to 19.3.0 so the nested Flight runtime matches React and a second Flight copy is not installed.
   2. Keep exact `react-on-rails-rsc@19.3.0` while the app remains on React 19.2.8. Do not treat `19.3.1` as a drop-in patch for that line: a caret or tilde range such as `^19.3.0` or `~19.3.0` now resolves to `19.3.1`, which requires React 19.3.0.
 
 ### Changed
+
 - License: `react-on-rails-rsc` is governed by The React on Rails Pro License 3.0 (based on trust, free for small organizations; replaces EULA 2.3). ([#237])
 
 ### Fixed
+
 - Fixed CSS wrapper builds for client modules using configured proposal syntax by passing `parserPlugins` from both RSC plugins to the wrapper export scan. ([#240])
 - Fixed `react-on-rails-rsc/WebpackLoader` failing RSC bundle builds with `SyntaxError: Unexpected token '/' ... is not valid JSON` when a `"use server"` (or other stock-path directive) module ends with a `//# sourceMappingURL=` comment — the shape npm packages publish. The loader now routes the stock node-loader's requests instead of answering every one with the module's own source: a sourcemap request is always answered with a valid empty map (real `.map`/inline-map passthrough is deliberately not implemented — tracked in [#239]), and any other requested module URL (`export *` resolution) is served from the bundler's input filesystem. ([#236])
 
 ## [19.3.0] - 2026-09-16
 
 ### Breaking Changes
+
 - Raised the stock Flight runtime, React, and React DOM minimums from 19.2.7 to 19.2.8 so the packaged runtime and peer contract stay aligned. ([#203])
 
 ### Added
+
 - Added an opt-in `cssWrapper` option to `RSCWebpackPlugin` and `RSCRspackPlugin` that prevents client-component CSS flash-of-unstyled-content by resolving each `"use client"` module to a generated wrapper which renders a native React 19 `<link rel="stylesheet" precedence>`. The final wrapper preserves JSX, TypeScript, Flow, named, star, and side-effect-only module behavior while retaining shared-child stylesheet hints. Off by default. ([#196]) ([#222]) ([#223]) ([#230])
 - Added a validated `parserPlugins` option to `react-on-rails-rsc/WebpackLoader` for enabling extra Babel parser plugins when enumerating `"use client"` exports, so proposal syntax accepted by the application build does not fail the RSC bundle. ([#216]) ([#221])
 
 ### Changed
+
 - Hardened `"use client"` transformation to parse raw JSX, TypeScript, and Flow exports; resolve `export *` chains; exclude erased declarations; and reject missing or ambiguous runtime exports with actionable errors. Valid side-effect-only client modules continue to emit empty RSC stubs so browser registration modules work without advertising client references. ([#216]) ([#221]) ([#223]) ([#230])
 - Dropped the `es-module-lexer` runtime dependency after unifying the CSS-wrapper and client-reference export scanners. ([#223])
 
 ### Fixed
+
 - Prevented `RSCRspackPlugin` browser bundles from requesting every discovered client-reference chunk at startup while preserving emitted chunks for Flight's on-demand loading. ([#207]) ([#210])
 - Fixed `RSCRspackPlugin` to honor application `splitChunks` configuration for generated client-reference chunks, allowing shared JavaScript to be extracted once while preserving the complete sibling chunk metadata Flight needs for hydration. ([#213])
 - Restored stylesheet hints when Webpack or Rspack scope-hoists a client reference and its CSS-bearing child into `ConcatenationModule` wrappers. Production builds with module concatenation retain shared and transitive child CSS with `cssWrapper` on or off, and server manifests keep each client reference mapped to its generated CSS-wrapper module ID. ([#228])
@@ -45,16 +53,19 @@ All notable changes to this package will be documented in this file.
 ## [19.2.1] - 2026-07-14
 
 ### Added
+
 - Added RSC server resource hint helpers for preloading assets, styles, scripts, fonts, and images, plus preconnect and DNS-prefetch support for already-resolved production asset URLs. The default `react-on-rails-rsc/server` fallback keeps failing fast at import time without the `react-server` condition while still publishing the expanded type surface. ([#143])
 - Added opt-in client-reference diagnostics that emit RSC client reference JS/CSS asset files, byte sizes, and de-duplicated total byte counts for static island performance audits. Diagnostics-off builds skip CSS collection, and emitted CSS is scoped to the owning client-reference chunks. ([#144]) ([#152]) ([#166])
 - Added an opt-in `entryClientReferencesFilename` option to `RSCWebpackPlugin` and `RSCRspackPlugin` that emits, for each entrypoint, the client references statically reachable from its module graph, keyed by the same `file://` hrefs as the client manifests. The client manifests themselves are unchanged; a downstream consumer can join the asset against the client manifest to scope per-route client-reference metadata, so static RSC pages stop needing a global `clientReferences: []` workaround. ([#176])
 
 ### Changed
+
 - Changed the published npm license metadata to `SEE LICENSE IN LICENSE.md` and included the license file in the package. Starting with `19.2.1`, the package uses the React on Rails Pro v2.3 terms: Production Use requires an appropriate paid subscription or Complimentary OSS License, while the defined non-commercial, educational, and demo uses remain free. See [LICENSE.md](LICENSE.md) for the exact terms and the Meta notice that applies to the derived Webpack plugin portions. ([#193])
 - Declared the optional `@rspack/core` peer range as Rspack 1.x or 2.x, added explicit Rspack 2.x compatibility coverage, and made Rspack 2 client-manifest chunk ordering deterministic while preserving the full sibling chunk set. ([#140]) ([#183])
 - Stopped `RSCRspackPlugin` from injecting a no-op `"use client"` tagging loader into every first-party module, preserving Rspack incremental caching while keeping filesystem-based client-reference discovery. ([#167])
 
 ### Fixed
+
 - Fixed Webpack string `clientReferences` to resolve relative to the compiler context and match symlink realpaths, and warned when `output.publicPath` values such as `"auto"` or functions cannot be serialized safely into the RSC manifest. ([#171]) ([#185])
 - Fixed Rspack client manifests to emit stylesheet hints, normalize unserializable `output.publicPath: "auto"`, preserve `.mjs` chunk files, and match webpack split-runtime chunk metadata. ([#172])
 - Fixed `RSCRspackPlugin` runtime injection state to be scoped by compiler, avoiding MultiCompiler and sequential-build cross-talk between rspack client/server builds with different client references or chunk names. ([#168])
@@ -67,10 +78,10 @@ All notable changes to this package will be documented in this file.
 ## [19.2.0] - 2026-06-28
 
 ### Breaking Changes
+
 - Moved the package to the React 19.2 runtime line by depending on stock `react-server-dom-webpack@~19.2.7`, removing the published vendored Flight runtime, and raising the `react` and `react-dom` peer dependency floor to `^19.2.7`. ([#102])
 
   **Migration Guide:**
-
   1. Upgrade application `react` and `react-dom` dependencies to `19.2.7` or newer within the React 19.x line.
   2. Keep importing `react-on-rails-rsc/server.node`, `react-on-rails-rsc/client.node`, and `react-on-rails-rsc/client.browser` through this package's public exports; direct paths under `dist/react-server-dom-webpack/` are no longer shipped.
   3. Use the `react-on-rails-rsc/server` export for raw Flight runtime helpers such as `registerClientReference`.
@@ -78,12 +89,15 @@ All notable changes to this package will be documented in this file.
   5. Keep RSC client and server bundles on the same React 19.2 runtime line; React 19.2 Flight stylesheet hint rows can use the bare `:HS[...]` format that older 19.0.x clients do not parse.
 
 ### Added
+
 - Added a configurable client-build warning when a client reference appears in at least four client-reference chunk groups, helping surface cross-page JS/CSS duplication from chunk contamination. Set `chunkGroupWarningThreshold` to a positive number to tune the threshold, or to `0`/`false` to disable the warning. ([#120])
 
 ### Changed
+
 - Set the 19.0.x package line to maintenance mode after the 19.2.x line becomes `latest`; future 19.0.x releases should be limited to security fixes, severe regressions, release-artifact repairs, or downstream React on Rails support obligations. ([#102])
 
 ### Fixed
+
 - Fixed the Rspack RSC build skipping the client-references module map on the 19.2 line when `react-server-dom-webpack` resolves to a different install path than the plugin's own copy (duplicate installs, pnpm/yarn symlink stores, hoisted-vs-nested layouts). The plugin now recognizes the Flight client runtime by file-name suffix confirmed through a `react-server-dom-webpack` `package.json` walk instead of strict resolved-path equality, matching the Webpack plugin's duplicate-install handling, so the module map is emitted and Rspack-rendered RSC client content works again. ([#106])
 - Preserved wrapper-layer RSC stylesheet hints for conditional `react-on-rails-rsc/server` Flight renderers, including edge/workerd, while using the stock React 19.2 runtime. ([#102])
 - Scoped per-client-reference CSS to the chunk(s) that actually contain the reference instead of collecting it across the whole chunk group. Shared dependency chunks (`vendor`/`common`/styleguide) that the page entry already loads are no longer re-broadcast as a render-blocking `<link rel="stylesheet" precedence="rsc-css">` per client reference — the dominant FCP/LCP regression when a real page is converted to RSC — while a reference's own extracted CSS (including the entry chunk's CSS for an eagerly-imported component) and the `#52` runtime-chunk exclusion are preserved. ([#110])
@@ -92,19 +106,23 @@ All notable changes to this package will be documented in this file.
 ## [19.0.5] - 2026-06-13
 
 ### Added
+
 - Added `RSCRspackPlugin` and `RSCRspackLoader` exports for Rspack-native RSC client reference manifest generation. ([#29])
 - Added the `RSCReferenceDiscoveryPlugin` export and graph-derived Webpack client reference discovery so builds can emit client metadata from the actual RSC graph. ([#47])
 
 ### Changed
+
 - Updated RSC payload parsing to walk parsed models after `JSON.parse`, reducing Flight chunk deserialization overhead while preserving RSC model revival behavior. ([#33])
 
 ### Fixed
+
 - Fixed Webpack client manifest chunk and CSS collection to merge shared client-reference chunks, avoid runtime and hot-update CSS leaks, preserve CSS from CSS-first and `.mjs` chunk layouts, normalize emitted CSS hrefs, and bind each client component to its client-reference dependency chunk group. ([#23]) ([#35]) ([#52]) ([#54])
 - Fixed RSC stylesheet hints for client components in deferred Suspense trees by serializing manifest CSS through request-scoped Flight payload links while preserving client-reference metadata. ([#35])
 - Fixed Rspack client manifest generation to preserve server bundle exports, scope entries to explicit client references, support symlinked references, and keep the default `splitChunks.chunks` behavior at `async` when unset. ([#36]) ([#38]) ([#40])
 - Fixed default client reference discovery to skip dependency and generated asset directories, and fixed Webpack runtime detection when package managers install multiple `react-on-rails-rsc` package instances for different peer dependency sets. ([#42]) ([#43])
 
 ### Security
+
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
 [Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.1...HEAD
@@ -113,7 +131,6 @@ All notable changes to this package will be documented in this file.
 [19.2.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.0...19.2.1
 [19.2.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.5...19.2.0
 [19.0.5]: https://github.com/shakacode/react_on_rails_rsc/compare/19.0.4...19.0.5
-
 [#203]: https://github.com/shakacode/react_on_rails_rsc/pull/203
 [#235]: https://github.com/shakacode/react_on_rails_rsc/pull/235
 [#236]: https://github.com/shakacode/react_on_rails_rsc/pull/236
@@ -167,4 +184,5 @@ All notable changes to this package will be documented in this file.
 [#228]: https://github.com/shakacode/react_on_rails_rsc/pull/228
 [#230]: https://github.com/shakacode/react_on_rails_rsc/pull/230
 [#240]: https://github.com/shakacode/react_on_rails_rsc/pull/240
+[#239]: https://github.com/shakacode/react_on_rails_rsc/pull/239
 [#249]: https://github.com/shakacode/react_on_rails_rsc/pull/249

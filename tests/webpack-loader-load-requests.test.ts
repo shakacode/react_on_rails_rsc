@@ -212,6 +212,17 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
   });
 
+  it('rejects a file: URL pointing outside the module directory', async () => {
+    const resourcePath = fixturePath('server-actions-with-map.js');
+    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    // file: URL to a different directory — must be rejected even though
+    // fileURLToPath produces a valid absolute path.
+    const result = await handler('file:///etc/passwd', JSON_REQUEST);
+
+    expect(JSON.parse(result.source as string)).toEqual(EMPTY_SOURCE_MAP);
+    expect(context.addDependency).not.toHaveBeenCalled();
+  });
+
   it('percent-decodes a relative sourceMappingURL for parity with file: URLs', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
     const mapPath = fixturePath('server-actions-with-map.js.map');

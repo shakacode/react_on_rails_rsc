@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Run tests (test:rsc + test:non-rsc). For a single RSC file:
-#   NODE_CONDITIONS=react-server yarn jest <path>   (for *.rsc.test.*)
+# Compatibility shim: shared agent-workflow skills still call this path.
+# Shaka's command lives in .agents/shaka/bin/test.
 set -euo pipefail
 root=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_PREFIX -u GIT_CEILING_DIRECTORIES git -C "$(dirname -- "$0")" rev-parse --show-toplevel) || exit $?
-cd "$root"
-exec yarn test "$@"
+exec "$root/.agents/shaka/bin/test" "$@"

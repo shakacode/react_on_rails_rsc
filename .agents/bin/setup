@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Install dependencies.
+# Compatibility shim: shared agent-workflow skills still call this path.
+# Shaka's command lives in .agents/shaka/bin/setup.
 set -euo pipefail
 root=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_PREFIX -u GIT_CEILING_DIRECTORIES git -C "$(dirname -- "$0")" rev-parse --show-toplevel) || exit $?
-cd "$root"
-exec yarn install
+exec "$root/.agents/shaka/bin/setup" "$@"

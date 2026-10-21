@@ -7,7 +7,7 @@ This directory is this repository's contract with the [Shaka](https://github.com
 | --- | --- |
 | `shaka/config.yml` | The typed contract for Shaka-specific workflow policy. Shaka reads it from the trusted default branch, so a pull request cannot grant itself authority by editing its own copy. Live GitHub settings remain authoritative. |
 | `shaka/bin/` | Standard wrappers for this repository's setup, validation, and tests. Their fixed names form the portable command interface; they run from the checkout under review, so a pull request that edits one changes what validation executes. |
-| `bin/` | Repository helpers (`build`, `shared-skill-dir`) and compatibility shims that forward `setup`, `validate`, and `test` to `shaka/bin/`. |
+| `bin/` | Repository helpers (`build`, `shared-skill-dir`). |
 
 Edit `shaka/config.yml` by hand, then validate it with `shaka seam check --root .`.
 Validation is strict: unknown keys, unsafe paths, and missing or non-executable

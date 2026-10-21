@@ -289,5 +289,5 @@ Update `/CHANGELOG.md` for **user-visible changes only** (features, bug fixes, b
 ## Agent Workflow Configuration
 
 Portable shared skills resolve this repo's commands and policy through:
-- **Commands** — Shaka runs the fixed `setup`, `validate`, and `test` scripts in `.agents/shaka/bin/`. The `build` and `shared-skill-dir` helpers, plus thin `setup`, `validate`, and `test` shims for shared skills, stay in the older command directory; see its `README.md`. A missing script means that capability is n/a here.
+- **Commands** — Shaka runs the fixed `setup`, `validate`, and `test` scripts in `.agents/shaka/bin/`. The `build` and `shared-skill-dir` helpers stay in the older command directory; see its `README.md`. A missing script means that capability is n/a here.
 - **Shaka seam** — `.agents/shaka/config.yml` is the typed Shaka policy (review, merge preference, branch template). Commands are fixed scripts, not YAML keys. Human-only constraints stay in this file: changelog, `Follow-up:` titles, advisory AI reviewers, batch-closeout auto-merge for ready low-risk PRs, and the private coordination backend. GitHub remains authoritative for live required checks, merge methods, and workflow actions.

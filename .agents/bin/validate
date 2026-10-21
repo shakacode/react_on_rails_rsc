@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# Compatibility shim: shared agent-workflow skills still call this path.
-# Shaka's command lives in .agents/shaka/bin/validate.
-set -euo pipefail
-root=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_PREFIX -u GIT_CEILING_DIRECTORIES git -C "$(dirname -- "$0")" rev-parse --show-toplevel) || exit $?
-exec "$root/.agents/shaka/bin/validate" "$@"

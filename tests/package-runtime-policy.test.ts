@@ -47,7 +47,7 @@ describe('19.3 runtime release policy', () => {
   it('depends on the stock React 19.3 Flight runtime and raises React peers to the runtime floor', () => {
     const pkg = readJson<PackageJson>('package.json');
 
-    expect(pkg.dependencies?.['react-server-dom-webpack']).toBe('~19.3.0');
+    expect(pkg.dependencies?.['react-server-dom-webpack']).toBe('~19.3.1');
     expect(pkg.peerDependencies?.react).toBe('^19.3.0');
     expect(pkg.peerDependencies?.['react-dom']).toBe('^19.3.0');
   });

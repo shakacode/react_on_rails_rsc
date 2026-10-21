@@ -122,8 +122,8 @@
     "jest": "^30.4.2",
     "mini-css-extract-plugin": "^2.10.2",
     "publint": "0.3.24",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "release-it": "21.0.2",
     "ts-jest": "^29.4.5",
     "typescript": "^5.4.3",
@@ -144,7 +144,7 @@
     "@babel/parser": "^7.28.5",
     "acorn-loose": "^8.3.0",
     "neo-async": "^2.6.1",
-    "react-server-dom-webpack": "~19.3.0",
+    "react-server-dom-webpack": "~19.3.1",
     "webpack-sources": "^3.2.0"
   },
   "repository": {

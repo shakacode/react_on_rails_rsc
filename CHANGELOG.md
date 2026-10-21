@@ -4,6 +4,9 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Pinned the stock Flight runtime to `react-server-dom-webpack@~19.3.1`, the upstream patch the package now ships and verifies against. That runtime's own `react` and `react-dom` peers are `^19.3.1`, so apps should install React 19.3.1 alongside it. ([#249])
+
 ## [19.3.1] - 2026-10-08
 
 ### Breaking Changes
@@ -164,3 +167,4 @@ All notable changes to this package will be documented in this file.
 [#228]: https://github.com/shakacode/react_on_rails_rsc/pull/228
 [#230]: https://github.com/shakacode/react_on_rails_rsc/pull/230
 [#240]: https://github.com/shakacode/react_on_rails_rsc/pull/240
+[#249]: https://github.com/shakacode/react_on_rails_rsc/pull/249

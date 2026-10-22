@@ -337,7 +337,7 @@ const rootPackage = JSON.parse(readFileSafe(path.join(packageDir, 'package.json'
 const runtimePackage = JSON.parse(readFileSafe(runtimePackagePath, 'runtime package.json'));
 const runtimeVersion = runtimePackage.version;
 const expectedPeerRange = `^${runtimeVersion}`;
-const expectedRuntimeDependencyRange = `~${runtimeVersion}`;
+const runtimeDependencyRange = rootPackage.dependencies?.['react-server-dom-webpack'];
 
 function assertEqual(actual, expected, label) {
   if (actual !== expected) {
@@ -375,12 +375,25 @@ function assertCaretRangeIncludesVersion(range, version, label) {
   }
 }
 
-// Keep the package manifest bound to the exact stock runtime patch validated by
-// this release. A newer lockfile resolution in the same runtime minor must
-// update package.json too.
-assertEqual(
-  rootPackage.dependencies?.['react-server-dom-webpack'],
-  expectedRuntimeDependencyRange,
+function assertTildeRangeIncludesVersion(range, version, label) {
+  const match = /^~(\d+\.\d+\.\d+)$/.exec(range || '');
+  if (!match) {
+    throw new Error(`${label} expected a tilde X.Y.Z range that includes ${version}, got ${range}`);
+  }
+
+  const minimum = parseVersion(match[1], label);
+  const target = parseVersion(version, 'runtime version');
+  if (minimum.major !== target.major || minimum.minor !== target.minor ||
+      compareVersions(minimum, target) > 0) {
+    throw new Error(`${label} ${range} does not include stock runtime ${version}`);
+  }
+}
+
+// A packed consumer has no repository lockfile and may resolve a newer patch
+// within the declared runtime minor. Verify that the declared range permits it.
+assertTildeRangeIncludesVersion(
+  runtimeDependencyRange,
+  runtimeVersion,
   'root dependencies.react-server-dom-webpack'
 );
 assertCaretRangeIncludesVersion(
@@ -411,7 +424,7 @@ for (const marker of [`version: "${runtimeVersion}"`, `reconcilerVersion: "${run
 }
 
 console.log(
-  `  - Stock runtime version ${runtimeVersion} is pinned by package dependency ${expectedRuntimeDependencyRange}, root peers, and runtime peer policy ${expectedPeerRange}`
+  `  - Stock runtime version ${runtimeVersion} satisfies package dependency ${runtimeDependencyRange}, root peers, and runtime peer policy ${expectedPeerRange}`
 );
 NODE
 

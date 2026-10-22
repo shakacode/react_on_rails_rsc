@@ -7,7 +7,7 @@
 [shakacode/react_on_rails#3965](https://github.com/shakacode/react_on_rails/issues/3965)
 **Related docs:** [`releasing.md`](releasing.md),
 [`eliminate-react-fork.md`](eliminate-react-fork.md),
-[`open-rsc-work-status.md`](open-rsc-work-status.md)
+`open-rsc-work-status.md` (since removed)
 
 This document is the durable record of the full repo deep dive: what was
 verified, what it implies, and why the backlog is shaped the way it is. Facts

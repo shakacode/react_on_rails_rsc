@@ -11,7 +11,7 @@
  * module happens to appear in (the over-preload / overwrite class from
  * issue #19).
  *
- * Covers the verification matrix from internal/docs/open-rsc-work-status.md (CSS +
+ * Covers the chunk-group verification matrix (CSS +
  * JS chunk file ordering is covered separately by the mock-based
  * react-flight-webpack-plugin-css-order tests):
  *   - splitChunks shared module across several chunk groups

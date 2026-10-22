@@ -15,7 +15,6 @@ here. Source lives in `src/`, tests in `tests/`, build output in `dist/`.
 - `.agents/skills/`: repo-local RSC-specific skills only; `.claude/skills` is a symlink here so Claude Code exposes those local workflows as slash commands
 - `.agents/bin/shared-skill-dir`: resolve a shared skill path when a script needs the installed/shared file location
 - `.agents/workflows/`: shared prompt templates and reusable workflows for Codex, GPT, and other non-Claude tools
-- `internal/docs/agent-workflows/multi-batch-operations.md`: operator guide for multiple concurrent batches across machines, launch surfaces, or the React on Rails / RSC repos
 - When deciding whether an issue or proposed fix is worth doing, use `$evaluate-issue` or "Is this issue worth fixing?"
 - When the user wants to choose issues or PRs for a future Codex batch, use `$plan-pr-batch` to produce a ready `$pr-batch` goal.
 - When the user wants a multi-issue or multi-PR Codex batch, use `$pr-batch` or "Run a Codex batch".
@@ -30,7 +29,6 @@ here. Source lives in `src/`, tests in `tests/`, build output in `dist/`.
 - When the user wants package-level end-to-end verification, use `.agents/skills/run-e2e/SKILL.md` (`$run-e2e`); it runs `scripts/e2e/run.sh`.
 - When the user wants downstream React on Rails verification, use `.agents/skills/downstream-e2e/SKILL.md` (`$downstream-e2e`); this is a documented stub until `scripts/e2e/downstream.sh` lands.
 - When a maintainer explicitly asks to maintain the legacy vendored React Server DOM runtime, use `.agents/skills/react-upgrade/SKILL.md` (`$react-upgrade`) and never hand-edit `src/react-server-dom-webpack/`.
-- When the user wants to refresh the open RSC work status or live backlog map, use `$rsc-triage` and report unverifiable facts as `UNKNOWN`.
 - Default simplify model: `claude-opus-4-8`
 
 > Note: `.agents/skills/stress-test/SKILL.md` was copied from the React on Rails repo and is still

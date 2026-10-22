@@ -11,10 +11,6 @@ Run a Codex batch
 
 For assistants without skill support, follow the high-concurrency batch launch rules below before using the rest of this workflow.
 
-For one coordinator running multiple batches across machines, launch surfaces,
-or the React on Rails / RSC repositories, use
-`internal/docs/agent-workflows/multi-batch-operations.md`.
-
 For post-merge audits after a concurrent batch or before a release candidate, use `$post-merge-audit` when skills are available. Reusable audit, comparison, issue-creation, and Claude handoff prompts live in `.agents/workflows/post-merge-audit.md`.
 
 For adversarial pre-merge or post-merge PR review, use `$adversarial-pr-review` when skills are available. Reusable Codex, Claude, and comparison prompts live in `.agents/workflows/adversarial-pr-review.md`.
@@ -407,8 +403,7 @@ Use exact lane assignments as the primary coordination mechanism. Labels are use
 - Use a temporary `codex-wip` label only as a visible hint; do not treat it as the durable lock.
 - When the private `shakacode/agent-coordination` backend is available
   (`agent-coord status` exits 0), treat private state as the source of truth for
-  claims, heartbeats, liveness, active batches, and dependency rendering. See
-  [Agent Coordination Backend](../../internal/docs/agent-workflows/agent-coordination-backend.md).
+  claims, heartbeats, liveness, active batches, and dependency rendering.
 - Public claim comments are advisory fallback state for humans and recovery
   only. They do not override a live/stale private holder, bypass a refused
   private claim, or unblock a dependency lane by themselves.

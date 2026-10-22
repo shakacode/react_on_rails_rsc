@@ -15,7 +15,7 @@ Invoke shared skills with their `$name` (for example `$pr-batch`, `$plan-pr-batc
 ## Local Skill Status
 
 The shared skills read this repo's commands from `AGENTS.md` and the repository's command wrappers, and the typed
-Shaka contract from `.agents/shaka/config.yml`. Local skills below cover RSC-specific release, e2e, triage, and legacy
+Shaka contract from `.agents/shaka/config.yml`. Local skills below cover RSC-specific release, e2e, and legacy
 runtime maintenance workflows.
 
 | Skill | Status |

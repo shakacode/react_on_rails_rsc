@@ -15,11 +15,10 @@ case "$skill" in
     ;;
 esac
 
-root="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+root=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_PREFIX -u GIT_CEILING_DIRECTORIES git -C "$(dirname -- "$0")" rev-parse --show-toplevel) || exit $?
 
-repo_candidate="${root}/.agents/skills/${skill}"
-if [ -f "${repo_candidate}/SKILL.md" ] || [ -d "${repo_candidate}/bin" ]; then
-  printf '%s\n' "$repo_candidate"
+if [ -f "${root}/.agents/skills/${skill}/SKILL.md" ] || [ -d "${root}/.agents/skills/${skill}/bin" ]; then
+  printf '%s\n' "${root}/.agents/skills/${skill}"
   exit 0
 fi
 

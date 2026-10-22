@@ -8,8 +8,8 @@ repository.
 that must stay aligned with it.
 
 Unlinked `$...` entries in the table are installed/shared `agent-workflows` skills, not repo-local
-files. Install the shared pack or set `AGENT_WORKFLOWS_ROOT` before using them; linked `.agents/*`
-entries are the local fallbacks or RSC-specific skills kept in this repository.
+files. Install the shared pack or set `AGENT_WORKFLOWS_ROOT` before using them; linked `.agents/` skill
+and workflow entries are the local fallbacks or RSC-specific skills kept in this repository.
 
 When one coordinator runs multiple batches across machines, launch surfaces, or
 repositories, use [Multi-Batch Operations](multi-batch-operations.md) for the
@@ -154,7 +154,7 @@ When changing one part of the PR skill suite, check the matching docs and workfl
   `$adversarial-pr-review`.
 - Keep [`post-merge-audit.md`](../../../.agents/workflows/post-merge-audit.md) aligned with
   `$post-merge-audit`.
-- Keep this guide and [`.agents/skills/README.md`](../../../.agents/skills/README.md) updated when a
+- Keep this guide and [`.agents/skills/README.md`](/.agents/skills/README.md) updated when a
   skill is added, removed, renamed, or retargeted.
 - Keep [Multi-Batch Operations](multi-batch-operations.md) and
   [Agent Coordination Backend](agent-coordination-backend.md) aligned with

@@ -4,6 +4,9 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Pinned the stock Flight runtime to `react-server-dom-webpack@~19.3.1` and raised the `react` and `react-dom` peer floors to `^19.3.1` to match that runtime's own peers. Apps still on React 19.3.0 should upgrade `react` and `react-dom` to 19.3.1; a fresh install already resolved Flight 19.3.1, which requires it. ([#249])
+
 ## [19.3.1] - 2026-10-08
 
 ### Breaking Changes
@@ -164,3 +167,4 @@ All notable changes to this package will be documented in this file.
 [#228]: https://github.com/shakacode/react_on_rails_rsc/pull/228
 [#230]: https://github.com/shakacode/react_on_rails_rsc/pull/230
 [#240]: https://github.com/shakacode/react_on_rails_rsc/pull/240
+[#249]: https://github.com/shakacode/react_on_rails_rsc/pull/249

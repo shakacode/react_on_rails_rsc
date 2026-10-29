@@ -462,3 +462,103 @@ describe('RSCWebpackLoader sourcemap requests on the stock path (react_on_rails#
     expect(bundle).toContain('plain:');
   });
 });
+
+/**
+ * Verify that the stock loader's output sourcemap contains correct original
+ * file names and line numbers — the behavior this PR restores.
+ *
+ * The stock `transformServerModule` reads the sourcemap we serve, adjusts its
+ * VLQ mappings for the appended `registerServerReference` calls, and re-emits
+ * the result as an inline `data:` URI. These tests decode that URI and check
+ * the `sources` array and `mappings` field, proving the original-source
+ * information survives end-to-end through a real bundler build.
+ */
+describe('RSCWebpackLoader output sourcemap quality (issue #239)', () => {
+  const LOAD_FIXTURES = path.resolve(__dirname, '../fixtures/load-requests');
+
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+
+  afterEach(() => {
+    cleanupTmpDir(tmpDir);
+  });
+
+  const compileFixture = (fixture: string): RspackResult =>
+    runRspack(
+      {
+        mode: 'development',
+        target: 'node',
+        entry: path.join(LOAD_FIXTURES, fixture),
+        output: {
+          path: tmpDir,
+          filename: 'bundle.js',
+          library: { type: 'commonjs2' },
+        },
+        devtool: false,
+        module: {
+          rules: [{ test: /\.[jt]sx?$/, use: [{ loader: DIST_LOADER }] }],
+        },
+        externals: {
+          'react-on-rails-rsc/server': 'commonjs2 react-on-rails-rsc/server',
+          'react-server-dom-webpack/server': 'commonjs2 react-server-dom-webpack/server',
+          'react/jsx-runtime': 'commonjs2 react/jsx-runtime',
+        },
+      },
+      tmpDir,
+    );
+
+  /** Extract and decode the inline sourcemap from a bundle string. */
+  const extractInlineMap = (bundle: string): Record<string, unknown> | null => {
+    const match = bundle.match(
+      /sourceMappingURL=data:application\/json[^,]*,([A-Za-z0-9+/=]+)/,
+    );
+    if (!match || !match[1]) return null;
+    return JSON.parse(Buffer.from(match[1], 'base64').toString('utf8')) as Record<string, unknown>;
+  };
+
+  it('preserves the original TypeScript source filename when a real .map exists', () => {
+    const result = compileFixture('server-actions-with-map.js');
+    const bundle = fs.readFileSync(path.join(tmpDir, 'bundle.js'), 'utf8');
+
+    expect(result.ok).toBe(true);
+    const map = extractInlineMap(bundle);
+    expect(map).not.toBeNull();
+
+    // The .map fixture has sources: ["server-actions-with-map.source.ts"].
+    // The stock loader must preserve that filename in the output map.
+    expect(map!.sources).toEqual(
+      expect.arrayContaining([expect.stringContaining('server-actions-with-map.source.ts')]),
+    );
+
+    // The output mappings must be non-empty (not just semicolons).
+    const mappings = map!.mappings as string;
+    expect(mappings.replace(/;/g, '').length).toBeGreaterThan(0);
+  });
+
+  it('generates an identity map with the compiled JS filename when the .map is missing (null fallback)', () => {
+    const result = compileFixture('server-actions-dangling-map.js');
+    const bundle = fs.readFileSync(path.join(tmpDir, 'bundle.js'), 'utf8');
+
+    expect(result.ok).toBe(true);
+    const map = extractInlineMap(bundle);
+    expect(map).not.toBeNull();
+
+    // With the null fallback, the stock loader generates an identity map
+    // whose sources array contains the module's own file: URL.
+    const sources = map!.sources as string[];
+    expect(sources.length).toBeGreaterThan(0);
+    expect(sources[0]).toContain('server-actions-dangling-map.js');
+
+    // The identity map also embeds the compiled source text.
+    const sourcesContent = map!.sourcesContent as string[] | undefined;
+    expect(sourcesContent).toBeDefined();
+    expect(sourcesContent![0]).toContain('Hello from dangling');
+
+    // Mappings must be non-empty (identity map has AAAA;AACA;... segments).
+    const mappings = map!.mappings as string;
+    expect(mappings.replace(/;/g, '').length).toBeGreaterThan(0);
+  });
+});

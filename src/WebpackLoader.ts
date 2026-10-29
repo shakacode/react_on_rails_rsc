@@ -14,6 +14,7 @@
  * https://github.com/shakacode/react_on_rails_rsc/blob/main/LICENSE.md
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import type { LoaderContext, LoaderDefinition } from 'webpack';
@@ -72,7 +73,8 @@ type LoadRequestLoaderContext = Pick<LoaderContext<unknown>, 'resourcePath' | 'a
 const readThroughInputFs = (
   loaderContext: LoadRequestLoaderContext,
   filePath: string
-): Promise<string> => readResolvedSource(loaderContext as unknown as LoaderContext<unknown>, filePath);
+): Promise<string> =>
+  readResolvedSource(loaderContext as unknown as LoaderContext<unknown>, filePath);
 
 type LoadRequestContext = { format?: string } | null;
 
@@ -135,6 +137,50 @@ export const extractInlineSourceMap = (
 const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]+:/;
 
 /**
+ * Resolve a path to its real (symlink-free) form. Returns the original path
+ * when the target does not exist or the realpath call fails for any reason.
+ * Synchronous because it guards a security check that must complete before the
+ * async file read — and realpathSync.native is the cheapest kernel round-trip
+ * Node exposes.
+ */
+const tryRealpath = (p: string): string => {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return p;
+  }
+};
+
+/**
+ * Symlink-aware path containment: returns `true` when `child` lives inside
+ * `dir` under **both** the lexical path and the resolved realpath. Symlink-
+ * installing package managers (pnpm, npm/yarn workspaces) give a single file
+ * two valid path spellings. The lexical check catches the common case without
+ * a syscall; the realpath check closes the symlink bypass a malicious package
+ * could exploit by shipping a same-directory-looking symlink that redirects
+ * reads outside the module directory.
+ */
+const isContainedIn = (child: string, dir: string): boolean => {
+  const prefix = dir.endsWith(path.sep) ? dir : dir + path.sep;
+  if (!child.startsWith(prefix)) return false;
+
+  // The lexical check passed — now verify the resolved paths agree.
+  const realChild = tryRealpath(child);
+  const realDir = tryRealpath(dir);
+  const realPrefix = realDir.endsWith(path.sep) ? realDir : realDir + path.sep;
+  return realChild.startsWith(realPrefix);
+};
+
+/**
+ * Symlink-aware path identity: returns `true` when `a` and `b` name the same
+ * file, even when one is a symlink path and the other the realpath.
+ */
+const isSameFile = (a: string, b: string): boolean => {
+  if (a === b) return true;
+  return tryRealpath(a) === tryRealpath(b);
+};
+
+/**
  * Serve the sourcemap named by a module's `sourceMappingURL` comment. The URL
  * is the raw text after `sourceMappingURL=` — usually a sibling-relative file
  * name like `RSCRoute.js.map`, sometimes an inline `data:` URI. Falls back to
@@ -194,19 +240,19 @@ const loadSourceMap = async (
   // points to an arbitrary JSON file on the build host; the stock loader
   // would embed its content as an inline data: URI in the output. Sibling
   // .map files — the only legitimate shape — always resolve within the
-  // module's own directory.
+  // module's own directory. The check is symlink-aware: a symlink whose own
+  // path is lexically contained but whose target escapes the directory is
+  // also rejected.
   const moduleDir = path.dirname(loaderContext.resourcePath);
-  // When moduleDir is a filesystem root (`/` on POSIX, `C:\` on Windows) it
-  // already ends with the separator, so appending another would produce `//`
-  // or `C:\\` and reject every sibling path.
-  const moduleDirPrefix = moduleDir.endsWith(path.sep) ? moduleDir : moduleDir + path.sep;
-  if (!mapPath.startsWith(moduleDirPrefix) && mapPath !== moduleDir) {
+  if (!isContainedIn(mapPath, moduleDir)) {
     return NULL_SOURCE_MAP;
   }
 
-  if (mapPath === loaderContext.resourcePath) {
+  if (isSameFile(mapPath, loaderContext.resourcePath)) {
     // A self-referential pointer: serving the module's own JavaScript as a
     // sourcemap would recreate the JSON.parse crash this handler exists to fix.
+    // The check resolves symlinks so that a pnpm/workspace symlink spelling
+    // of the module's own path is still caught.
     return NULL_SOURCE_MAP;
   }
 

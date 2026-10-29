@@ -19,10 +19,14 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import type { LoaderContext } from 'webpack';
-import RSCWebpackLoader, { createLoadRequestHandler, extractInlineSourceMap } from '../src/WebpackLoader';
+import RSCWebpackLoader, {
+  createLoadRequestHandler,
+  extractInlineSourceMap,
+} from '../src/WebpackLoader';
 
 const FIXTURES = path.join(__dirname, 'fixtures', 'load-requests');
 
@@ -105,7 +109,10 @@ describe('createLoadRequestHandler: the module’s own URL', () => {
 describe('createLoadRequestHandler: sourcemap (json) requests', () => {
   it('serves the sibling .map file named by a relative sourceMappingURL', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js')
+    );
 
     const result = await handler('server-actions-with-map.js.map', JSON_REQUEST);
 
@@ -123,7 +130,10 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
   it('serves the map through a file: URL sourceMappingURL', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js')
+    );
     const mapUrl = pathToFileURL(fixturePath('server-actions-with-map.js.map')).href;
 
     const result = await handler(mapUrl, JSON_REQUEST);
@@ -186,7 +196,10 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
   it('falls back to the empty map for a relative pointer naming the module itself', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js')
+    );
 
     const result = await handler('server-actions-with-map.js', JSON_REQUEST);
 
@@ -196,7 +209,10 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
   it('rejects a relative sourceMappingURL that traverses above the module directory', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js')
+    );
 
     // ../../../package.json would climb out of the fixtures directory.
     const result = await handler('../../../package.json', JSON_REQUEST);
@@ -216,7 +232,10 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
   it('rejects a file: URL pointing outside the module directory', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js')
+    );
     // file: URL to a different directory — must be rejected even though
     // fileURLToPath produces a valid absolute path.
     const result = await handler('file:///etc/passwd', JSON_REQUEST);
@@ -247,7 +266,10 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
     const mapPath = fixturePath('server-actions-with-map.js.map');
     // Encode the filename the way a URL reference would
     const encoded = 'server-actions-with-map.js.map'.replace(/-/g, '%2D');
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js')
+    );
 
     const result = await handler(encoded, JSON_REQUEST);
 
@@ -268,7 +290,10 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
   it('decodes a base64 data: URI inline map instead of treating it as a path', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js')
+    );
     const inlineMap = '{"version":3,"sources":["inline.ts"],"names":[],"mappings":"AAAA"}';
     const dataUri = `data:application/json;charset=utf-8;base64,${Buffer.from(
       inlineMap,
@@ -306,7 +331,10 @@ describe('createLoadRequestHandler: sourcemap (json) requests', () => {
 
   it('falls back to the empty map for a remote (http) sourceMappingURL', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js')
+    );
 
     const result = await handler('https://example.com/app.js.map', JSON_REQUEST);
 
@@ -333,14 +361,15 @@ describe('createLoadRequestHandler: corrupt sourcemap files', () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
     const emptyMapPath = fixturePath('empty-map-content.js.map');
     const inputFs = createInputFs({ [emptyMapPath]: '' });
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'), {
-      fs: inputFs,
-    });
-
-    const result = await handler(
-      pathToFileURL(emptyMapPath).href,
-      JSON_REQUEST,
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js'),
+      {
+        fs: inputFs,
+      }
     );
+
+    const result = await handler(pathToFileURL(emptyMapPath).href, JSON_REQUEST);
 
     expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
     expect(context.addDependency).toHaveBeenCalledWith(emptyMapPath);
@@ -351,14 +380,15 @@ describe('createLoadRequestHandler: corrupt sourcemap files', () => {
     const bomMapPath = fixturePath('bom-map.js.map');
     const validContent = '{"version":3,"sources":["bom.ts"],"names":[],"mappings":"AAAA"}';
     const inputFs = createInputFs({ [bomMapPath]: '\ufeff' + validContent });
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'), {
-      fs: inputFs,
-    });
-
-    const result = await handler(
-      pathToFileURL(bomMapPath).href,
-      JSON_REQUEST,
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js'),
+      {
+        fs: inputFs,
+      }
     );
+
+    const result = await handler(pathToFileURL(bomMapPath).href, JSON_REQUEST);
 
     // BOM breaks JSON.parse \u2014 falls back to empty map.
     expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
@@ -439,7 +469,10 @@ describe('createLoadRequestHandler: bundler input filesystem', () => {
 describe('createLoadRequestHandler: other module URLs', () => {
   it('reads the requested module from disk (export * resolution)', async () => {
     const resourcePath = fixturePath('server-actions-with-map.js');
-    const { handler, context } = handlerFor(resourcePath, readFixture('server-actions-with-map.js'));
+    const { handler, context } = handlerFor(
+      resourcePath,
+      readFixture('server-actions-with-map.js')
+    );
     const targetPath = fixturePath('reexport-target.js');
 
     const result = await handler(pathToFileURL(targetPath).href, MODULE_REQUEST);
@@ -521,5 +554,96 @@ describe('extractInlineSourceMap', () => {
 
     expect(result).not.toBeNull();
     expect(result!.cleanSource.endsWith('\n')).toBe(true);
+  });
+});
+
+describe('createLoadRequestHandler: symlink path identity (pnpm / workspaces)', () => {
+  // Symlink-installing package managers give a single file two valid path
+  // spellings: the symlink under node_modules/ and the real path inside
+  // .pnpm/ (or the workspace package). The containment and self-referential
+  // guards must resolve symlinks so that:
+  //   1. A symlink pointing outside the module directory is rejected.
+  //   2. A self-referential pointer via the alternate path spelling is caught.
+  //   3. A legitimate sibling .map file is still served.
+
+  let tmpDir: string;
+  let realDir: string;
+  let symlinkDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsc-loader-symlink-'));
+    // Simulate pnpm layout: real files in a "store" directory, symlinked
+    // from a separate "link" directory.
+    realDir = path.join(tmpDir, 'store', 'pkg', 'dist');
+    symlinkDir = path.join(tmpDir, 'link', 'pkg', 'dist');
+    fs.mkdirSync(realDir, { recursive: true });
+    fs.mkdirSync(path.dirname(symlinkDir), { recursive: true });
+    // Symlink the dist directory — the whole directory, as pnpm does.
+    fs.symlinkSync(realDir, symlinkDir, 'dir');
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('catches a self-referential pointer via a symlink spelling of the module path', async () => {
+    // Module.js is the real file; resourcePath is the symlink spelling.
+    const moduleSource = '"use server";\nexport function f() {}\n';
+    fs.writeFileSync(path.join(realDir, 'module.js'), moduleSource);
+
+    const symlinkResourcePath = path.join(symlinkDir, 'module.js');
+    const { handler } = handlerFor(symlinkResourcePath, moduleSource);
+
+    // The sourceMappingURL resolves to the same file via its realpath —
+    // without the symlink-aware guard this would serve JS as JSON.
+    const realFileUrl = pathToFileURL(path.join(realDir, 'module.js')).href;
+    const result = await handler(realFileUrl, JSON_REQUEST);
+
+    expect(result.format).toBe('json');
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
+  });
+
+  it('rejects a symlink inside the module directory that targets a file outside it', async () => {
+    // A malicious package ships a .map symlink that points to a sensitive
+    // file outside its own directory.
+    const secretDir = path.join(tmpDir, 'secrets');
+    fs.mkdirSync(secretDir, { recursive: true });
+    const secretPath = path.join(secretDir, 'credentials.json');
+    fs.writeFileSync(secretPath, '{"token":"s3cr3t"}');
+
+    const moduleSource = '"use server";\nexport function f() {}\n';
+    fs.writeFileSync(path.join(realDir, 'module.js'), moduleSource);
+    // The symlink lives inside the module directory (passes lexical check)
+    // but its target is outside.
+    fs.symlinkSync(secretPath, path.join(realDir, 'module.js.map'));
+
+    const resourcePath = path.join(realDir, 'module.js');
+    const { handler, context } = handlerFor(resourcePath, moduleSource);
+
+    const result = await handler('module.js.map', JSON_REQUEST);
+
+    expect(result.format).toBe('json');
+    expect(JSON.parse(result.source as string)).toEqual(NULL_MAP_PARSED);
+    // The secret content must not have been served.
+    expect(result.source).not.toContain('s3cr3t');
+    expect(context.addDependency).not.toHaveBeenCalled();
+  });
+
+  it('serves a legitimate sibling .map when resourcePath is through a symlink', async () => {
+    // The module and its .map live in the real directory; resourcePath uses
+    // the symlink spelling. The sibling relative URL must still be served.
+    const mapContent = '{"version":3,"sources":["module.ts"],"names":[],"mappings":"AAAA"}';
+    const moduleSource = '"use server";\nexport function f() {}\n';
+    fs.writeFileSync(path.join(realDir, 'module.js'), moduleSource);
+    fs.writeFileSync(path.join(realDir, 'module.js.map'), mapContent);
+
+    const symlinkResourcePath = path.join(symlinkDir, 'module.js');
+    const { handler, context } = handlerFor(symlinkResourcePath, moduleSource);
+
+    const result = await handler('module.js.map', JSON_REQUEST);
+
+    expect(result.format).toBe('json');
+    expect(result.source).toBe(mapContent);
+    expect(context.addDependency).toHaveBeenCalledWith(path.join(symlinkDir, 'module.js.map'));
   });
 });

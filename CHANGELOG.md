@@ -4,6 +4,12 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
+## [19.3.2] - 2026-11-08
+
+### Security
+
+- Requires the patched stock Flight runtime `react-server-dom-webpack@~19.3.1`. Published `react-on-rails-rsc@19.3.1` allowed `react-server-dom-webpack@19.3.0`, which is affected by the critical React Server Components remote code execution advisory [GHSA-xqc2-xf4c-x3h3](https://github.com/react/react/security/advisories/GHSA-xqc2-xf4c-x3h3) and the high-severity Server Functions denial-of-service advisory [GHSA-h3gv-c5rc-p453](https://github.com/react/react/security/advisories/GHSA-h3gv-c5rc-p453). Upgrade to `react-on-rails-rsc@19.3.2` and React 19.3.1, then confirm your lockfile resolves `react-server-dom-webpack@19.3.1` or later. ([#249])
+
 ### Changed
 
 - Pinned the stock Flight runtime to `react-server-dom-webpack@~19.3.1` and raised the `react` and `react-dom` peer floors to `^19.3.1` to match that runtime's own peers. Apps still on React 19.3.0 should upgrade `react` and `react-dom` to 19.3.1; a fresh install already resolved Flight 19.3.1, which requires it. ([#249])
@@ -125,7 +131,8 @@ All notable changes to this package will be documented in this file.
 
 - Updated the vendored `react-server-dom-webpack` runtime from React 19.0.3 to the React 19.0.7 security level, applying the React 19.0.4 fixes for CVE-2025-55183, CVE-2025-55184, and CVE-2025-67779 plus the React 19.0.7 reply-decoding denial-of-service fixes for CVE-2026-23869 (GHSA-479c-33wc-g2pg) and CVE-2026-23870 (GHSA-rv78-f8rc-xrxh). Note: the upstream CVE-2026-23869 fix changes the reply wire format for nested `FormData`, so client and server must both run the patched runtime shipped by this package. ([#48]) ([#86])
 
-[Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.1...HEAD
+[Unreleased]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.2...HEAD
+[19.3.2]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.1...19.3.2
 [19.3.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.3.0...19.3.1
 [19.3.0]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.1...19.3.0
 [19.2.1]: https://github.com/shakacode/react_on_rails_rsc/compare/19.2.0...19.2.1

@@ -8,7 +8,7 @@ All notable changes to this package will be documented in this file.
 
 ### Security
 
-- Requires the patched stock Flight runtime `react-server-dom-webpack@~19.3.1`. Published `react-on-rails-rsc@19.3.1` allowed `react-server-dom-webpack@19.3.0`, which is affected by the critical React Server Components remote code execution advisory [GHSA-xqc2-xf4c-x3h3](https://github.com/advisories/GHSA-xqc2-xf4c-x3h3) and the denial-of-service advisory [GHSA-h3gv-c5rc-p453](https://github.com/advisories/GHSA-h3gv-c5rc-p453). Upgrade to `react-on-rails-rsc@19.3.2` and React 19.3.1, then confirm your lockfile resolves `react-server-dom-webpack@19.3.1` or later. ([#249])
+- Requires the patched stock Flight runtime `react-server-dom-webpack@~19.3.1`. Published `react-on-rails-rsc@19.3.1` allowed `react-server-dom-webpack@19.3.0`, which is affected by the critical React Server Components remote code execution advisory [GHSA-xqc2-xf4c-x3h3](https://github.com/react/react/security/advisories/GHSA-xqc2-xf4c-x3h3) and the high-severity Server Functions denial-of-service advisory [GHSA-h3gv-c5rc-p453](https://github.com/react/react/security/advisories/GHSA-h3gv-c5rc-p453). Upgrade to `react-on-rails-rsc@19.3.2` and React 19.3.1, then confirm your lockfile resolves `react-server-dom-webpack@19.3.1` or later. ([#249])
 
 ### Changed
 

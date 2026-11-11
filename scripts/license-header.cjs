@@ -61,7 +61,9 @@ function requiredHeaderLinesForContent(content) {
 }
 
 function verifyReleaseLicense(packageVersion, licenseText) {
-  if (/\[COUNSEL-\d+\]/.test(licenseText) || /^\*{0,2}Status\s*:/im.test(licenseText)) {
+  const statusNotice =
+    /^[ \t]*(?:>[ \t]*)*(?:#{1,6}[ \t]+|[-*+][ \t]+)?[*_]{0,2}Status[*_]{0,2}[ \t]*:/im;
+  if (/\[COUNSEL-\d+\]/.test(licenseText) || statusNotice.test(licenseText)) {
     throw new Error('LICENSE.md contains a counsel marker or status notice');
   }
   const version = /^(\d+)\.(\d+)\.(\d+)(-.+)?$/.exec(packageVersion);

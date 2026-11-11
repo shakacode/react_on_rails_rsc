@@ -27,7 +27,14 @@ describe('ShakaStack release license policy', () => {
     );
   });
 
-  it.each(['[COUNSEL-1]', '**Status: pending counsel review**'])('rejects %s', (notice) => {
+  it.each([
+    '[COUNSEL-1]',
+    '**Status: pending counsel review**',
+    '**Status**: draft',
+    '> **Status:** draft',
+    '## Status: draft',
+    '_Status:_ draft',
+  ])('rejects %s', (notice) => {
     expect(() => verifyReleaseLicense('19.4.0', `${notice}\n${licenseText}`)).toThrow(
       'LICENSE.md contains a counsel marker or status notice'
     );

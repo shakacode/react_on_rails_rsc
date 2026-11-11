@@ -25,9 +25,11 @@ describe('ShakaStack release license policy', () => {
 
   it('rejects changed canonical terms', () => {
     const changed = licenseText.replace(
-      'The ShakaStack License, version 1.0',
-      'The ShakaStack License, version 1.1'
+      'Part A holds the common terms',
+      'Part A hides the common terms'
     );
-    expect(() => verifyReleaseLicense('19.4.0', changed)).toThrow();
+    expect(() => verifyReleaseLicense('19.4.0', changed)).toThrow(
+      'Canonical license SHA256 expected'
+    );
   });
 });

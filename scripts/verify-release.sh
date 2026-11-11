@@ -25,6 +25,16 @@ if (( NODE_MAJOR < 20 )); then
   exit 1
 fi
 
+log "Checking release license policy"
+node - "$ROOT_DIR/package.json" "$ROOT_DIR/LICENSE.md" "$ROOT_DIR/scripts/license-header.cjs" <<'NODE'
+const fs = require('fs');
+
+const packageJson = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const licenseText = fs.readFileSync(process.argv[3], 'utf8');
+const { verifyReleaseLicense } = require(process.argv[4]);
+verifyReleaseLicense(packageJson.version, licenseText);
+NODE
+
 log "Checking license-header tooling and source headers"
 yarn run check:license-headers:self-test
 yarn run check:license-headers
@@ -95,12 +105,10 @@ PACKAGE_DIR="$CONSUMER_DIR/node_modules/react-on-rails-rsc"
 cat > "$TMP_DIR/verify-package-license.cjs" <<'NODE'
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const {
   collectCodeFiles,
-  expectedCanonicalLicenseSha256,
-  expectedLicenseVersionMarker,
   requiredHeaderLinesForContent,
+  verifyReleaseLicense,
 } = require(process.argv[3]);
 
 const packageDir = process.argv[2];
@@ -120,8 +128,6 @@ if (!fs.existsSync(licensePath)) {
 const licenseText = fs.readFileSync(licensePath, 'utf8');
 for (const requiredText of [
   'react-on-rails-rsc',
-  '# The React on Rails Pro License',
-  expectedLicenseVersionMarker,
   'Third-Party Notices',
 ]) {
   if (!licenseText.includes(requiredText)) {
@@ -129,18 +135,7 @@ for (const requiredText of [
   }
 }
 
-const canonicalLicenseStart = licenseText.indexOf('# The React on Rails Pro License');
-const thirdPartyNoticesStart = licenseText.indexOf('\n## Third-Party Notices\n');
-if (canonicalLicenseStart < 0 || thirdPartyNoticesStart <= canonicalLicenseStart) {
-  throw new Error('Packed LICENSE.md does not contain a bounded canonical license block');
-}
-const canonicalLicense = licenseText.slice(canonicalLicenseStart, thirdPartyNoticesStart);
-const canonicalLicenseSha256 = crypto.createHash('sha256').update(canonicalLicense).digest('hex');
-if (canonicalLicenseSha256 !== expectedCanonicalLicenseSha256) {
-  throw new Error(
-    `Canonical license SHA256 expected ${expectedCanonicalLicenseSha256}, got ${canonicalLicenseSha256}`
-  );
-}
+const canonicalLicenseSha256 = verifyReleaseLicense(pkg.version, licenseText);
 
 const distDir = path.join(packageDir, 'dist');
 const publishedCodeFiles = collectCodeFiles(distDir, { includeDeclarations: true });

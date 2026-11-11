@@ -1,7 +1,11 @@
 # React on Rails RSC License
 
-This context defines the language used to describe how commercial licensing
-and attribution apply across React on Rails Pro and its related components.
+This context records the language used for the 19.2.1 commercial boundary
+and earlier React on Rails Pro licenses. The React 19.3 releases retain their
+shipped terms. A future release beginning with `19.4.0` can ship The
+ShakaStack License, version 1.0, applied to React on Rails Pro. Its product
+schedule contains the current attribution and covered use rules. The terms
+in each released package govern that release.
 
 ## Language
 

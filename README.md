@@ -50,15 +50,20 @@ Maintainer policy lives in [`internal/docs/versioning.md`](internal/docs/version
 ## License
 
 Starting with version `19.2.1`, this package is offered as a commercially
-licensed related software component of React on Rails Pro. Releases that
-include The React on Rails Pro License, version 3.0, follow these terms: free
-in development, test, CI, and staging for everyone, free in production for
-small organizations, charities, educational institutions, and hospitals,
-and a subscription for other production use ($1,800 per year per organization,
-see https://reactonrails.com/pricing/). No license key is needed to run it. See
-[LICENSE.md](LICENSE.md) for the exact terms and the Meta notice that applies to
-the derived Webpack plugin portions. Earlier releases retain the terms included
-in their packages.
+licensed related software component of React on Rails Pro. The React 19.3
+releases keep the terms shipped with them. The next React runtime minor line,
+beginning with `19.4.0`, can include The ShakaStack License, version 1.0,
+applied to React on Rails Pro. Under that text, development, test, CI, and
+staging use before production are free for everyone. Production use is free
+when the whole organization meets all three criteria in the license, or for
+qualifying charities, educational institutions, and hospitals. Other
+production use needs ShakaStack Pro, which covers React on Rails Pro,
+ShakaPerf, and Inertia Rails SSR Cache for the whole organization without a
+size limit. It costs $1,800 per year per organization at
+https://pro.reactonrails.com/. No license key is needed to run this package.
+See [LICENSE.md](LICENSE.md) for the complete terms and the Meta notice for
+the derived Webpack plugin portions. Every earlier release retains its own
+shipped terms.
 
 ## Releasing
 

@@ -4,6 +4,10 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Prepared the next React runtime minor line to ship The ShakaStack License 1.0 for the React on Rails Pro component, with the approved common terms and whole organization ShakaStack Pro coverage. Existing releases retain their shipped terms.
+
 ## [19.3.2] - 2026-11-08
 
 ### Security

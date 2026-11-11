@@ -6,7 +6,7 @@ All notable changes to this package will be documented in this file.
 
 ### Changed
 
-- Prepared the next React runtime minor line to ship The ShakaStack License 1.0 for the React on Rails Pro component, with the approved common terms and whole organization ShakaStack Pro coverage. Existing releases retain their shipped terms.
+- Prepared the next React runtime minor line to ship The ShakaStack License 1.0 for the React on Rails Pro component, with the approved common terms and whole organization ShakaStack Pro coverage. Existing releases retain their shipped terms. ([#255])
 
 ## [19.3.2] - 2026-11-08
 
@@ -196,3 +196,4 @@ All notable changes to this package will be documented in this file.
 [#230]: https://github.com/shakacode/react_on_rails_rsc/pull/230
 [#240]: https://github.com/shakacode/react_on_rails_rsc/pull/240
 [#249]: https://github.com/shakacode/react_on_rails_rsc/pull/249
+[#255]: https://github.com/shakacode/react_on_rails_rsc/pull/255
